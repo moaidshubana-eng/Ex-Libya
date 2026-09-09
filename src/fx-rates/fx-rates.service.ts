@@ -1,22 +1,27 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RateSource } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { PublishRateDto } from './dto/publish-rate.dto';
 import { assessRateChange } from './rate-deviation';
 
 @Injectable()
 export class FxRatesService {
+  private readonly logger = new Logger(FxRatesService.name);
   private readonly maxDeviationPercent: number;
+  private readonly broadcastDeviationPercent: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly whatsApp: WhatsAppService,
     config: ConfigService,
   ) {
     this.maxDeviationPercent = config.get<number>('fx.maxDeviationPercent')!;
+    this.broadcastDeviationPercent = config.get<number>('whatsapp.broadcastDeviationPercent')!;
   }
 
   private async getCurrencyOrThrow(currencyCode: string) {
@@ -117,6 +122,20 @@ export class FxRatesService {
         overrideReason: created.overrideReason,
       },
     });
+
+    // بثّ اختياري للمشتركين — لا يجوز أبدًا أن يفشل نشر السعر نفسه بسبب عطل في واتساب.
+    const maxObservedDeviation = assessment.officialDeviationPercent.greaterThan(
+      assessment.parallelDeviationPercent,
+    )
+      ? assessment.officialDeviationPercent
+      : assessment.parallelDeviationPercent;
+    if (maxObservedDeviation.greaterThanOrEqualTo(this.broadcastDeviationPercent)) {
+      try {
+        await this.whatsApp.broadcastRateUpdate(currency.code, actor.id);
+      } catch (error) {
+        this.logger.error(`فشل بثّ تحديث سعر ${currency.code} عبر واتساب`, error as Error);
+      }
+    }
 
     return created;
   }

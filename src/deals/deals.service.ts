@@ -12,6 +12,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { toMoney } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
 import { applyMovement } from '../treasury/apply-movement';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { CreateDealDto } from './dto/create-deal.dto';
 import { ListDealsQuery } from './dto/list-deals.query';
 import { RejectDealDto } from './dto/reject-deal.dto';
@@ -23,7 +24,7 @@ import {
 } from './deal-pricing';
 
 const DEAL_INCLUDE = {
-  client: { select: { id: true, fullName: true, riskTier: true, kycStatus: true } },
+  client: { select: { id: true, fullName: true, phone: true, riskTier: true, kycStatus: true } },
   branch: { select: { id: true, code: true, name: true } },
   currency: { select: { id: true, code: true, name: true } },
   requestedBy: { select: { id: true, fullName: true, role: true } },
@@ -35,13 +36,16 @@ const DEAL_INCLUDE = {
 export class DealsService {
   private readonly lockTtlSeconds = 60;
   private readonly dualApprovalThresholdUsd: number;
+  private readonly limitAlertThresholdPercent: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly whatsApp: WhatsAppService,
     config: ConfigService,
   ) {
     this.dualApprovalThresholdUsd = config.get<number>('trading.dualApprovalThresholdUsd')!;
+    this.limitAlertThresholdPercent = config.get<number>('trading.limitAlertThresholdPercent')!;
   }
 
   // ---- إنشاء صفقة (تسعير + قفل سعر + تحديد الحاجة لموافقة مزدوجة) ----
@@ -142,9 +146,18 @@ export class DealsService {
     return deal;
   }
 
-  /** يفحص الحد اليومي (صفقات اليوم) والسقف الائتماني (الصفقات المفتوحة غير المسوّاة بعد) للعميل. */
+  /**
+   * يفحص الحد اليومي (صفقات اليوم) والسقف الائتماني (الصفقات المفتوحة غير المسوّاة بعد) للعميل،
+   * ويُرسل تنبيه اقتراب عبر واتساب (بلا حظر العملية) عند تجاوز نسبة التنبيه المُعدّة دون تجاوز الحد نفسه.
+   */
   private async assertWithinClientLimits(
-    client: { id: string; dailyLimitUsd: Prisma.Decimal; creditLimitUsd: Prisma.Decimal },
+    client: {
+      id: string;
+      fullName: string;
+      phone: string;
+      dailyLimitUsd: Prisma.Decimal;
+      creditLimitUsd: Prisma.Decimal;
+    },
     newDealUsd: Prisma.Decimal,
   ) {
     const startOfDay = new Date();
@@ -180,6 +193,22 @@ export class DealsService {
       throw new BadRequestException(
         `تتجاوز هذه الصفقة السقف الائتماني للعميل (التعرّض المفتوح بعد هذه الصفقة: ${openExposure.toFixed(2)} دولار، السقف: ${toMoney(client.creditLimitUsd).toFixed(2)} دولار)`,
       );
+    }
+
+    const dailyUsagePercent = dailyUsed.dividedBy(client.dailyLimitUsd).times(100);
+    if (dailyUsagePercent.greaterThanOrEqualTo(this.limitAlertThresholdPercent)) {
+      await this.whatsApp.sendLimitAlert(client, {
+        limitType: 'DAILY',
+        usagePercent: dailyUsagePercent.toFixed(0),
+      });
+    }
+
+    const creditUsagePercent = openExposure.dividedBy(client.creditLimitUsd).times(100);
+    if (creditUsagePercent.greaterThanOrEqualTo(this.limitAlertThresholdPercent)) {
+      await this.whatsApp.sendLimitAlert(client, {
+        limitType: 'CREDIT',
+        usagePercent: creditUsagePercent.toFixed(0),
+      });
     }
   }
 
@@ -343,7 +372,17 @@ export class DealsService {
       },
     });
 
-    return { ...(await this.findOne(id)), treasuryMovement: result.movement };
+    const executedDeal = await this.findOne(id);
+    await this.whatsApp.sendDealConfirmation({
+      id: executedDeal.id,
+      direction: executedDeal.direction as DealDirection,
+      amount: executedDeal.amount.toString(),
+      lockedRate: executedDeal.lockedRate.toString(),
+      currency: { code: executedDeal.currency.code },
+      client: executedDeal.client,
+    });
+
+    return { ...executedDeal, treasuryMovement: result.movement };
   }
 
   async cancel(id: string, actor: AuthenticatedUser) {

@@ -10,6 +10,7 @@ import { CurrenciesModule } from './currencies/currencies.module';
 import { DealsModule } from './deals/deals.module';
 import { FxRatesModule } from './fx-rates/fx-rates.module';
 import { TreasuryModule } from './treasury/treasury.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { AppController } from './app.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -24,6 +25,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     CurrenciesModule,
     ClientsModule,
     TreasuryModule,
+    WhatsAppModule,
     FxRatesModule,
     DealsModule,
   ],

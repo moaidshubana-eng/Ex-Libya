@@ -14,5 +14,18 @@ export default () => ({
   trading: {
     // الحد الأدنى لمبلغ الصفقة (بما يعادله بالدولار) الذي يستوجب موافقة ضابط ثانٍ
     dualApprovalThresholdUsd: parseFloat(process.env.DUAL_APPROVAL_THRESHOLD_USD ?? '30000'),
+    // نسبة الاستخدام من الحد اليومي/السقف الائتماني التي تُرسل عندها تنبيه اقتراب للعميل
+    limitAlertThresholdPercent: parseFloat(process.env.LIMIT_ALERT_THRESHOLD_PERCENT ?? '80'),
+  },
+  whatsapp: {
+    apiVersion: process.env.WHATSAPP_API_VERSION ?? 'v20.0',
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? '',
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? '',
+    // يتحقق منه Meta أثناء ربط الرابط الخلفي (webhook) لأول مرة
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? 'change-me-verify-token',
+    // يوقّع به Meta كل استدعاء Webhook (X-Hub-Signature-256) للتحقق من مصدره
+    appSecret: process.env.WHATSAPP_APP_SECRET ?? '',
+    // نسبة انحراف السعر التي تستوجب بثّ تحديث جماعي للمشتركين (أقل من حد قاطع الدائرة عمدًا)
+    broadcastDeviationPercent: parseFloat(process.env.WHATSAPP_BROADCAST_DEVIATION_PERCENT ?? '2'),
   },
 });

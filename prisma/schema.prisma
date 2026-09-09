@@ -117,8 +117,9 @@ model Client {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  balances ClientBalance[]
-  deals    Transaction[]
+  balances         ClientBalance[]
+  deals            Transaction[]
+  whatsappMessages WhatsAppMessage[]
 
   @@index([riskTier])
   @@map("clients")
@@ -285,11 +286,64 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  movements TreasuryMovement[]
+  movements        TreasuryMovement[]
+  whatsappMessages WhatsAppMessage[]
 
   @@index([clientId, createdAt])
   @@index([branchId, status])
   @@map("transactions")
+}
+
+// ------------------------------------------------------------------
+// بوابة واتساب — سجل كل رسالة واردة وصادرة (WhatsApp Business Cloud API)
+// لا يوجد نموذج منفصل لـ"القوالب": قوالب الرسائل تُعتمد وتُدار داخل Meta
+// Business Manager نفسها، لا داخل قاعدة بياناتنا؛ سجل الأسماء المعتمدة يُحفظ
+// في الكود (انظر src/whatsapp/templates.ts) لأنه لا معنى لتخزينها بمعزل عن
+// اعتماد Meta الفعلي لها.
+// ------------------------------------------------------------------
+
+enum MessageDirection {
+  INBOUND  // من العميل إلى الشركة
+  OUTBOUND // من الشركة إلى العميل
+}
+
+enum MessageKind {
+  FREE_TEXT // رد حر داخل نافذة خدمة العميل (24 ساعة من آخر رسالة واردة)
+  TEMPLATE  // قالب معتمد مسبقًا — إلزامي لأي رسالة تبدأها الشركة
+}
+
+enum MessageIntent {
+  RATE_INQUIRY   // استفسار سعر فوري
+  HUMAN_HANDOFF  // تحويل لموظف بشري
+  OTHER
+}
+
+enum MessageStatus {
+  RECEIVED // رسالة واردة سُجّلت
+  SENT     // أُرسلت بنجاح عبر Meta Cloud API
+  FAILED   // فشل الإرسال (يُحفظ السبب في errorMessage)
+}
+
+model WhatsAppMessage {
+  id            String            @id @default(uuid())
+  direction     MessageDirection
+  kind          MessageKind
+  intent        MessageIntent?    // للرسائل الواردة فقط
+  waPhoneNumber String            // رقم واتساب بالصيغة الدولية
+  clientId      String?
+  client        Client?           @relation(fields: [clientId], references: [id])
+  templateName  String?
+  body          String            // النص الفعلي المُرسَل أو المُستقبَل — للتدقيق والعرض
+  status        MessageStatus
+  errorMessage  String?
+  providerMessageId String?       // معرّف الرسالة من Meta، إن توفّر
+  relatedDealId String?
+  relatedDeal   Transaction?      @relation(fields: [relatedDealId], references: [id])
+  createdAt     DateTime          @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([waPhoneNumber, createdAt])
+  @@map("whatsapp_messages")
 }
 
 // ------------------------------------------------------------------

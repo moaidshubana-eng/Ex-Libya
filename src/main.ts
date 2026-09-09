@@ -2,12 +2,25 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // نعطّل مُحلّل جسم الطلب الافتراضي لنضبطه يدويًا أدناه: التحقق من توقيع
+  // واتساب (X-Hub-Signature-256) يحتاج الجسم الخام (Buffer) قبل تحويله JSON.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   const config = app.get(ConfigService);
+
+  app.use(
+    express.json({
+      verify: (req: any, _res, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+  app.use(express.urlencoded({ extended: true }));
 
   app.enableCors();
   app.useGlobalPipes(
