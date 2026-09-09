@@ -36,6 +36,12 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  // مصادقة متعددة العوامل (TOTP) — mfaSecretEncrypted مشفّر بـ AES-256-GCM (لا يُخزَّن نصًا صريحًا)
+  // لأنه، خلافًا لكلمة المرور، يجب فكّ تشفيره لاحقًا للتحقق من الرمز؛ التجزئة أحادية الاتجاه لا تصلح هنا.
+  mfaEnabled            Boolean  @default(false)
+  mfaSecretEncrypted    String?
+  mfaRecoveryCodeHashes String[] @default([]) // كل رمز استرداد يُستهلك مرة واحدة فقط (يُحذف من المصفوفة بعد الاستخدام)
+
   treasuryMovements TreasuryMovement[] @relation("MovementActor")
   publishedRates    ExchangeRate[]     @relation("RateActor")
   auditLogs         AuditLog[]         @relation("AuditActor")

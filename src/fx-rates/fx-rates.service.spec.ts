@@ -11,6 +11,7 @@ const actor: AuthenticatedUser = {
   email: 'manager@exlibya.ly',
   role: 'TREASURY_MANAGER' as any,
   branchId: null,
+  mfaEnabled: true,
 };
 
 const usdCurrency = { id: 'cur-usd', code: 'USD', name: 'دولار أمريكي', isActive: true };

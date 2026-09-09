@@ -14,6 +14,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { AppController } from './app.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { MfaGuard } from './common/guards/mfa.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 @Module({
@@ -31,10 +32,12 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
   ],
   controllers: [AppController],
   providers: [
-    // مُطبَّقان على كل التطبيق: المصادقة أولًا (JwtAuthGuard)، ثم فحص الأدوار (RolesGuard).
-    // @Public() يتجاوز الأول؛ عدم وجود @Roles() على مسار يمرّره الثاني دون قيد.
+    // ثلاثة حرّاس مُطبَّقون على كل التطبيق بالترتيب: المصادقة (JwtAuthGuard)، فحص
+    // الأدوار (RolesGuard)، ثم فحص المصادقة الثنائية (MfaGuard). @Public() يتجاوز
+    // الأول؛ عدم وجود @Roles() أو @RequireMfa() على مسار يمرّره الثاني والثالث دون قيد.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: MfaGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],
 })

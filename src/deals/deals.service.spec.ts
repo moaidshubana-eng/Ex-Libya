@@ -12,12 +12,14 @@ const teller: AuthenticatedUser = {
   email: 'teller@exlibya.ly',
   role: 'TELLER' as any,
   branchId: 'branch-1',
+  mfaEnabled: false,
 };
 const manager: AuthenticatedUser = {
   id: 'manager-1',
   email: 'manager@exlibya.ly',
   role: 'TREASURY_MANAGER' as any,
   branchId: 'branch-1',
+  mfaEnabled: true,
 };
 
 const usdCurrency = { id: 'cur-usd', code: 'USD', name: 'دولار أمريكي', isActive: true };

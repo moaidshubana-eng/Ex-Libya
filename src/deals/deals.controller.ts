@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { StaffRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { RequireMfa } from '../common/decorators/require-mfa.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateDealDto } from './dto/create-deal.dto';
 import { ListDealsQuery } from './dto/list-deals.query';
@@ -36,8 +37,10 @@ export class DealsController {
 
   @Post(':id/approve')
   @Roles(StaffRole.TREASURY_MANAGER, StaffRole.ADMIN)
+  @RequireMfa()
   @ApiOperation({
-    summary: 'اعتماد صفقة تتجاوز حد الموافقة المزدوجة (ضابط ثانٍ، لا يجوز أن يكون منشئها)',
+    summary:
+      'اعتماد صفقة تتجاوز حد الموافقة المزدوجة (ضابط ثانٍ، لا يجوز أن يكون منشئها؛ يستوجب مصادقة ثنائية مفعّلة)',
   })
   approve(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.dealsService.approve(id, actor);

@@ -9,6 +9,7 @@ const actor: AuthenticatedUser = {
   email: 'teller@exlibya.ly',
   role: 'TELLER' as any,
   branchId: 'branch-1',
+  mfaEnabled: false,
 };
 
 const usdCurrency = {
