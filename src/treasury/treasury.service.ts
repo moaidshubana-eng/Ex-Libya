@@ -1,18 +1,13 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { toMoney } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { applyMovement } from './apply-movement';
 import { ConfigurePositionDto } from './dto/configure-position.dto';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { RecordMovementDto } from './dto/record-movement.dto';
-import { isIncreasingMovement } from './movement-direction';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -124,52 +119,24 @@ export class TreasuryService {
     const currency = await this.getCurrencyOrThrow(dto.currencyCode);
 
     return this.prisma.$transaction(async (tx) => {
-      const position = await tx.treasuryPosition.findUnique({
-        where: { branchId_currencyId: { branchId, currencyId: currency.id } },
-      });
-      if (!position) {
-        throw new NotFoundException(
-          `لم يتم تفعيل عملة ${currency.code} لهذا الفرع بعد — استخدم إعداد مركز الخزينة أولًا`,
-        );
-      }
-
-      const amount = toMoney(dto.amount);
-      const increasing = isIncreasingMovement(dto.type);
-      const newBalance = increasing
-        ? toMoney(position.balance).plus(amount)
-        : toMoney(position.balance).minus(amount);
-
-      if (newBalance.isNegative()) {
-        throw new BadRequestException(
-          `الرصيد غير كافٍ لإتمام هذه الحركة (الرصيد الحالي: ${toMoney(position.balance).toFixed(2)} ${currency.code})`,
-        );
-      }
-
-      await tx.treasuryPosition.update({
-        where: { id: position.id },
-        data: { balance: newBalance },
-      });
-
-      const movement = await tx.treasuryMovement.create({
-        data: {
-          branchId,
-          currencyId: currency.id,
-          type: dto.type,
-          amount: dto.amount,
-          balanceAfter: newBalance,
-          reason: dto.reason,
-          performedById: actor.id,
-        },
+      const result = await applyMovement(tx, {
+        branchId,
+        currencyId: currency.id,
+        currencyCode: currency.code,
+        type: dto.type,
+        amount: dto.amount,
+        reason: dto.reason,
+        performedById: actor.id,
       });
 
       await this.audit.record({
         entityType: 'TreasuryMovement',
-        entityId: movement.id,
+        entityId: result.movement.id,
         action: 'RECORD_MOVEMENT',
         actorId: actor.id,
-        before: { balance: position.balance },
+        before: { balance: result.balanceBefore },
         after: {
-          balance: newBalance.toFixed(2),
+          balance: result.balanceAfter.toFixed(2),
           type: dto.type,
           amount: dto.amount,
           reason: dto.reason,
@@ -177,9 +144,9 @@ export class TreasuryService {
       });
 
       return {
-        ...movement,
-        exceedsMaxExposure: newBalance.greaterThan(position.maxExposure),
-        belowMinThreshold: newBalance.lessThan(position.minThreshold),
+        ...result.movement,
+        exceedsMaxExposure: result.exceedsMaxExposure,
+        belowMinThreshold: result.belowMinThreshold,
       };
     });
   }

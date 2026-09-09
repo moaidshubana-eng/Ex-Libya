@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { CurrenciesModule } from './currencies/currencies.module';
+import { DealsModule } from './deals/deals.module';
 import { FxRatesModule } from './fx-rates/fx-rates.module';
 import { TreasuryModule } from './treasury/treasury.module';
 import { AppController } from './app.controller';
@@ -24,6 +25,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     ClientsModule,
     TreasuryModule,
     FxRatesModule,
+    DealsModule,
   ],
   controllers: [AppController],
   providers: [
