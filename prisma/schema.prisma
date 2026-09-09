@@ -1,0 +1,229 @@
+// منصّة الصرف الليبية — مخطط قاعدة البيانات
+// يغطي هذا الإصدار الأساس: المستخدمون، الفروع، العملات، العملاء،
+// الخزينة (المراكز والحركات)، أسعار الصرف، وسجل التدقيق.
+// وحدتا التداول (Trading Engine) وواتساب تُبنيان في مرحلة لاحقة فوق هذا الأساس.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------
+// المستخدمون والصلاحيات
+// ------------------------------------------------------------------
+
+enum StaffRole {
+  ADMIN               // إدارة النظام والصلاحيات
+  TREASURY_MANAGER    // اعتماد صفقات كبيرة، تعديل أسعار يدويًا، حركات الخزينة
+  TELLER              // تنفيذ صفقات الصرافين وإدخال حركات الخزينة العادية
+  COMPLIANCE_OFFICER  // مراجعة الامتثال وتقارير مكافحة غسل الأموال
+  CUSTOMER_SERVICE    // إدارة ملفات العملاء والرد على الاستفسارات
+}
+
+model User {
+  id           String    @id @default(uuid())
+  fullName     String
+  email        String    @unique
+  passwordHash String
+  role         StaffRole
+  branchId     String?
+  branch       Branch?   @relation(fields: [branchId], references: [id])
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  treasuryMovements TreasuryMovement[] @relation("MovementActor")
+  publishedRates    ExchangeRate[]     @relation("RateActor")
+  auditLogs         AuditLog[]         @relation("AuditActor")
+
+  @@map("users")
+}
+
+// ------------------------------------------------------------------
+// الفروع والعملات
+// ------------------------------------------------------------------
+
+model Branch {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  city      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users     User[]
+  positions TreasuryPosition[]
+  movements TreasuryMovement[]
+
+  @@map("branches")
+}
+
+model Currency {
+  id            String  @id @default(uuid())
+  code          String  @unique // ISO 4217: LYD, USD, EUR, EGP, TND ...
+  name          String
+  decimalPlaces Int     @default(2)
+  isActive      Boolean @default(true)
+
+  positions  TreasuryPosition[]
+  movements  TreasuryMovement[]
+  rates      ExchangeRate[]
+  balances   ClientBalance[]
+
+  @@map("currencies")
+}
+
+// ------------------------------------------------------------------
+// العملاء (KYC وحدود المخاطر)
+// ------------------------------------------------------------------
+
+enum RiskTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Client {
+  id                String    @id @default(uuid())
+  fullName          String
+  clientType        String    @default("individual") // individual | company
+  nationalIdOrReg   String    @unique // الرقم الوطني أو رقم السجل التجاري
+  phone             String    @unique // رقم واتساب الأساسي للعميل
+  address           String?
+  kycStatus         KycStatus @default(PENDING)
+  riskTier          RiskTier  @default(MEDIUM)
+
+  // الحدود مُعبَّر عنها بما يعادلها بالدولار الأمريكي لتبسيط المقارنة عبر العملات
+  dailyLimitUsd     Decimal   @db.Decimal(18, 2)
+  creditLimitUsd    Decimal   @db.Decimal(18, 2)
+
+  whatsappOptIn     Boolean   @default(false) // موافقة صريحة على تحديثات واتساب الجماعية
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  balances ClientBalance[]
+
+  @@index([riskTier])
+  @@map("clients")
+}
+
+model ClientBalance {
+  id         String   @id @default(uuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id])
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  balance    Decimal  @db.Decimal(18, 2) @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([clientId, currencyId])
+  @@map("client_balances")
+}
+
+// ------------------------------------------------------------------
+// الخزينة: المراكز الحالية وسجل الحركات (دفتر غير قابل للتعديل)
+// ------------------------------------------------------------------
+
+model TreasuryPosition {
+  id            String   @id @default(uuid())
+  branchId      String
+  branch        Branch   @relation(fields: [branchId], references: [id])
+  currencyId    String
+  currency      Currency @relation(fields: [currencyId], references: [id])
+  balance       Decimal  @db.Decimal(18, 2) @default(0)
+  minThreshold  Decimal  @db.Decimal(18, 2) @default(0) // حد أدنى تحذيري
+  maxExposure   Decimal  @db.Decimal(18, 2) // سقف التعرّض المسموح به لهذه العملة في هذا الفرع
+  updatedAt     DateTime @updatedAt
+
+  @@unique([branchId, currencyId])
+  @@map("treasury_positions")
+}
+
+enum MovementType {
+  DEPOSIT             // إيداع في الخزينة (تغذية)
+  WITHDRAWAL          // سحب من الخزينة
+  TRANSFER_IN         // تحويل وارد من فرع/خزينة أخرى
+  TRANSFER_OUT        // تحويل صادر إلى فرع/خزينة أخرى
+  ADJUSTMENT_INCREASE // تسوية جرد بالزيادة
+  ADJUSTMENT_DECREASE // تسوية جرد بالنقصان
+}
+
+// دفتر حركات الخزينة — سجل تراكمي فقط (Append-only)، لا تُنفَّذ عليه عمليات تعديل أو حذف
+// من طبقة التطبيق؛ كل حركة تحمل الرصيد بعدها مباشرة لتتيح تدقيقًا مستقلًا عن الجدول الحالي.
+model TreasuryMovement {
+  id            String       @id @default(uuid())
+  branchId      String
+  branch        Branch       @relation(fields: [branchId], references: [id])
+  currencyId    String
+  currency      Currency     @relation(fields: [currencyId], references: [id])
+  type          MovementType
+  amount        Decimal      @db.Decimal(18, 2) // دومًا قيمة موجبة؛ الاتجاه يحدده type
+  balanceAfter  Decimal      @db.Decimal(18, 2)
+  reason        String
+  performedById String
+  performedBy   User         @relation("MovementActor", fields: [performedById], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([branchId, currencyId, createdAt])
+  @@map("treasury_movements")
+}
+
+// ------------------------------------------------------------------
+// أسعار الصرف — كل صف قيمة تاريخية غير قابلة للتعديل (Append-only)
+// آخر صف لكل عملة هو السعر "الحالي" المعروض.
+// ------------------------------------------------------------------
+
+enum RateSource {
+  PROVIDER    // مصدر بيانات آلي (بنك/مزوّد تسعير)
+  AGGREGATED  // متوسط مرجّح من عدة مصادر
+  MANUAL      // إدخال يدوي عادي ضمن الانحراف المسموح
+  OVERRIDE    // تجاوز يدوي موثّق تجاوز فحص الانحراف التلقائي
+}
+
+model ExchangeRate {
+  id             String     @id @default(uuid())
+  currencyId     String
+  currency       Currency   @relation(fields: [currencyId], references: [id])
+  officialRate   Decimal    @db.Decimal(18, 6) // السعر الرسمي (مصرف ليبيا المركزي) مقابل الدينار
+  parallelRate   Decimal    @db.Decimal(18, 6) // سعر السوق الموازية مقابل الدينار
+  source         RateSource
+  isOverride     Boolean    @default(false)
+  overrideReason String?
+  publishedById  String
+  publishedBy    User       @relation("RateActor", fields: [publishedById], references: [id])
+  createdAt      DateTime   @default(now())
+
+  @@index([currencyId, createdAt])
+  @@map("exchange_rates")
+}
+
+// ------------------------------------------------------------------
+// سجل التدقيق — تراكمي فقط، يغطي كل العمليات الحساسة في كل الوحدات
+// ------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String   // مثال: "Client", "ExchangeRate", "TreasuryMovement"
+  entityId   String
+  action     String   // مثال: "CREATE", "UPDATE_LIMITS", "PUBLISH_RATE_OVERRIDE"
+  actorId    String
+  actor      User     @relation("AuditActor", fields: [actorId], references: [id])
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}

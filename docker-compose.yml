@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: exlibya
+      POSTGRES_PASSWORD: exlibya
+      POSTGRES_DB: exlibya
+    ports:
+      - '5432:5432'
+    volumes:
+      - exlibya_db_data:/var/lib/postgresql/data
+
+volumes:
+  exlibya_db_data:
