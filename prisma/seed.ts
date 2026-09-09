@@ -5,13 +5,8 @@
  */
 import { PrismaClient, StaffRole } from '@prisma/client';
 import { AuthService } from '../src/auth/auth.service';
-import configuration from '../src/config/configuration';
-import { generateRecoveryCodes } from '../src/auth/mfa/recovery-codes';
-import { encryptMfaSecret } from '../src/auth/mfa/secret-crypto';
-import { buildOtpAuthUrl, generateTotpSecret } from '../src/auth/mfa/totp';
 
 const prisma = new PrismaClient();
-const config = configuration();
 
 async function main() {
   console.log('بدء تعبئة البيانات التجريبية...');
@@ -95,36 +90,6 @@ async function main() {
     });
   }
   const admin = users['admin@exlibya.ly'];
-
-  // ---- مصادقة ثنائية (TOTP) للحسابات ذات الصلاحيات الحسّاسة ----
-  // نشر الأسعار واعتماد الصفقات الكبيرة يستوجبان مصادقة ثنائية مفعّلة (@RequireMfa).
-  // للأدوار المحلية/التجريبية فقط: السرّ ورموز الاسترداد تُطبع هنا بنص صريح — لا يحدث
-  // هذا أبدًا في تدفق الإنتاج الفعلي (انظر AuthService.setupMfa/confirmMfa).
-  const mfaRoleEmails = ['admin@exlibya.ly', 'treasury.manager@exlibya.ly'];
-  for (const email of mfaRoleEmails) {
-    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
-    if (user.mfaEnabled) continue;
-
-    const secret = generateTotpSecret();
-    const recoveryCodes = generateRecoveryCodes();
-    const recoveryCodeHashes = await Promise.all(
-      recoveryCodes.map((code) => AuthService.hashPassword(code)),
-    );
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        mfaEnabled: true,
-        mfaSecretEncrypted: encryptMfaSecret(secret, config.mfa.encryptionKey),
-        mfaRecoveryCodeHashes: recoveryCodeHashes,
-      },
-    });
-
-    console.log(`\nمصادقة ثنائية مفعّلة تجريبيًا لـ ${email}:`);
-    console.log(`  السرّ (Base32): ${secret}`);
-    console.log(`  رابط QR: ${buildOtpAuthUrl({ secretBase32: secret, accountEmail: email, issuer: config.mfa.issuer })}`);
-    console.log(`  رموز استرداد: ${recoveryCodes.join(', ')}`);
-  }
 
   // ---- مراكز الخزينة (تُفعَّل بسقف تعرّض وحد أدنى، ثم تُموَّل بحركة إيداع أولى) ----
   const positionsToFund: Array<{ branchId: string; currency: typeof usd; maxExposure: string; minThreshold: string; openingBalance: string }> = [

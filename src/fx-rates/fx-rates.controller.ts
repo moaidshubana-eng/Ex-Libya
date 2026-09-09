@@ -4,7 +4,6 @@ import { StaffRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { RequireMfa } from '../common/decorators/require-mfa.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PublishRateDto } from './dto/publish-rate.dto';
 import { FxRatesService } from './fx-rates.service';
@@ -31,10 +30,8 @@ export class FxRatesController {
   @ApiBearerAuth()
   @Post(':currencyCode')
   @Roles(StaffRole.ADMIN, StaffRole.TREASURY_MANAGER)
-  @RequireMfa()
   @ApiOperation({
-    summary:
-      'نشر سعر جديد لعملة (يمر عبر قاطع دائرة الانحراف؛ يتطلب سبب تجاوز عند الحاجة؛ يستوجب مصادقة ثنائية مفعّلة)',
+    summary: 'نشر سعر جديد لعملة (يمر عبر قاطع دائرة الانحراف؛ يتطلب سبب تجاوز عند الحاجة)',
   })
   publish(
     @Param('currencyCode') currencyCode: string,

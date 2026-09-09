@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ListAuditLogsQuery } from './dto/list-audit-logs.query';
 
 interface RecordAuditInput {
   entityType: string;
@@ -38,5 +40,27 @@ export class AuditService {
       orderBy: { createdAt: 'desc' },
       include: { actor: { select: { id: true, fullName: true, role: true } } },
     });
+  }
+
+  /** سجل التدقيق الكامل عبر النظام — لمن يحتاج تتبّع "من فعل ماذا ومتى" بلا معرفة سجل بعينه مسبقًا. */
+  async findAll(query: ListAuditLogsQuery) {
+    const where: Prisma.AuditLogWhereInput = {
+      ...(query.entityType && { entityType: query.entityType }),
+      ...(query.entityId && { entityId: query.entityId }),
+      ...(query.actorId && { actorId: query.actorId }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({
+        where,
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: { actor: { select: { id: true, fullName: true, role: true } } },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { items, total, page: query.page, pageSize: query.pageSize };
   }
 }

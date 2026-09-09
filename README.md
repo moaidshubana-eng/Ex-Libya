@@ -57,13 +57,9 @@ npm run start:dev
 | COMPLIANCE_OFFICER | compliance@exlibya.ly |
 | CUSTOMER_SERVICE | support@exlibya.ly |
 
-حسابا `ADMIN` و`TREASURY_MANAGER` يُفعَّل عليهما مصادقة ثنائية تلقائيًا أثناء
-التعبئة (لأن نشر الأسعار واعتماد الصفقات يستوجبانها) — يطبع `npm run prisma:seed`
-سرّ TOTP ورموز الاسترداد بنص صريح في الطرفية؛ أضف السرّ لتطبيق مصادقة (Google
-Authenticator مثلًا) أو احسب الرمز الحالي محليًا:
-`npx ts-node -e "import {generateTotpCode} from './src/auth/mfa/totp'; console.log(generateTotpCode('<السرّ>'))"`.
-تسجيل الدخول بهذين الحسابين يعيد `mfaChallengeToken` بدل رمز وصول مباشر — أكمل
-بـ`POST /auth/mfa/verify`.
+الحسابات التجريبية بلا مصادقة ثنائية افتراضيًا — أي حساب يستطيع تفعيلها بنفسه
+عبر `POST /auth/mfa/setup` ثم `/confirm` إن أراد تجربتها (انظر قسم "المصادقة
+الثنائية" أدناه)؛ ليست مفروضة على أي مسار حاليًا.
 
 ## الاختبارات
 
@@ -101,7 +97,7 @@ prisma/
   seed.ts             # بيانات تجريبية واقعية
 src/
   auth/               # تسجيل الدخول، JWT، استراتيجية Passport، مصادقة ثنائية (auth/mfa/)
-  audit/               # خدمة سجل التدقيق المشتركة (تُستدعى من كل وحدة أعمال)
+  audit/               # خدمة سجل التدقيق المشتركة + GET /audit لاستعراضه (ADMIN/COMPLIANCE_OFFICER)
   clients/            # العملاء: KYC، تصنيف المخاطر، الحدود
   currencies/         # قائمة العملات المفعّلة
   fx-rates/           # نشر الأسعار، قاطع الدائرة، السجل التاريخي
@@ -186,11 +182,10 @@ src/
 - **الإعداد الذاتي**: `POST /auth/mfa/setup` (يعيد السرّ ورابط QR) ثم
   `POST /auth/mfa/confirm` (بأول رمز صحيح) يفعّلان المصادقة ويولّدان 8 رموز
   استرداد أحادية الاستخدام؛ `POST /auth/mfa/disable` يعطّلها.
-- **إلزامية على أخطر إجراءين**: `@RequireMfa()` (`MfaGuard`) مطبَّق على نشر
-  الأسعار (`POST /fx-rates/:currencyCode`) واعتماد الصفقات
-  (`POST /deals/:id/approve`) — حساب ADMIN/TREASURY_MANAGER بلا مصادقة ثنائية
-  مفعّلة يُرفض بـ 403 حتى لو كان دوره يسمح بالإجراء أصلًا. توسيع القائمة لإجراءات
-  أخرى قرار تشغيلي لاحق — أضف `@RequireMfa()` لأي مسار جديد.
+- **الإلزامية اختيارية بالكامل**: `@RequireMfa()` و`MfaGuard` مبنيّان وجاهزان
+  (مختبَران في `src/common/guards/mfa.guard.ts`) لكن غير مطبَّقين على أي مسار
+  حاليًا — قرار تفعيلها على إجراء بعينه (نشر سعر، اعتماد صفقة...) يُترك للمشغّل
+  حسب سياسته الأمنية؛ فعّلها بإضافة `@RequireMfa()` فوق أي معالج مسار.
 
 ## ما لم يُبنَ بعد (المرحلة التالية)
 
