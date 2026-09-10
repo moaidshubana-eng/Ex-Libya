@@ -8,7 +8,9 @@ import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { DealsModule } from './deals/deals.module';
+import { ExpensesModule } from './expenses/expenses.module';
 import { FxRatesModule } from './fx-rates/fx-rates.module';
+import { ReportsModule } from './reports/reports.module';
 import { TreasuryModule } from './treasury/treasury.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { AppController } from './app.controller';
@@ -29,6 +31,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     WhatsAppModule,
     FxRatesModule,
     DealsModule,
+    ExpensesModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -48,6 +48,8 @@ model User {
   requestedDeals    Transaction[]      @relation("DealRequestedBy")
   approvedDeals     Transaction[]      @relation("DealApprovedBy")
   executedDeals     Transaction[]      @relation("DealExecutedBy")
+  recordedExpenses  Expense[]          @relation("ExpenseRecordedBy")
+  voidedExpenses    Expense[]          @relation("ExpenseVoidedBy")
 
   @@map("users")
 }
@@ -68,6 +70,7 @@ model Branch {
   positions TreasuryPosition[]
   movements TreasuryMovement[]
   deals     Transaction[]
+  expenses  Expense[]
 
   @@map("branches")
 }
@@ -84,6 +87,7 @@ model Currency {
   rates      ExchangeRate[]
   balances   ClientBalance[]
   deals      Transaction[]
+  expenses   Expense[]
 
   @@map("currencies")
 }
@@ -370,4 +374,52 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
   @@map("audit_logs")
+}
+
+// ------------------------------------------------------------------
+// المصاريف التشغيلية للشركة (رواتب، إيجار، خدمات...) — منفصلة تمامًا
+// عن حركات خزينة العملاء (TreasuryMovement)؛ لا تؤثر على أرصدة الخزينة.
+// ------------------------------------------------------------------
+
+enum ExpenseCategory {
+  SALARIES           // رواتب وأجور
+  RENT                // إيجارات
+  UTILITIES           // كهرباء، ماء، اتصالات وإنترنت
+  MAINTENANCE         // صيانة ومستلزمات تشغيل
+  OFFICE_SUPPLIES     // مستلزمات مكتبية
+  MARKETING           // تسويق وإعلان
+  PROFESSIONAL_FEES   // أتعاب مهنية (محاماة، محاسبة، استشارات)
+  TAXES_GOVERNMENT    // رسوم ومستحقات حكومية
+  TRAVEL              // سفر وتنقلات
+  OTHER               // أخرى
+}
+
+// سجل تراكمي — لا حذف فعلي لأي مصروف؛ تصحيح الخطأ يكون بإلغائه (isVoided)
+// مع سبب موثّق، فيبقى أثره ظاهرًا في السجل والتدقيق.
+model Expense {
+  id          String          @id @default(uuid())
+  branchId    String?         // فارغ للمصاريف المركزية غير المرتبطة بفرع بعينه
+  branch      Branch?         @relation(fields: [branchId], references: [id])
+  currencyId  String
+  currency    Currency        @relation(fields: [currencyId], references: [id])
+  category    ExpenseCategory
+  amount      Decimal         @db.Decimal(18, 2)
+  description String
+  expenseDate DateTime        @default(now())
+
+  recordedById String
+  recordedBy   User   @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+
+  isVoided   Boolean   @default(false)
+  voidReason String?
+  voidedById String?
+  voidedBy   User?     @relation("ExpenseVoidedBy", fields: [voidedById], references: [id])
+  voidedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, expenseDate])
+  @@index([branchId, expenseDate])
+  @@map("expenses")
 }
