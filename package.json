@@ -4,6 +4,9 @@
   "description": "منصّة الصرف الليبية — خدمة الخلفية (API) لإدارة الخزينة والعملاء وأسعار الصرف",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
