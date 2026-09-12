@@ -3,6 +3,7 @@ import {
   computeDealProfitLyd,
   computeUsdEquivalent,
   movementTypeForDirection,
+  settlementMovementTypeForDirection,
   UnpricableDealError,
 } from './deal-pricing';
 
@@ -101,5 +102,19 @@ describe('movementTypeForDirection', () => {
 
   it('SELL → TRADE_SELL', () => {
     expect(movementTypeForDirection(DealDirection.SELL)).toBe(MovementType.TRADE_SELL);
+  });
+});
+
+describe('settlementMovementTypeForDirection', () => {
+  it('BUY → TRADE_BUY_SETTLEMENT (نقصان الدينار: يُدفع للعميل)', () => {
+    expect(settlementMovementTypeForDirection(DealDirection.BUY)).toBe(
+      MovementType.TRADE_BUY_SETTLEMENT,
+    );
+  });
+
+  it('SELL → TRADE_SELL_SETTLEMENT (زيادة الدينار: يُحصَّل من العميل)', () => {
+    expect(settlementMovementTypeForDirection(DealDirection.SELL)).toBe(
+      MovementType.TRADE_SELL_SETTLEMENT,
+    );
   });
 });

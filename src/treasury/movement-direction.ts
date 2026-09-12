@@ -5,6 +5,7 @@ const INCREASING_TYPES: MovementType[] = [
   MovementType.TRANSFER_IN,
   MovementType.ADJUSTMENT_INCREASE,
   MovementType.TRADE_BUY,
+  MovementType.TRADE_SELL_SETTLEMENT,
 ];
 
 /** يحدد ما إذا كان نوع الحركة يزيد رصيد الخزينة أم ينقصه. */

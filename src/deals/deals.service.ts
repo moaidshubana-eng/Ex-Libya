@@ -21,6 +21,7 @@ import {
   computeDealProfitLyd,
   computeUsdEquivalent,
   movementTypeForDirection,
+  settlementMovementTypeForDirection,
 } from './deal-pricing';
 
 const DEAL_INCLUDE = {
@@ -267,12 +268,13 @@ export class DealsService {
       throw new ConflictException('لا يمكن تنفيذ صفقة ليست في حالة معتمدة');
     }
 
-    // هامش الصفقة (profitLyd) بالدينار الليبي دومًا — نحتاج معرّف عملة الدينار
-    // نفسها لترحيله محاسبيًا، بصرف النظر عن عملة الصفقة الأجنبية (deal.currencyId).
+    // كل صفقة تحتاج عملة الدينار الليبي نفسها بصرف النظر عن عملتها الأجنبية
+    // (deal.currencyId) — لتسوية الطرف المقابل نقدًا (lydEquivalent) وترحيل
+    // هامش الصفقة (profitLyd) محاسبيًا، كلاهما بالدينار دومًا.
     const lydCurrency = await this.prisma.currency.findUnique({ where: { code: 'LYD' } });
     if (!lydCurrency) {
       throw new BadRequestException(
-        'عملة الدينار الليبي غير مسجَّلة في النظام — تعذّر ترحيل هامش الصفقة',
+        'عملة الدينار الليبي غير مسجَّلة في النظام — تعذّر تسوية الصفقة',
       );
     }
 
@@ -286,26 +288,48 @@ export class DealsService {
         throw new ConflictException('تغيّرت حالة الصفقة قبل التنفيذ — يرجى إعادة المحاولة');
       }
 
-      const movementResult = await applyMovement(tx, {
+      const dealDirection = deal.direction as DealDirection;
+      const reason = `تنفيذ صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName}`;
+
+      // طرف العملة الأجنبية: الكمية المتداولة نفسها (deal.amount).
+      const fxResult = await applyMovement(tx, {
         branchId: deal.branchId,
         currencyId: deal.currencyId,
         currencyCode: deal.currency.code,
-        type: movementTypeForDirection(deal.direction as DealDirection),
+        type: movementTypeForDirection(dealDirection),
         amount: deal.amount,
-        reason: `تنفيذ صفقة #${deal.id.slice(0, 8)} — ${deal.direction === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName}`,
+        reason,
         performedById: actor.id,
         dealId: deal.id,
       });
 
-      // ترحيل محاسبي لهامش الصفقة فقط (لا لكامل قيمتها) — عند التنفيذ الفعلي لا
-      // عند مجرد الإنشاء، فصفقة أُلغيت أو انتهت مهلتها لا تمسّ قائمة الدخل إطلاقًا.
-      // قيد بسيط بسطرين بالدينار: ربح ← مدين ذمم الهامش / دائن الإيراد، وخسارة
-      // تُبادل الجانبين تلقائيًا (postJournalEntry يرفض أي سطر صفري القيمتين).
+      // الطرف المقابل بالدينار الليبي: التسوية النقدية الفعلية مع العميل بسعر
+      // الصفقة المقفل (lydEquivalent = amount × lockedRate) — شراء عملة من
+      // عميل يعني دفع هذا المبلغ له نقدًا (نقصان خزينة الدينار)، وبيعها له يعني
+      // تحصيله منه (زيادتها). بلا هذه الحركة يبقى رصيد خزينة الدينار غير متأثر
+      // إطلاقًا بأي صفقة صرف، رغم أن نقدًا حقيقيًا يتغيّر يدًا بيد مع كل صفقة.
+      const lydResult = await applyMovement(tx, {
+        branchId: deal.branchId,
+        currencyId: lydCurrency.id,
+        currencyCode: lydCurrency.code,
+        type: settlementMovementTypeForDirection(dealDirection),
+        amount: deal.lydEquivalent,
+        reason: `تسوية دينار — ${reason}`,
+        performedById: actor.id,
+        dealId: deal.id,
+      });
+
+      // ترحيل محاسبي لهامش الصفقة فقط (لا لكامل قيمتها — تبادل العملتين نفسه
+      // ليس له تمثيل في دفتر الأستاذ حاليًا، انظر ملاحظة الفجوة في README) —
+      // عند التنفيذ الفعلي لا عند مجرد الإنشاء، فصفقة أُلغيت أو انتهت مهلتها لا
+      // تمسّ قائمة الدخل إطلاقًا. قيد بسيط بسطرين بالدينار: ربح ← مدين ذمم
+      // الهامش / دائن الإيراد، وخسارة تُبادل الجانبين تلقائيًا (postJournalEntry
+      // يرفض أي سطر صفري القيمتين).
       const profitLyd = toMoney(deal.profitLyd);
       if (!profitLyd.isZero()) {
         const isGain = profitLyd.isPositive();
         await postJournalEntry(tx, {
-          description: `هامش صفقة #${deal.id.slice(0, 8)} — ${deal.direction === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName} (${deal.currency.code})`,
+          description: `هامش صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName} (${deal.currency.code})`,
           sourceType: 'Transaction',
           sourceId: deal.id,
           postedById: actor.id,
@@ -324,7 +348,7 @@ export class DealsService {
         });
       }
 
-      return movementResult;
+      return { fx: fxResult, lyd: lydResult };
     });
 
     await this.audit.record({
@@ -335,9 +359,17 @@ export class DealsService {
       before: { status: DealStatus.APPROVED },
       after: {
         status: DealStatus.EXECUTED,
-        treasuryBalanceBefore: result.balanceBefore,
-        treasuryBalanceAfter: result.balanceAfter.toFixed(2),
-        exceedsMaxExposure: result.exceedsMaxExposure,
+        fx: {
+          currency: deal.currency.code,
+          balanceBefore: result.fx.balanceBefore,
+          balanceAfter: result.fx.balanceAfter.toFixed(2),
+          exceedsMaxExposure: result.fx.exceedsMaxExposure,
+        },
+        lyd: {
+          balanceBefore: result.lyd.balanceBefore,
+          balanceAfter: result.lyd.balanceAfter.toFixed(2),
+          belowMinThreshold: result.lyd.belowMinThreshold,
+        },
         profitLyd: deal.profitLyd.toString(),
       },
     });
@@ -352,7 +384,11 @@ export class DealsService {
       client: executedDeal.client,
     });
 
-    return { ...executedDeal, treasuryMovement: result.movement };
+    return {
+      ...executedDeal,
+      treasuryMovement: result.fx.movement,
+      lydSettlementMovement: result.lyd.movement,
+    };
   }
 
   async cancel(id: string, actor: AuthenticatedUser) {

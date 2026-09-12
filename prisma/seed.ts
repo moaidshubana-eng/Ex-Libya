@@ -39,7 +39,6 @@ async function main() {
       create: { code: 'TND', name: 'دينار تونسي', decimalPlaces: 3 },
     }),
   ]);
-  void lyd;
 
   // ---- الفروع ----
   const tripoli = await prisma.branch.upsert({
@@ -95,7 +94,11 @@ async function main() {
   const positionsToFund: Array<{ branchId: string; currency: typeof usd; maxExposure: string; minThreshold: string; openingBalance: string }> = [
     { branchId: tripoli.id, currency: usd, maxExposure: '500000.00', minThreshold: '20000.00', openingBalance: '184600.00' },
     { branchId: tripoli.id, currency: eur, maxExposure: '250000.00', minThreshold: '10000.00', openingBalance: '62140.00' },
+    // خزينة الدينار الليبي لكل فرع — لا بد منها لتسوية أي صفقة صرف نقدًا مع
+    // العميل (DealsService.execute)، ولأي حركة خزينة/مصروف بالدينار عمومًا.
+    { branchId: tripoli.id, currency: lyd, maxExposure: '2000000.00', minThreshold: '50000.00', openingBalance: '450000.00' },
     { branchId: benghazi.id, currency: usd, maxExposure: '300000.00', minThreshold: '15000.00', openingBalance: '96000.00' },
+    { branchId: benghazi.id, currency: lyd, maxExposure: '1500000.00', minThreshold: '30000.00', openingBalance: '300000.00' },
   ];
 
   for (const p of positionsToFund) {

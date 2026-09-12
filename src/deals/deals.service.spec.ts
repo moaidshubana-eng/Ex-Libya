@@ -215,6 +215,7 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
       profitLyd?: string;
       direction?: DealDirection;
       lydCurrencyOverride?: unknown;
+      lydBalance?: string;
     } = {},
   ) {
     const deal = {
@@ -229,8 +230,24 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
       direction: options.direction ?? DealDirection.SELL,
       amount: '1000.00',
       lockedRate: '8.00',
+      lydEquivalent: '8000.00', // amount × lockedRate
       profitLyd: options.profitLyd ?? '100.00',
       lockExpiresAt: new Date(Date.now() + 30_000),
+    };
+
+    // مركزا خزينة منفصلان: عملة الصفقة الأجنبية (USD) والدينار الليبي — بحسب
+    // currencyId المطلوب في كل استدعاء لـ applyMovement (طرفا الصفقة منفصلان).
+    const positionsByCurrencyId: Record<
+      string,
+      { id: string; balance: string; maxExposure: null; minThreshold: null }
+    > = {
+      'cur-usd': { id: 'pos-usd', balance: '50000.00', maxExposure: null, minThreshold: null },
+      'cur-lyd': {
+        id: 'pos-lyd',
+        balance: options.lydBalance ?? '500000.00',
+        maxExposure: null,
+        minThreshold: null,
+      },
     };
 
     const tx = {
@@ -238,18 +255,19 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
         updateMany: jest.fn().mockResolvedValue({ count: 1 }), // نجاح المطالبة (claim) داخل المعاملة
       },
       treasuryPosition: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'pos-1',
-          balance: '50000.00',
-          maxExposure: null,
-          minThreshold: null,
-        }),
+        findUnique: jest
+          .fn()
+          .mockImplementation(({ where }: any) =>
+            Promise.resolve(positionsByCurrencyId[where.branchId_currencyId.currencyId] ?? null),
+          ),
         update: jest.fn().mockResolvedValue({}),
       },
       treasuryMovement: {
         create: jest
           .fn()
-          .mockImplementation(({ data }: any) => Promise.resolve({ id: 'move-1', ...data })),
+          .mockImplementation(({ data }: any) =>
+            Promise.resolve({ id: 'move-' + data.type, ...data }),
+          ),
       },
       ...buildLedgerMockDelegates(),
     };
@@ -308,14 +326,60 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
     expect(revenueLine.debit.toString()).toBe('50');
   });
 
-  it('لا يرحّل أي قيد عندما يكون هامش الصفقة صفرًا (لا أثر على قائمة الدخل)', async () => {
+  it('لا يرحّل أي قيد عندما يكون هامش الصفقة صفرًا، لكن حركتا الخزينة (العملة والدينار) تبقيان قائمتين', async () => {
     const prisma = buildPrismaMockForExecute({ profitLyd: '0.00' });
     const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
     await service.execute('deal-1', manager);
 
     expect(prisma.tx.journalEntry.create).not.toHaveBeenCalled();
-    expect(prisma.tx.treasuryMovement.create).toHaveBeenCalledTimes(1); // حركة الخزينة تبقى قائمة دومًا
+    expect(prisma.tx.treasuryMovement.create).toHaveBeenCalledTimes(2); // طرف العملة الأجنبية + طرف الدينار
+  });
+
+  it('صفقة بيع (SELL): تُنشئ حركة زيادة على خزينة الدينار (تحصيل نقدي من العميل) بقيمة lydEquivalent', async () => {
+    const prisma = buildPrismaMockForExecute({ direction: DealDirection.SELL });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await service.execute('deal-1', manager);
+
+    const calls = (prisma.tx.treasuryMovement.create as jest.Mock).mock.calls;
+    const lydMovement = calls.find((c: any) => c[0].data.currencyId === 'cur-lyd')[0].data;
+    expect(lydMovement.type).toBe('TRADE_SELL_SETTLEMENT');
+    expect(lydMovement.amount).toBe('8000.00'); // lydEquivalent
+    expect(lydMovement.branchId).toBe('branch-1');
+    expect(lydMovement.dealId).toBe('deal-1');
+    // التحقق من اتجاه الزيادة عبر تحديث الرصيد: 500000 (الافتتاحي) + 8000 = 508000
+    const lydUpdateCall = (prisma.tx.treasuryPosition.update as jest.Mock).mock.calls.find(
+      (c: any) => c[0].where.id === 'pos-lyd',
+    );
+    expect(lydUpdateCall[0].data.balance.toString()).toBe('508000');
+  });
+
+  it('صفقة شراء (BUY): تُنشئ حركة نقصان على خزينة الدينار (دفع نقدي للعميل) بقيمة lydEquivalent', async () => {
+    const prisma = buildPrismaMockForExecute({ direction: DealDirection.BUY });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await service.execute('deal-1', manager);
+
+    const calls = (prisma.tx.treasuryMovement.create as jest.Mock).mock.calls;
+    const lydMovement = calls.find((c: any) => c[0].data.currencyId === 'cur-lyd')[0].data;
+    expect(lydMovement.type).toBe('TRADE_BUY_SETTLEMENT');
+    expect(lydMovement.amount).toBe('8000.00');
+    // التحقق من اتجاه النقصان: 500000 (الافتتاحي) - 8000 = 492000
+    const lydUpdateCall = (prisma.tx.treasuryPosition.update as jest.Mock).mock.calls.find(
+      (c: any) => c[0].where.id === 'pos-lyd',
+    );
+    expect(lydUpdateCall[0].data.balance.toString()).toBe('492000');
+  });
+
+  it('يرفض تنفيذ صفقة شراء إن كان رصيد خزينة الدينار أقل من قيمة التسوية المطلوبة', async () => {
+    const prisma = buildPrismaMockForExecute({
+      direction: DealDirection.BUY,
+      lydBalance: '100.00',
+    });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await expect(service.execute('deal-1', manager)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('يرفض التنفيذ إن لم تكن عملة الدينار الليبي مسجّلة في النظام', async () => {

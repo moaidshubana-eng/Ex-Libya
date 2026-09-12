@@ -49,7 +49,18 @@ export function computeDealProfitLyd(input: DealProfitInput): Money {
   return signedPerUnit.times(input.amount);
 }
 
-/** نوع حركة الخزينة الناتجة عن تنفيذ صفقة، بحسب اتجاهها. */
+/** نوع حركة الخزينة الناتجة عن تنفيذ صفقة (طرف العملة الأجنبية)، بحسب اتجاهها. */
 export function movementTypeForDirection(direction: DealDirection): MovementType {
   return direction === DealDirection.BUY ? MovementType.TRADE_BUY : MovementType.TRADE_SELL;
+}
+
+/**
+ * نوع حركة الخزينة للطرف المقابل بالدينار الليبي (التسوية النقدية الفعلية مع
+ * العميل بسعر الصفقة المقفل) — عكس اتجاه طرف العملة الأجنبية: شراء عملة من
+ * عميل يعني دفع دينار له (نقصان)، وبيعها له يعني تحصيل دينار منه (زيادة).
+ */
+export function settlementMovementTypeForDirection(direction: DealDirection): MovementType {
+  return direction === DealDirection.BUY
+    ? MovementType.TRADE_BUY_SETTLEMENT
+    : MovementType.TRADE_SELL_SETTLEMENT;
 }
