@@ -108,6 +108,26 @@
   .kpi .v{ font-size:21px; font-weight:700; color:var(--accent-strong); margin-top:5px; }
   .kpi .v.gold{ color:var(--gold); }
 
+  /* ==================== أرصدة الخزينة ==================== */
+  .treasury-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+  .branch-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:13px; padding:16px 18px; box-shadow:var(--shadow); }
+  .branch-card h4{ font-size:14px; color:var(--ink); display:flex; align-items:center; gap:7px; margin-bottom:13px; }
+  .branch-card h4 .code{ font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--ink-faint); background:var(--accent-soft); padding:2px 7px; border-radius:6px; }
+  .balance-tile{ margin-bottom:15px; }
+  .balance-tile:last-child{ margin-bottom:0; }
+  .bt-top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px; }
+  .bt-top .cur{ font-size:12.5px; font-weight:700; color:var(--ink-soft); }
+  .bt-top .amt{ font-family:var(--font-mono); font-size:19px; font-weight:700; color:var(--accent-strong); font-variant-numeric:tabular-nums; }
+  .bt-top .amt.warn{ color:var(--warning); }
+  .bt-top .amt.bad{ color:var(--critical); }
+  .bt-gauge{ position:relative; height:9px; background:var(--accent-soft); border-radius:5px; overflow:visible; margin-bottom:6px; }
+  .bt-gauge .fill{ position:absolute; inset-inline-start:0; top:0; height:100%; border-radius:5px; background:var(--accent); transition:width .3s; }
+  .bt-gauge .fill.warn{ background:var(--warning); }
+  .bt-gauge .fill.bad{ background:var(--critical); }
+  .bt-gauge .min-marker{ position:absolute; top:-3px; width:2px; height:15px; background:var(--ink-faint); border-radius:1px; }
+  .bt-meta{ display:flex; justify-content:space-between; font-size:10.5px; color:var(--ink-faint); }
+  .bt-meta .pill{ margin-inline-start:6px; }
+
   table{ width:100%; border-collapse:collapse; font-size:13px; }
   th, td{ text-align:right; padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   th{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; font-size:11.5px; }
@@ -906,20 +926,45 @@ function rejectDealPrompt(id, btn){
 
 // ---------------- الخزينة ----------------
 
+function fmtNum(v){ return parseFloat(v).toLocaleString('ar-LY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
 async function loadTreasuryAll(){
   const el = document.getElementById('treasury-content');
   el.textContent = 'جارِ التحميل...';
   try{
     const positions = await apiCall('/treasury/positions');
     if (positions.length === 0) { el.textContent = 'لا توجد مراكز خزينة بعد — فعّل خط عملة من تبويب الإعدادات.'; return; }
-    let html = '<div class="table-wrap"><table><thead><tr><th>الفرع</th><th>العملة</th><th>الرصيد</th><th>الحد الأدنى</th><th>سقف التعرّض</th><th>الحالة</th></tr></thead><tbody>';
+
+    // تجميع المراكز حسب الفرع لعرض بطاقة واحدة لكل فرع
+    const byBranch = new Map();
     positions.forEach(p => {
-      let flag = '<span class="pill ok">طبيعي</span>';
-      if (p.aboveMaxExposure) flag = '<span class="pill bad">تجاوز السقف</span>';
-      else if (p.belowMinThreshold) flag = '<span class="pill warn">دون الحد الأدنى</span>';
-      html += `<tr><td>${p.branch.name}</td><td>${p.currency.code}</td><td class="num">${p.balance}</td><td class="num">${p.minThreshold}</td><td class="num">${p.maxExposure}</td><td>${flag}</td></tr>`;
+      if (!byBranch.has(p.branch.id)) byBranch.set(p.branch.id, { branch: p.branch, items: [] });
+      byBranch.get(p.branch.id).items.push(p);
     });
-    el.innerHTML = html + '</tbody></table></div>';
+
+    let html = '<div class="treasury-grid">';
+    byBranch.forEach(({ branch, items }) => {
+      html += `<div class="branch-card"><h4>${branch.name} <span class="code">${branch.code}</span></h4>`;
+      items.forEach(p => {
+        const balance = parseFloat(p.balance), max = parseFloat(p.maxExposure), min = parseFloat(p.minThreshold);
+        const pct = max > 0 ? Math.min(100, balance / max * 100) : 0;
+        const minPct = max > 0 ? Math.min(100, min / max * 100) : 0;
+        let tone = '', pill = '<span class="pill ok">طبيعي</span>';
+        if (p.aboveMaxExposure) { tone = 'bad'; pill = '<span class="pill bad">تجاوز السقف</span>'; }
+        else if (p.belowMinThreshold) { tone = 'warn'; pill = '<span class="pill warn">دون الحد الأدنى</span>'; }
+        html += `
+          <div class="balance-tile">
+            <div class="bt-top"><span class="cur">${p.currency.name} <span style="color:var(--ink-faint)">(${p.currency.code})</span></span><span class="amt ${tone}">${fmtNum(balance)}</span></div>
+            <div class="bt-gauge">
+              <div class="fill ${tone}" style="width:${pct}%"></div>
+              <div class="min-marker" style="inset-inline-start:${minPct}%"></div>
+            </div>
+            <div class="bt-meta"><span>الحد الأدنى ${fmtNum(min)} · السقف ${fmtNum(max)}</span>${pill}</div>
+          </div>`;
+      });
+      html += '</div>';
+    });
+    el.innerHTML = html + '</div>';
   }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
 }
 
