@@ -665,11 +665,15 @@ async function onLoggedIn(token, user){
     const currRes = await apiCall('/currencies');
     currenciesCache = currRes.filter(c => c.code !== 'LYD');
     const opts = currenciesCache.map(c => `<option value="${c.code}">${c.code} — ${c.name}</option>`).join('');
-    ['rate-currency','history-currency','deal-currency','mv-currency','broadcast-currency','pos-currency','ex-currency'].forEach(id => {
+    // هذي القوائم عن عمليات صرف عملة أجنبية مقابل الدينار — الدينار نفسه لا معنى لظهوره هنا
+    ['rate-currency','history-currency','deal-currency','broadcast-currency'].forEach(id => {
       document.getElementById(id).innerHTML = opts;
     });
-    // مصروف اللدينار (LYD) نفسه عملة صالحة للمصاريف (إيجار/رواتب غالبًا تُدفع بالدينار) — يُضاف يدويًا
-    document.getElementById('ex-currency').innerHTML = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
+    // الدينار عملة خزينة/مصروف صالحة تمامًا (كاش، إيجار، رواتب...) — يُضاف يدويًا لهذي القوائم
+    const optsWithLyd = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
+    ['mv-currency','pos-currency','ex-currency'].forEach(id => {
+      document.getElementById(id).innerHTML = optsWithLyd;
+    });
     const branchRes = await apiCall('/treasury/branches');
     branchesCache = branchRes;
     const bOpts = branchesCache.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
