@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ExpenseCategory } from '@prisma/client';
 import {
+  IsBoolean,
   IsEnum,
   IsISO8601,
   IsOptional,
@@ -41,4 +42,13 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsISO8601()
   expenseDate?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'خصم المبلغ فورًا نقدًا من رصيد خزينة الفرع بنفس العملة (سحب تلقائي مرتبط) — يتطلب تحديد branchId. اتركه false لمصروف مسدَّد بغير نقد الخزينة (تحويل بنكي مثلًا).',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  paidFromTreasury?: boolean;
 }

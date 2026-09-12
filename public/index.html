@@ -430,8 +430,12 @@
             <div class="field"><label>الفرع (اختياري)</label><select id="ex-branch"><option value="">— مصروف مركزي —</option></select></div>
             <div class="field"><label>الوصف</label><input type="text" id="ex-description" placeholder="مثال: إيجار مقر الفرع الرئيسي" /></div>
           </div>
+          <div class="field" style="display:flex;align-items:center;gap:8px;margin:-4px 0 13px">
+            <input type="checkbox" id="ex-paid-from-treasury" style="width:auto" />
+            <label for="ex-paid-from-treasury" style="margin:0;cursor:pointer;font-weight:500;color:var(--ink)">خُصم فورًا نقدًا من رصيد خزينة الفرع (يتطلب تحديد الفرع أعلاه)</label>
+          </div>
           <button class="btn-primary" id="create-expense-btn" onclick="createExpense()">تسجيل المصروف</button>
-          <p class="form-note">يتطلب صلاحية ADMIN أو TREASURY_MANAGER.</p>
+          <p class="form-note">يتطلب صلاحية ADMIN أو TREASURY_MANAGER. بلا تحديد الخانة أعلاه، المصروف لا يمسّ رصيد الخزينة إطلاقًا (مثلًا مصروف مسدَّد بتحويل بنكي).</p>
         </div>
         <div class="card">
           <div class="card-head"><h3>قائمة المصاريف</h3></div>
@@ -1153,14 +1157,17 @@ async function createExpense(){
   const currencyCode = document.getElementById('ex-currency').value;
   const branchId = document.getElementById('ex-branch').value;
   const description = document.getElementById('ex-description').value.trim();
+  const paidFromTreasury = document.getElementById('ex-paid-from-treasury').checked;
   if (!amount || !description) { showToast('أدخل المبلغ والوصف', true); return; }
+  if (paidFromTreasury && !branchId) { showToast('لازم تحدّد الفرع لخصم المصروف من رصيد خزينته', true); return; }
   await runBusy('create-expense-btn', async () => {
-    const body = { category, amount, currencyCode, description };
+    const body = { category, amount, currencyCode, description, paidFromTreasury };
     if (branchId) body.branchId = branchId;
     await apiCall('/expenses', { method: 'POST', body: JSON.stringify(body) });
-    showToast('سُجّل المصروف بنجاح');
+    showToast(paidFromTreasury ? 'سُجّل المصروف وخُصم من رصيد الخزينة' : 'سُجّل المصروف بنجاح');
     document.getElementById('ex-amount').value = ''; document.getElementById('ex-description').value = '';
-    expensesPage = 1; loadExpenses(); loadReports();
+    document.getElementById('ex-paid-from-treasury').checked = false;
+    expensesPage = 1; loadExpenses(); loadReports(); loadTreasuryAll();
   })().catch(err => showToast(err.message, true));
 }
 
@@ -1177,10 +1184,11 @@ async function loadExpenses(){
     if (to) params.set('to', to);
     const result = await apiCall('/expenses?' + params.toString());
     if (result.items.length === 0) { el.textContent = 'لا توجد مصاريف مطابقة.'; document.getElementById('expenses-pager').innerHTML = ''; return; }
-    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الفئة</th><th>الفرع</th><th>الوصف</th><th>المبلغ</th><th>المسجِّل</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الفئة</th><th>الفرع</th><th>الوصف</th><th>المبلغ</th><th>من الخزينة؟</th><th>المسجِّل</th><th>الحالة</th><th></th></tr></thead><tbody>';
     result.items.forEach(e => {
       const actions = e.isVoided ? '—' : `<button class="btn-danger btn-sm" onclick="voidExpensePrompt('${e.id}', this)">إلغاء</button>`;
-      html += `<tr><td>${fmtDate(e.expenseDate)}</td><td>${EXPENSE_CATEGORY_LABELS[e.category] || e.category}</td><td>${e.branch ? e.branch.name : 'مركزي'}</td><td class="wrap">${e.description}</td><td class="num">${e.amount} ${e.currency.code}</td><td>${e.recordedBy.fullName}</td><td>${e.isVoided ? '<span class="pill bad">ملغى</span>' : '<span class="pill ok">فعّال</span>'}</td><td>${actions}</td></tr>`;
+      const fromTreasury = e.paidFromTreasury ? '<span class="pill warn">نعم</span>' : '<span style="color:var(--ink-faint)">—</span>';
+      html += `<tr><td>${fmtDate(e.expenseDate)}</td><td>${EXPENSE_CATEGORY_LABELS[e.category] || e.category}</td><td>${e.branch ? e.branch.name : 'مركزي'}</td><td class="wrap">${e.description}</td><td class="num">${e.amount} ${e.currency.code}</td><td>${fromTreasury}</td><td>${e.recordedBy.fullName}</td><td>${e.isVoided ? '<span class="pill bad">ملغى</span>' : '<span class="pill ok">فعّال</span>'}</td><td>${actions}</td></tr>`;
     });
     el.innerHTML = html + '</tbody></table></div>';
     pagerHtml('expenses-pager', expensesPage, 10, result.total, 'p => { expensesPage = p; loadExpenses(); }');
@@ -1192,7 +1200,7 @@ function voidExpensePrompt(id, btn){
   if (!reason) return;
   btn.disabled = true;
   apiCall('/expenses/' + id + '/void', { method: 'POST', body: JSON.stringify({ reason }) })
-    .then(() => { showToast('أُلغي المصروف'); loadExpenses(); loadReports(); })
+    .then(() => { showToast('أُلغي المصروف'); loadExpenses(); loadReports(); loadTreasuryAll(); })
     .catch(err => { showToast(err.message, true); btn.disabled = false; });
 }
 

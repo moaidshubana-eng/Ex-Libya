@@ -403,6 +403,12 @@ model Expense {
   recordedById String
   recordedBy   User   @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
 
+  // إن كان صحيحًا، خُصم المبلغ فورًا نقدًا من رصيد خزينة الفرع عند التسجيل (سحب تلقائي مرتبط)،
+  // ويُعاد إيداعه تلقائيًا عند الإلغاء. المصروف بلا هذا العلم لا يمسّ الخزينة إطلاقًا (مثلًا
+  // مصروف مسدَّد من حساب بنكي، لا نقدًا من الشباك).
+  paidFromTreasury   Boolean @default(false)
+  treasuryMovementId String? // معرّف حركة الخزينة (سحب) الناتجة — بلا علاقة Prisma مباشرة تفاديًا لدورة علاقات ثنائية الاتجاه
+
   isVoided   Boolean   @default(false)
   voidReason String?
   voidedById String?
