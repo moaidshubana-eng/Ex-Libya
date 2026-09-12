@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>منصّة الصرف الليبية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400..700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#f5f1e6; --paper-raised:#ffffff;
+    --ink:#182420; --ink-soft:#4c5951; --ink-faint:#828d84;
+    --line:rgba(24,36,32,.14); --line-strong:rgba(24,36,32,.26);
+    --accent:#0e6c5a; --accent-strong:#0a5346; --accent-soft:rgba(14,108,90,.09); --accent-soft-2:rgba(14,108,90,.17);
+    --gold:#a97c2f; --gold-soft:rgba(169,124,47,.13);
+    --success:#3a8f5b; --success-soft:rgba(58,143,91,.13);
+    --warning:#b9791f; --warning-soft:rgba(185,121,31,.14);
+    --critical:#a8442f; --critical-soft:rgba(168,68,47,.13);
+    --info:#35688f; --info-soft:rgba(53,104,143,.13);
+    --shadow:0 1px 2px rgba(24,36,32,.05), 0 8px 22px -10px rgba(24,36,32,.18);
+    --font-display:'Reem Kufi','Segoe UI',Tahoma,sans-serif;
+    --font-body:'IBM Plex Sans Arabic','Segoe UI',Tahoma,Arial,sans-serif;
+    --font-mono:'IBM Plex Mono','Consolas',monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#101b17; --paper-raised:#16221d;
+      --ink:#eef1ec; --ink-soft:#aab6b0; --ink-faint:#76837c;
+      --line:rgba(238,241,236,.13); --line-strong:rgba(238,241,236,.24);
+      --accent:#38b89a; --accent-strong:#5ccdaf; --accent-soft:rgba(56,184,154,.13); --accent-soft-2:rgba(56,184,154,.2);
+      --gold:#d9a94f; --gold-soft:rgba(217,169,79,.15);
+      --success:#4fae74; --success-soft:rgba(79,174,116,.16);
+      --warning:#d99a3d; --warning-soft:rgba(217,154,61,.16);
+      --critical:#d1745a; --critical-soft:rgba(209,116,90,.16);
+      --info:#6fa2c8; --info-soft:rgba(111,162,200,.16);
+      --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 26px -10px rgba(0,0,0,.5);
+    }
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; direction:rtl; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:14.5px; line-height:1.6; }
+  h1,h2,h3,h4{ font-family:var(--font-display); font-weight:600; margin:0; color:var(--ink); }
+  .num{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+  button{ font-family:inherit; cursor:pointer; border:none; border-radius:8px; font-size:13.5px; }
+  button:focus-visible, input:focus-visible, select:focus-visible{ outline:2.5px solid var(--gold); outline-offset:1px; }
+  .btn-primary{ background:var(--accent); color:#fbfbf8; padding:9px 18px; font-weight:600; transition:background .15s; }
+  .btn-primary:hover:not(:disabled){ background:var(--accent-strong); }
+  .btn-primary:disabled{ background:var(--ink-faint); cursor:not-allowed; opacity:.7; }
+  .btn-ghost{ background:transparent; border:1px solid var(--line-strong); color:var(--ink); padding:8px 15px; }
+  .btn-ghost:hover:not(:disabled){ background:var(--accent-soft); border-color:var(--accent); }
+  .btn-ghost:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-danger{ background:transparent; border:1px solid var(--critical); color:var(--critical); padding:6px 13px; }
+  .btn-danger:hover:not(:disabled){ background:var(--critical-soft); }
+  .btn-sm{ padding:6px 12px; font-size:12px; }
+  .icon{ width:17px; height:17px; flex-shrink:0; }
+
+  /* ==================== شاشة الدخول ==================== */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    background: radial-gradient(circle at 15% 20%, var(--accent-soft), transparent 45%), radial-gradient(circle at 85% 80%, var(--gold-soft), transparent 40%), var(--paper);
+  }
+  .login-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:16px; padding:38px 34px; width:100%; max-width:400px; box-shadow:var(--shadow); }
+  .login-brand{ display:flex; align-items:center; gap:11px; margin-bottom:26px; }
+  .login-brand .mark{ width:40px; height:40px; border-radius:10px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:18px; flex-shrink:0; }
+  .login-brand h2{ font-size:19px; color:var(--accent-strong); }
+  .login-brand p{ margin:2px 0 0; font-size:12px; color:var(--ink-faint); }
+  .field{ margin-bottom:15px; }
+  .field label{ display:block; font-size:12.5px; font-weight:600; margin-bottom:6px; color:var(--ink-soft); }
+  .field input, .field select, .field textarea{ width:100%; padding:9px 12px; border:1px solid var(--line-strong); border-radius:9px; font-size:13.5px; font-family:inherit; background:var(--paper); color:var(--ink); }
+  .hint-box{ background:var(--gold-soft); border-inline-start:3px solid var(--gold); border-radius:8px; padding:11px 13px; font-size:12px; color:var(--ink-soft); margin-top:18px; line-height:1.7; }
+  .hint-box b{ color:var(--ink); }
+  .error-msg{ background:var(--critical-soft); color:var(--critical); padding:10px 13px; border-radius:8px; font-size:13px; margin-top:14px; display:none; }
+  .error-msg.show{ display:block; }
+
+  /* ==================== هيكل التطبيق ==================== */
+  #app-screen{ display:none; min-height:100vh; }
+  .shell{ display:flex; min-height:100vh; }
+  aside.sidebar{ width:220px; flex-shrink:0; background:var(--paper-raised); border-inline-start:1px solid var(--line); display:flex; flex-direction:column; padding:18px 0; }
+  .sidebar .brand{ padding:0 18px 16px; border-bottom:1px solid var(--line); margin-bottom:12px; }
+  .sidebar .brand h1{ font-size:15.5px; color:var(--accent-strong); }
+  .sidebar .brand span{ font-size:10.5px; color:var(--ink-faint); }
+  .sidebar nav{ display:flex; flex-direction:column; gap:1px; padding:0 10px; flex:1; overflow-y:auto; }
+  .sidebar nav button{ display:flex; align-items:center; gap:10px; text-align:right; background:none; padding:9px 12px; font-size:13.5px; color:var(--ink-soft); border-inline-end:2px solid transparent; border-radius:7px; font-weight:500; }
+  .sidebar nav button:hover{ background:var(--accent-soft); color:var(--ink); }
+  .sidebar nav button.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; border-inline-end-color:var(--accent); }
+  .sidebar .user-box{ padding:13px 18px 0; margin-top:12px; border-top:1px solid var(--line); }
+  .sidebar .user-box .name{ font-size:13px; font-weight:600; }
+  .sidebar .user-box .role{ display:inline-block; margin-top:5px; font-size:10.5px; font-weight:700; color:var(--accent-strong); background:var(--accent-soft); padding:2px 9px; border-radius:999px; }
+  .sidebar .user-box button{ width:100%; margin-top:11px; }
+
+  main.content{ flex:1; min-width:0; padding:24px 28px 60px; max-width:1040px; }
+  .page-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px; }
+  .page-head h2{ font-size:21px; }
+  .page-head p{ margin:4px 0 0; font-size:12.5px; color:var(--ink-faint); }
+  .panel{ display:none; }
+  .panel.active{ display:block; }
+
+  .card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:13px; padding:19px 21px; margin-bottom:16px; box-shadow:var(--shadow); }
+  .card-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:10px; flex-wrap:wrap; }
+  .card-head h3{ font-size:15px; }
+  .card-head .sub{ font-size:11.5px; color:var(--ink-faint); margin-top:2px; }
+
+  .grid-kpi{ display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:12px; margin-bottom:18px; }
+  .kpi{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .kpi .l{ font-size:11.5px; color:var(--ink-faint); }
+  .kpi .v{ font-size:21px; font-weight:700; color:var(--accent-strong); margin-top:5px; }
+  .kpi .v.gold{ color:var(--gold); }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th, td{ text-align:right; padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; font-size:11.5px; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:var(--accent-soft); }
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+  td.wrap{ white-space:normal; max-width:280px; }
+
+  .pill{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:10.5px; font-weight:700; white-space:nowrap; }
+  .pill.ok, .pill.EXECUTED, .pill.APPROVED, .pill.VERIFIED, .pill.SENT{ background:var(--success-soft); color:var(--success); }
+  .pill.warn, .pill.PENDING_APPROVAL, .pill.PENDING{ background:var(--warning-soft); color:var(--warning); }
+  .pill.bad, .pill.REJECTED, .pill.EXPIRED, .pill.CANCELLED, .pill.FAILED{ background:var(--critical-soft); color:var(--critical); }
+  .pill.info, .pill.RECEIVED{ background:var(--info-soft); color:var(--info); }
+
+  .lock-timer{ font-family:var(--font-mono); font-size:11.5px; }
+  .lock-timer.warn2{ color:var(--warning); font-weight:700; }
+  .lock-timer.expired{ color:var(--critical); }
+
+  .form-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:13px; align-items:end; }
+  .form-grid .field{ margin:0; }
+  .form-note{ font-size:11.5px; color:var(--ink-faint); margin-top:9px; }
+  .inline-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .filter-bar{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .filter-bar input, .filter-bar select{ padding:7px 11px; border:1px solid var(--line-strong); border-radius:8px; font-size:12.5px; background:var(--paper); color:var(--ink); font-family:inherit; }
+
+  .pager{ display:flex; align-items:center; justify-content:center; gap:12px; margin-top:12px; font-size:12.5px; color:var(--ink-faint); }
+
+  .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(8px); background:var(--ink); color:var(--paper); padding:12px 22px; border-radius:9px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:80; max-width:90vw; text-align:center; box-shadow:0 10px 26px -6px rgba(0,0,0,.35); }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.error{ background:var(--critical); color:#fff; }
+
+  .state-msg{ color:var(--ink-faint); font-size:12.5px; padding:22px 10px; text-align:center; }
+  .divider{ border:none; border-top:1px solid var(--line); margin:16px 0; }
+  .selected-row{ background:var(--gold-soft) !important; }
+  details.settings-block{ margin-bottom:14px; }
+  details.settings-block > summary{ cursor:pointer; font-weight:700; font-size:14px; padding:6px 0; color:var(--accent-strong); }
+
+  @media (max-width:760px){
+    .shell{ flex-direction:column; }
+    aside.sidebar{ width:100%; flex-direction:row; overflow-x:auto; padding:10px; align-items:center; }
+    .sidebar .brand, .sidebar .user-box{ display:none; }
+    .sidebar nav{ flex-direction:row; padding:0; overflow-y:visible; }
+    main.content{ padding:16px 14px 50px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== شاشة تسجيل الدخول ==================== -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="mark">EX</div>
+      <div><h2>منصّة الصرف الليبية</h2><p>لوحة تشغيل الخزينة والعملاء والتداول</p></div>
+    </div>
+
+    <div id="login-step">
+      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="login-email" value="teller@exlibya.ly" /></div>
+      <div class="field"><label>كلمة المرور</label><input type="password" id="login-password" value="ChangeMe123!" /></div>
+      <button class="btn-primary" style="width:100%" id="login-btn" onclick="doLogin()">تسجيل الدخول</button>
+      <div class="hint-box">
+        حسابات تجريبية (بلا مصادقة ثنائية): <b>admin@exlibya.ly</b> · <b>treasury.manager@exlibya.ly</b> · <b>teller@exlibya.ly</b> · <b>support@exlibya.ly</b> · <b>compliance@exlibya.ly</b><br>
+        كلمة المرور دومًا: <b>ChangeMe123!</b>
+      </div>
+    </div>
+
+    <div id="mfa-step" style="display:none">
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px">هذا الحساب مفعّل عليه مصادقة ثنائية — أدخل رمز TOTP الحالي أو رمز استرداد:</p>
+      <div class="field"><label>الرمز</label><input type="text" id="mfa-code" placeholder="123456" /></div>
+      <button class="btn-primary" style="width:100%" id="mfa-btn" onclick="doVerifyMfa()">تأكيد الدخول</button>
+      <button class="btn-ghost" style="width:100%;margin-top:9px" onclick="cancelMfa()">رجوع</button>
+    </div>
+    <div class="error-msg" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ==================== واجهة النظام ==================== -->
+<div id="app-screen">
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><h1>منصّة الصرف الليبية</h1><span>بيئة تشغيل محلية</span></div>
+      <nav>
+        <button class="nav-btn active" data-tab="overview" onclick="switchTab('overview')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg>
+          نظرة عامة
+        </button>
+        <button class="nav-btn" data-tab="rates" onclick="switchTab('rates')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 14 L8 8 L11 11 L17 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 4 H17 V9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          أسعار الصرف
+        </button>
+        <button class="nav-btn" data-tab="clients" onclick="switchTab('clients')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="6.5" r="3"/><path d="M3.5 17 C3.5 12.5 6.5 11 10 11 C13.5 11 16.5 12.5 16.5 17" stroke-linecap="round"/></svg>
+          العملاء
+        </button>
+        <button class="nav-btn" data-tab="deals" onclick="switchTab('deals')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7 H14" stroke-linecap="round"/><path d="M11 4 L14 7 L11 10" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 13 H6" stroke-linecap="round"/><path d="M9 10 L6 13 L9 16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          الصفقات
+        </button>
+        <button class="nav-btn" data-tab="treasury" onclick="switchTab('treasury')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="14" height="11" rx="1.5"/><circle cx="10" cy="10.5" r="2.3"/><path d="M6 5 V3.5 H14 V5" stroke-linecap="round"/></svg>
+          الخزينة
+        </button>
+        <button class="nav-btn" data-tab="expenses" onclick="switchTab('expenses')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="12" height="12" rx="1.3"/><path d="M7 8 H13 M7 11 H13 M7 14 H10.5" stroke-linecap="round"/></svg>
+          المصاريف
+        </button>
+        <button class="nav-btn" data-tab="reports" onclick="switchTab('reports')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16.5 V3.5 M4 16.5 H16.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.7 13.5 V9.5 M10.3 13.5 V6 M14 13.5 V11" stroke-linecap="round"/></svg>
+          التقارير
+        </button>
+        <button class="nav-btn" data-tab="whatsapp" onclick="switchTab('whatsapp')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16.5 L5 13 C4.2 11.8 3.8 10.4 3.8 9 C3.8 5.5 6.9 2.7 10.6 2.7 C14.3 2.7 17.4 5.5 17.4 9 C17.4 12.5 14.3 15.3 10.6 15.3 C9.3 15.3 8 15 7 14.4 L4 16.5 Z" stroke-linejoin="round"/></svg>
+          رسائل واتساب
+        </button>
+        <button class="nav-btn" data-tab="audit" onclick="switchTab('audit')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="2.5" width="12" height="15" rx="1.3"/><path d="M7 7 H13 M7 10 H13 M7 13 H10.5" stroke-linecap="round"/></svg>
+          سجل التدقيق
+        </button>
+        <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6 H16 M4 10 H16 M4 14 H16" stroke-linecap="round"/><circle cx="8" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="13" cy="10" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="14" r="1.4" fill="currentColor" stroke="none"/></svg>
+          الإعدادات
+        </button>
+      </nav>
+      <div class="user-box">
+        <div class="name" id="user-name"></div>
+        <span class="role" id="user-role"></span>
+        <button class="btn-ghost btn-sm" onclick="doLogout()">تسجيل الخروج</button>
+      </div>
+    </aside>
+
+    <main class="content">
+
+      <!-- ---- نظرة عامة ---- -->
+      <div class="panel active" id="panel-overview">
+        <div class="page-head"><h2>نظرة عامة</h2></div>
+        <div class="grid-kpi" id="overview-kpis"><div class="kpi"><div class="l">جارِ التحميل...</div></div></div>
+        <div class="card">
+          <h3>مرحبًا بك</h3>
+          <p style="color:var(--ink-soft);font-size:13px;margin-top:8px">
+            هذه لوحة تشغيل تتصل مباشرة بالنظام الشغّال على الخادم الحقيقي.
+            كل الأزرار هنا تنفّذ عمليات حقيقية على قاعدة البيانات — لا بيانات تجريبية معروضة فقط.
+          </p>
+        </div>
+      </div>
+
+      <!-- ---- الأسعار ---- -->
+      <div class="panel" id="panel-rates">
+        <div class="page-head"><h2>أسعار الصرف</h2><button class="btn-ghost btn-sm" onclick="loadRates()">تحديث</button></div>
+        <div class="card">
+          <div class="card-head"><h3>نشر سعر جديد</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>العملة</label><select id="rate-currency"></select></div>
+            <div class="field"><label>السعر</label><input type="text" id="rate-value" placeholder="7.90" /></div>
+            <div class="field"><label>سبب تجاوز (اختياري)</label><input type="text" id="rate-override" placeholder="فقط إذا رفض النظام التغيير" /></div>
+          </div>
+          <button class="btn-primary" id="publish-rate-btn" onclick="publishRate()">نشر السعر</button>
+          <p class="form-note">يتطلب صلاحية ADMIN أو TREASURY_MANAGER. تغيّر كبير بلا سبب تجاوز يُرفض تلقائيًا (قاطع دائرة).</p>
+        </div>
+        <div class="card"><h3>الأسعار الحالية</h3><div id="rates-content" class="state-msg">جارِ التحميل...</div></div>
+        <div class="card">
+          <div class="card-head"><h3>السجل التاريخي</h3></div>
+          <div class="filter-bar"><select id="history-currency"></select><button class="btn-ghost btn-sm" onclick="loadRateHistory()">عرض السجل</button></div>
+          <div id="history-content" class="state-msg">اختر عملة واضغط "عرض السجل"</div>
+        </div>
+      </div>
+
+      <!-- ---- العملاء ---- -->
+      <div class="panel" id="panel-clients">
+        <div class="page-head"><h2>العملاء</h2><button class="btn-ghost btn-sm" onclick="loadClients()">تحديث</button></div>
+        <div class="card">
+          <div class="card-head"><h3>تسجيل عميل جديد</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>الاسم الكامل</label><input type="text" id="nc-name" placeholder="محمد أحمد" /></div>
+            <div class="field"><label>النوع</label><select id="nc-type"><option value="individual">فرد</option><option value="company">شركة</option></select></div>
+            <div class="field"><label>الرقم الوطني/السجل</label><input type="text" id="nc-reg" placeholder="119850000000" /></div>
+            <div class="field"><label>الهاتف (دولي)</label><input type="text" id="nc-phone" placeholder="+218910000000" /></div>
+            <div class="field"><label>الحد اليومي ($)</label><input type="text" id="nc-daily" placeholder="10000.00" /></div>
+            <div class="field"><label>السقف الائتماني ($)</label><input type="text" id="nc-credit" placeholder="25000.00" /></div>
+          </div>
+          <button class="btn-primary" id="create-client-btn" onclick="createClient()">تسجيل العميل</button>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>قائمة العملاء</h3></div>
+          <div class="filter-bar">
+            <input type="text" id="clients-search" placeholder="بحث بالاسم أو الرقم أو الهاتف" />
+            <select id="clients-kyc-filter"><option value="">كل حالات KYC</option><option value="PENDING">PENDING</option><option value="VERIFIED">VERIFIED</option><option value="REJECTED">REJECTED</option></select>
+            <select id="clients-risk-filter"><option value="">كل مستويات المخاطر</option><option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option></select>
+            <button class="btn-ghost btn-sm" onclick="clientsPage=1;loadClients()">بحث</button>
+          </div>
+          <div id="clients-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="clients-pager"></div>
+        </div>
+        <div class="card" id="client-detail-card" style="display:none">
+          <div class="card-head"><h3 id="client-detail-title">تفاصيل العميل</h3><button class="btn-ghost btn-sm" onclick="closeClientDetail()">إغلاق</button></div>
+          <div id="client-detail-body"></div>
+          <hr class="divider">
+          <div class="form-grid">
+            <div class="field"><label>حد يومي جديد ($)</label><input type="text" id="cd-daily" /></div>
+            <div class="field"><label>سقف ائتماني جديد ($)</label><input type="text" id="cd-credit" /></div>
+            <div class="field"><label>سبب التعديل</label><input type="text" id="cd-reason" placeholder="مثال: مراجعة سنوية" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="update-limits-btn" onclick="updateClientLimits()">تحديث الحدود</button>
+          <hr class="divider">
+          <div class="form-grid">
+            <div class="field"><label>حالة KYC</label><select id="cd-kyc"><option value="PENDING">PENDING</option><option value="VERIFIED">VERIFIED</option><option value="REJECTED">REJECTED</option></select></div>
+            <div class="field"><label>تصنيف المخاطر</label><select id="cd-risk"><option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option></select></div>
+            <div class="field"><label>سبب التحديث</label><input type="text" id="cd-kyc-reason" placeholder="مثال: اكتملت المستندات" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="update-kyc-btn" onclick="updateClientKyc()">تحديث KYC والمخاطر</button>
+        </div>
+      </div>
+
+      <!-- ---- الصفقات ---- -->
+      <div class="panel" id="panel-deals">
+        <div class="page-head"><h2>الصفقات</h2><button class="btn-ghost btn-sm" onclick="loadDeals()">تحديث</button></div>
+        <div class="card">
+          <div class="card-head"><h3>إنشاء صفقة جديدة</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>العميل</label><select id="deal-client"></select></div>
+            <div class="field"><label>الفرع (لو حسابك غير مرتبط بفرع ثابت)</label><select id="deal-branch"><option value="">— الفرع الافتراضي لحسابك —</option></select></div>
+            <div class="field"><label>العملة</label><select id="deal-currency"></select></div>
+            <div class="field"><label>الاتجاه</label><select id="deal-direction"><option value="SELL">بيع للعميل</option><option value="BUY">شراء من العميل</option></select></div>
+            <div class="field"><label>الكمية</label><input type="text" id="deal-amount" value="500.00" /></div>
+          </div>
+          <button class="btn-primary" id="create-deal-btn" onclick="createDeal()">إنشاء الصفقة</button>
+          <p class="form-note">السعر يُقفل 60 ثانية فقط من لحظة الإنشاء — نفّذ الصفقة قبل انتهاء العدّاد أدناه.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>الصفقات</h3></div>
+          <div class="filter-bar">
+            <select id="deals-status-filter">
+              <option value="">كل الحالات</option>
+              <option value="PENDING_APPROVAL">بانتظار موافقة</option>
+              <option value="APPROVED">معتمدة</option>
+              <option value="EXECUTED">منفَّذة</option>
+              <option value="REJECTED">مرفوضة</option>
+              <option value="EXPIRED">منتهية</option>
+              <option value="CANCELLED">ملغاة</option>
+            </select>
+            <button class="btn-ghost btn-sm" onclick="dealsPage=1;loadDeals()">فلترة</button>
+          </div>
+          <div id="deals-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="deals-pager"></div>
+        </div>
+      </div>
+
+      <!-- ---- الخزينة ---- -->
+      <div class="panel" id="panel-treasury">
+        <div class="page-head"><h2>الخزينة</h2><button class="btn-ghost btn-sm" onclick="loadTreasuryAll()">تحديث</button></div>
+        <div class="card"><h3>مراكز الخزينة الحالية</h3><div id="treasury-content" class="state-msg">جارِ التحميل...</div></div>
+        <div class="card">
+          <div class="card-head"><h3>تسجيل حركة خزينة</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>الفرع</label><select id="mv-branch"></select></div>
+            <div class="field"><label>العملة</label><select id="mv-currency"></select></div>
+            <div class="field"><label>نوع الحركة</label>
+              <select id="mv-type">
+                <option value="DEPOSIT">إيداع</option>
+                <option value="WITHDRAWAL">سحب</option>
+                <option value="TRANSFER_IN">تحويل وارد</option>
+                <option value="TRANSFER_OUT">تحويل صادر</option>
+                <option value="ADJUSTMENT_INCREASE">تسوية جرد (زيادة)</option>
+                <option value="ADJUSTMENT_DECREASE">تسوية جرد (نقصان)</option>
+              </select>
+            </div>
+            <div class="field"><label>المبلغ</label><input type="text" id="mv-amount" placeholder="10000.00" /></div>
+            <div class="field"><label>السبب</label><input type="text" id="mv-reason" placeholder="مثال: تغذية من الحساب المصرفي" /></div>
+          </div>
+          <button class="btn-primary" id="record-movement-btn" onclick="recordMovement()">تسجيل الحركة</button>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>سجل الحركات</h3></div>
+          <div class="filter-bar">
+            <select id="log-branch"></select>
+            <button class="btn-ghost btn-sm" onclick="loadMovementsLog()">عرض السجل</button>
+          </div>
+          <div id="movements-log-content" class="state-msg">اختر فرعًا واضغط "عرض السجل"</div>
+        </div>
+      </div>
+
+      <!-- ---- المصاريف ---- -->
+      <div class="panel" id="panel-expenses">
+        <div class="page-head"><h2>المصاريف التشغيلية</h2><button class="btn-ghost btn-sm" onclick="expensesPage=1;loadExpenses()">تحديث</button></div>
+        <div class="card">
+          <div class="card-head"><h3>تسجيل مصروف جديد</h3><span class="sub">مصاريف تشغيل الشركة نفسها (رواتب، إيجار، خدمات...) — منفصلة تمامًا عن حركات خزينة العملاء</span></div>
+          <div class="form-grid">
+            <div class="field"><label>الفئة</label>
+              <select id="ex-category">
+                <option value="SALARIES">رواتب</option>
+                <option value="RENT">إيجار</option>
+                <option value="UTILITIES">خدمات (كهرباء/ماء/اتصالات)</option>
+                <option value="MAINTENANCE">صيانة</option>
+                <option value="OFFICE_SUPPLIES">مستلزمات مكتبية</option>
+                <option value="MARKETING">تسويق</option>
+                <option value="PROFESSIONAL_FEES">أتعاب مهنية</option>
+                <option value="TAXES_GOVERNMENT">رسوم حكومية</option>
+                <option value="TRAVEL">سفر</option>
+                <option value="OTHER">أخرى</option>
+              </select>
+            </div>
+            <div class="field"><label>المبلغ</label><input type="text" id="ex-amount" placeholder="3500.00" /></div>
+            <div class="field"><label>العملة</label><select id="ex-currency"></select></div>
+            <div class="field"><label>الفرع (اختياري)</label><select id="ex-branch"><option value="">— مصروف مركزي —</option></select></div>
+            <div class="field"><label>الوصف</label><input type="text" id="ex-description" placeholder="مثال: إيجار مقر الفرع الرئيسي" /></div>
+          </div>
+          <button class="btn-primary" id="create-expense-btn" onclick="createExpense()">تسجيل المصروف</button>
+          <p class="form-note">يتطلب صلاحية ADMIN أو TREASURY_MANAGER.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>قائمة المصاريف</h3></div>
+          <div class="filter-bar">
+            <select id="ex-filter-category">
+              <option value="">كل الفئات</option>
+              <option value="SALARIES">رواتب</option><option value="RENT">إيجار</option><option value="UTILITIES">خدمات</option>
+              <option value="MAINTENANCE">صيانة</option><option value="OFFICE_SUPPLIES">مستلزمات مكتبية</option>
+              <option value="MARKETING">تسويق</option><option value="PROFESSIONAL_FEES">أتعاب مهنية</option>
+              <option value="TAXES_GOVERNMENT">رسوم حكومية</option><option value="TRAVEL">سفر</option><option value="OTHER">أخرى</option>
+            </select>
+            <input type="date" id="ex-filter-from" title="من تاريخ" />
+            <input type="date" id="ex-filter-to" title="إلى تاريخ" />
+            <button class="btn-ghost btn-sm" onclick="expensesPage=1;loadExpenses()">فلترة</button>
+          </div>
+          <div id="expenses-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="expenses-pager"></div>
+        </div>
+      </div>
+
+      <!-- ---- التقارير ---- -->
+      <div class="panel" id="panel-reports">
+        <div class="page-head"><h2>التقارير والتحليلات</h2><button class="btn-ghost btn-sm" onclick="loadReports()">تحديث</button></div>
+        <div class="card">
+          <div class="filter-bar">
+            <div class="field" style="margin:0"><label>من تاريخ</label><input type="date" id="rp-from" /></div>
+            <div class="field" style="margin:0"><label>إلى تاريخ</label><input type="date" id="rp-to" /></div>
+            <div class="field" style="margin:0"><label>الفرع</label><select id="rp-branch"><option value="">كل الفروع</option></select></div>
+            <button class="btn-primary btn-sm" style="align-self:flex-end" onclick="loadReports()">تحديث التقرير</button>
+          </div>
+          <p class="form-note">الافتراضي: من بداية الشهر الحالي إلى الآن.</p>
+        </div>
+        <div class="grid-kpi" id="reports-kpis"><div class="kpi"><div class="l">جارِ التحميل...</div></div></div>
+        <div class="card">
+          <div class="card-head"><h3>المصاريف حسب العملة</h3></div>
+          <div id="reports-expenses-currency" class="state-msg">جارِ التحميل...</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>صافي حركة الخزينة حسب العملة</h3><span class="sub">موجب = زيادة صافية، سالب (بالأحمر) = نقصان صافٍ خلال الفترة</span></div>
+          <div id="reports-treasury-net" class="state-msg">جارِ التحميل...</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>توزيع المصاريف حسب الفئة</h3></div>
+          <div id="reports-expenses-category" class="state-msg">جارِ التحميل...</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>اتجاه الصفقات المنفَّذة يوميًا</h3></div>
+          <div id="reports-deals-trend" class="state-msg">جارِ التحميل...</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>إجمالي أرصدة الخزينة الموحّد (كل الفروع)</h3></div>
+          <div id="reports-treasury-consolidated" class="state-msg">جارِ التحميل...</div>
+        </div>
+      </div>
+
+      <!-- ---- واتساب ---- -->
+      <div class="panel" id="panel-whatsapp">
+        <div class="page-head"><h2>رسائل واتساب</h2><button class="btn-ghost btn-sm" onclick="loadWhatsapp()">تحديث</button></div>
+        <div class="card">
+          <div class="card-head"><h3>بثّ تحديث سعر للمشتركين</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>العملة</label><select id="broadcast-currency"></select></div>
+          </div>
+          <button class="btn-primary" id="broadcast-btn" onclick="broadcastRate()">بثّ التحديث</button>
+          <p class="form-note">يُرسل لكل عميل مفعّل ومكتمل KYC وافق صراحة (whatsappOptIn). يتطلب صلاحية ADMIN أو TREASURY_MANAGER.</p>
+        </div>
+        <div class="card"><h3>سجل الرسائل</h3><div id="whatsapp-content" class="state-msg">جارِ التحميل...</div></div>
+      </div>
+
+      <!-- ---- سجل التدقيق ---- -->
+      <div class="panel" id="panel-audit">
+        <div class="page-head"><h2>سجل التدقيق</h2><p>من فعل ماذا ومتى — سجل تراكمي لا يُعدَّل ولا يُحذف (يتطلب ADMIN أو COMPLIANCE_OFFICER)</p></div>
+        <div class="card">
+          <div class="filter-bar">
+            <input type="text" id="audit-entity-type" placeholder="نوع الكيان مثل Client أو Transaction" />
+            <button class="btn-ghost btn-sm" onclick="auditPage=1;loadAudit()">فلترة</button>
+            <button class="btn-ghost btn-sm" onclick="document.getElementById('audit-entity-type').value='';auditPage=1;loadAudit()">مسح الفلتر</button>
+          </div>
+          <div id="audit-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="audit-pager"></div>
+        </div>
+      </div>
+
+      <!-- ---- الإعدادات ---- -->
+      <div class="panel" id="panel-settings">
+        <div class="page-head"><h2>الإعدادات</h2><p>إدارة الفروع، العملات، وخطوط الخزينة — إجراءات إدارية غالبًا محصورة بـ ADMIN</p></div>
+
+        <details class="card settings-block" open>
+          <summary>الفروع</summary>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label>رمز الفرع</label><input type="text" id="br-code" placeholder="BEN-02" /></div>
+            <div class="field"><label>اسم الفرع</label><input type="text" id="br-name" placeholder="فرع بنغازي — الفويهات" /></div>
+            <div class="field"><label>المدينة</label><input type="text" id="br-city" placeholder="بنغازي" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="create-branch-btn" onclick="createBranch()">إضافة فرع</button>
+          <hr class="divider">
+          <div id="branches-content" class="state-msg">جارِ التحميل...</div>
+        </details>
+
+        <details class="card settings-block">
+          <summary>العملات</summary>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label>الرمز (ISO)</label><input type="text" id="cur-code" placeholder="SAR" /></div>
+            <div class="field"><label>الاسم</label><input type="text" id="cur-name" placeholder="ريال سعودي" /></div>
+            <div class="field"><label>المنازل العشرية</label><input type="text" id="cur-decimals" value="2" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="create-currency-btn" onclick="createCurrency()">إضافة عملة</button>
+          <hr class="divider">
+          <div id="currencies-content" class="state-msg">جارِ التحميل...</div>
+        </details>
+
+        <details class="card settings-block">
+          <summary>تفعيل / تحديث خط عملة لفرع (خزينة)</summary>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label>الفرع</label><select id="pos-branch"></select></div>
+            <div class="field"><label>العملة</label><select id="pos-currency"></select></div>
+            <div class="field"><label>سقف التعرّض الأقصى</label><input type="text" id="pos-max" placeholder="500000.00" /></div>
+            <div class="field"><label>الحد الأدنى التحذيري</label><input type="text" id="pos-min" placeholder="20000.00" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="configure-position-btn" onclick="configurePosition()">حفظ الإعداد</button>
+          <p class="form-note">هذا يفعّل خط العملة أو يحدّث سقفه فقط — لا يمسّ الرصيد الحالي؛ استخدم "تسجيل حركة خزينة" في تبويب الخزينة لتمويله.</p>
+        </details>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin; // الواجهة تُخدَّم من نفس الخادم — لا حاجة لرابط ثابت
+let accessToken = null, currentUser = null, pendingMfaChallenge = null;
+let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [];
+let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1;
+let selectedClientId = null;
+
+const EXPENSE_CATEGORY_LABELS = {
+  SALARIES: 'رواتب', RENT: 'إيجار', UTILITIES: 'خدمات', MAINTENANCE: 'صيانة',
+  OFFICE_SUPPLIES: 'مستلزمات مكتبية', MARKETING: 'تسويق', PROFESSIONAL_FEES: 'أتعاب مهنية',
+  TAXES_GOVERNMENT: 'رسوم حكومية', TRAVEL: 'سفر', OTHER: 'أخرى',
+};
+
+function showToast(msg, isError){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { t.className = 'toast'; }, 3800);
+}
+function showLoginError(msg){ const el = document.getElementById('login-error'); el.textContent = msg; el.classList.add('show'); }
+function hideLoginError(){ document.getElementById('login-error').classList.remove('show'); }
+function fmtDate(d){ return new Date(d).toLocaleString('ar-LY'); }
+function pillClass(status){ return status; }
+
+async function apiCall(path, options = {}){
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+  if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+  let res;
+  try{ res = await fetch(API + path, Object.assign({}, options, { headers })); }
+  catch(networkErr){ throw new Error('تعذّر الاتصال بالخادم على ' + API + ' — إذا كان نائمًا (خطة مجانية) قد يحتاج 30-60 ثانية ليصحى، أعد المحاولة'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const msg = Array.isArray(data.message) ? data.message.join('، ') : (data.message || ('خطأ HTTP ' + res.status)); throw new Error(msg); }
+  return data;
+}
+
+function runBusy(btnId, fn){
+  return async () => {
+    const btn = document.getElementById(btnId);
+    const original = btn.textContent;
+    btn.disabled = true;
+    try{ await fn(); } finally { btn.disabled = false; btn.textContent = original; }
+  };
+}
+
+function pagerHtml(elId, page, pageSize, total, onPage){
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  document.getElementById(elId).innerHTML = totalPages <= 1 ? '' : `
+    <button class="btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="(${onPage})(${page - 1})">السابق</button>
+    <span>صفحة ${page} من ${totalPages} (الإجمالي: ${total})</span>
+    <button class="btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="(${onPage})(${page + 1})">التالي</button>
+  `;
+}
+
+// ---------------- تسجيل الدخول ----------------
+
+async function doLogin(){
+  hideLoginError();
+  const btn = document.getElementById('login-btn');
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  btn.disabled = true; btn.textContent = 'جارِ الدخول...';
+  try{
+    const result = await apiCall('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    if (result.mfaRequired) {
+      pendingMfaChallenge = result.mfaChallengeToken;
+      document.getElementById('login-step').style.display = 'none';
+      document.getElementById('mfa-step').style.display = 'block';
+    } else { onLoggedIn(result.accessToken, result.user); }
+  }catch(err){ showLoginError(err.message); }
+  finally{ btn.disabled = false; btn.textContent = 'تسجيل الدخول'; }
+}
+
+async function doVerifyMfa(){
+  hideLoginError();
+  const btn = document.getElementById('mfa-btn');
+  const code = document.getElementById('mfa-code').value.trim();
+  btn.disabled = true; btn.textContent = 'جارِ التحقق...';
+  try{
+    const result = await apiCall('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ mfaChallengeToken: pendingMfaChallenge, code }) });
+    onLoggedIn(result.accessToken, result.user);
+  }catch(err){ showLoginError(err.message); }
+  finally{ btn.disabled = false; btn.textContent = 'تأكيد الدخول'; }
+}
+
+function cancelMfa(){
+  pendingMfaChallenge = null;
+  document.getElementById('mfa-step').style.display = 'none';
+  document.getElementById('login-step').style.display = 'block';
+  hideLoginError();
+}
+
+async function onLoggedIn(token, user){
+  accessToken = token; currentUser = user;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  document.getElementById('user-name').textContent = user.fullName;
+  document.getElementById('user-role').textContent = user.role;
+
+  try{
+    const currRes = await apiCall('/currencies');
+    currenciesCache = currRes.filter(c => c.code !== 'LYD');
+    const opts = currenciesCache.map(c => `<option value="${c.code}">${c.code} — ${c.name}</option>`).join('');
+    ['rate-currency','history-currency','deal-currency','mv-currency','broadcast-currency','pos-currency','ex-currency'].forEach(id => {
+      document.getElementById(id).innerHTML = opts;
+    });
+    // مصروف اللدينار (LYD) نفسه عملة صالحة للمصاريف (إيجار/رواتب غالبًا تُدفع بالدينار) — يُضاف يدويًا
+    document.getElementById('ex-currency').innerHTML = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
+    const branchRes = await apiCall('/treasury/branches');
+    branchesCache = branchRes;
+    const bOpts = branchesCache.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    ['mv-branch','log-branch','pos-branch'].forEach(id => { document.getElementById(id).innerHTML = bOpts; });
+    document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
+    document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
+    document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
+  }catch(err){ showToast('تعذّر تحميل العملات/الفروع: ' + err.message, true); }
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  document.getElementById('rp-from').value = monthStart.toISOString().slice(0, 10);
+  document.getElementById('rp-to').value = now.toISOString().slice(0, 10);
+
+  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports();
+  if (!window._tickerStarted) { window._tickerStarted = true; setInterval(renderDealsTable, 1000); }
+}
+
+function doLogout(){
+  accessToken = null; currentUser = null;
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-step').style.display = 'block';
+  document.getElementById('mfa-step').style.display = 'none';
+  document.getElementById('login-password').value = 'ChangeMe123!';
+  hideLoginError();
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+}
+
+// ---------------- نظرة عامة ----------------
+
+async function loadOverview(){
+  const el = document.getElementById('overview-kpis');
+  try{
+    const [rates, clients, positions, deals] = await Promise.all([
+      apiCall('/fx-rates/latest'), apiCall('/clients?pageSize=1'),
+      apiCall('/treasury/positions'), apiCall('/deals?pageSize=1'),
+    ]);
+    const usd = rates.find(r => r.currency.code === 'USD');
+    let html = '';
+    if (usd) html += `<div class="kpi"><div class="l">سعر الدولار</div><div class="v num">${usd.rate.rate}</div></div>`;
+    html += `<div class="kpi"><div class="l">عدد العملاء المسجّلين</div><div class="v num">${clients.total}</div></div>`;
+    html += `<div class="kpi"><div class="l">إجمالي الصفقات</div><div class="v num">${deals.total}</div></div>`;
+    html += `<div class="kpi"><div class="l">خطوط الخزينة المفعّلة</div><div class="v num">${positions.length}</div></div>`;
+    el.innerHTML = html || '<div class="kpi"><div class="l">لا توجد بيانات كافية بعد</div></div>';
+  }catch(err){ el.innerHTML = `<div class="kpi"><div class="l" style="color:var(--critical)">${err.message}</div></div>`; }
+}
+
+// ---------------- الأسعار ----------------
+
+async function loadRates(){
+  const el = document.getElementById('rates-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const rates = await apiCall('/fx-rates/latest');
+    if (rates.length === 0) { el.textContent = 'لا توجد أسعار منشورة بعد.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>العملة</th><th>السعر</th><th>المصدر</th><th>آخر تحديث</th></tr></thead><tbody>';
+    rates.forEach(r => { html += `<tr><td><b>${r.currency.name}</b> <span style="color:var(--ink-faint)">(${r.currency.code})</span></td><td class="num gold">${r.rate.rate}</td><td>${r.rate.source}</td><td>${fmtDate(r.rate.createdAt)}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function publishRate(){
+  const currencyCode = document.getElementById('rate-currency').value;
+  const rate = document.getElementById('rate-value').value.trim();
+  const overrideReason = document.getElementById('rate-override').value.trim();
+  if (!rate) { showToast('أدخل السعر', true); return; }
+  await runBusy('publish-rate-btn', async () => {
+    const body = { rate };
+    if (overrideReason) body.overrideReason = overrideReason;
+    await apiCall('/fx-rates/' + currencyCode, { method: 'POST', body: JSON.stringify(body) });
+    showToast('نُشر السعر بنجاح');
+    document.getElementById('rate-value').value = ''; document.getElementById('rate-override').value = '';
+    loadRates(); loadOverview();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadRateHistory(){
+  const code = document.getElementById('history-currency').value;
+  const el = document.getElementById('history-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const history = await apiCall('/fx-rates/' + code + '/history?limit=20');
+    if (history.length === 0) { el.textContent = 'لا يوجد سجل بعد.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>السعر</th><th>المصدر</th><th>الناشر</th><th>التاريخ</th></tr></thead><tbody>';
+    history.forEach(h => { html += `<tr><td class="num">${h.rate}</td><td><span class="pill ${h.isOverride ? 'bad' : 'ok'}">${h.source}</span></td><td>${h.publishedBy.fullName}</td><td>${fmtDate(h.createdAt)}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+// ---------------- العملاء ----------------
+
+async function loadClients(){
+  const el = document.getElementById('clients-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const search = document.getElementById('clients-search').value.trim();
+    const kyc = document.getElementById('clients-kyc-filter').value;
+    const risk = document.getElementById('clients-risk-filter').value;
+    const params = new URLSearchParams({ page: clientsPage, pageSize: 10 });
+    if (search) params.set('search', search);
+    if (kyc) params.set('kycStatus', kyc);
+    if (risk) params.set('riskTier', risk);
+    const result = await apiCall('/clients?' + params.toString());
+    clientsCache = result.items;
+    document.getElementById('deal-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
+    if (result.items.length === 0) { el.textContent = 'لا يوجد عملاء مطابقون.'; document.getElementById('clients-pager').innerHTML = ''; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>KYC</th><th>المخاطر</th><th>الحد اليومي</th><th>السقف الائتماني</th><th></th></tr></thead><tbody>';
+    result.items.forEach(c => {
+      html += `<tr><td><b>${c.fullName}</b></td><td class="num">${c.phone}</td><td><span class="pill ${c.kycStatus === 'VERIFIED' ? 'ok' : c.kycStatus === 'REJECTED' ? 'bad' : 'warn'}">${c.kycStatus}</span></td><td>${c.riskTier}</td><td class="num">${c.dailyLimitUsd}</td><td class="num">${c.creditLimitUsd}</td><td><button class="btn-ghost btn-sm" onclick="openClientDetail('${c.id}')">تفاصيل</button></td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+    pagerHtml('clients-pager', clientsPage, 10, result.total, 'p => { clientsPage = p; loadClients(); }');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function createClient(){
+  const fullName = document.getElementById('nc-name').value.trim();
+  const clientType = document.getElementById('nc-type').value;
+  const nationalIdOrReg = document.getElementById('nc-reg').value.trim();
+  const phone = document.getElementById('nc-phone').value.trim();
+  const dailyLimitUsd = document.getElementById('nc-daily').value.trim();
+  const creditLimitUsd = document.getElementById('nc-credit').value.trim();
+  if (!fullName || !nationalIdOrReg || !phone || !dailyLimitUsd || !creditLimitUsd) { showToast('عبّئ كل الحقول أولًا', true); return; }
+  await runBusy('create-client-btn', async () => {
+    await apiCall('/clients', { method: 'POST', body: JSON.stringify({ fullName, clientType, nationalIdOrReg, phone, dailyLimitUsd, creditLimitUsd }) });
+    showToast('تم تسجيل العميل بنجاح');
+    ['nc-name','nc-reg','nc-phone','nc-daily','nc-credit'].forEach(id => document.getElementById(id).value = '');
+    loadClients(); loadOverview();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function openClientDetail(id){
+  selectedClientId = id;
+  try{
+    const c = await apiCall('/clients/' + id);
+    document.getElementById('client-detail-card').style.display = 'block';
+    document.getElementById('client-detail-title').textContent = 'تفاصيل: ' + c.fullName;
+    const balancesHtml = c.balances.length
+      ? c.balances.map(b => `${b.currency.code}: <b class="num">${b.balance}</b>`).join(' · ')
+      : 'لا توجد أرصدة محفوظة (تسوية نقدية عند الشباك)';
+    document.getElementById('client-detail-body').innerHTML = `
+      <p style="font-size:13px;color:var(--ink-soft)">
+        الهاتف: <b class="num">${c.phone}</b> · النوع: ${c.clientType === 'company' ? 'شركة' : 'فرد'} · الرقم: <span class="num">${c.nationalIdOrReg}</span><br>
+        الأرصدة: ${balancesHtml}
+      </p>`;
+    document.getElementById('cd-daily').value = c.dailyLimitUsd;
+    document.getElementById('cd-credit').value = c.creditLimitUsd;
+    document.getElementById('cd-kyc').value = c.kycStatus;
+    document.getElementById('cd-risk').value = c.riskTier;
+    document.getElementById('client-detail-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }catch(err){ showToast(err.message, true); }
+}
+
+function closeClientDetail(){ selectedClientId = null; document.getElementById('client-detail-card').style.display = 'none'; }
+
+async function updateClientLimits(){
+  if (!selectedClientId) return;
+  const dailyLimitUsd = document.getElementById('cd-daily').value.trim();
+  const creditLimitUsd = document.getElementById('cd-credit').value.trim();
+  const reason = document.getElementById('cd-reason').value.trim();
+  if (!reason) { showToast('اكتب سبب التعديل', true); return; }
+  await runBusy('update-limits-btn', async () => {
+    await apiCall('/clients/' + selectedClientId + '/limits', { method: 'PATCH', body: JSON.stringify({ dailyLimitUsd, creditLimitUsd, reason }) });
+    showToast('تحدّثت الحدود بنجاح');
+    document.getElementById('cd-reason').value = '';
+    loadClients(); openClientDetail(selectedClientId);
+  })().catch(err => showToast(err.message, true));
+}
+
+async function updateClientKyc(){
+  if (!selectedClientId) return;
+  const kycStatus = document.getElementById('cd-kyc').value;
+  const riskTier = document.getElementById('cd-risk').value;
+  const reason = document.getElementById('cd-kyc-reason').value.trim();
+  if (!reason) { showToast('اكتب سبب التحديث', true); return; }
+  await runBusy('update-kyc-btn', async () => {
+    await apiCall('/clients/' + selectedClientId + '/kyc', { method: 'PATCH', body: JSON.stringify({ kycStatus, riskTier, reason }) });
+    showToast('تحدّثت حالة KYC والمخاطر');
+    document.getElementById('cd-kyc-reason').value = '';
+    loadClients(); openClientDetail(selectedClientId);
+  })().catch(err => showToast(err.message, true));
+}
+
+// ---------------- الصفقات ----------------
+
+async function createDeal(){
+  const clientId = document.getElementById('deal-client').value;
+  const branchId = document.getElementById('deal-branch').value;
+  const currencyCode = document.getElementById('deal-currency').value;
+  const direction = document.getElementById('deal-direction').value;
+  const amount = document.getElementById('deal-amount').value.trim();
+  if (!clientId) { showToast('اختر عميلًا أولًا (سجّل عميلًا من تبويب العملاء إن كانت القائمة فاضية)', true); return; }
+  await runBusy('create-deal-btn', async () => {
+    const body = { clientId, currencyCode, direction, amount };
+    if (branchId) body.branchId = branchId;
+    const deal = await apiCall('/deals', { method: 'POST', body: JSON.stringify(body) });
+    showToast('أُنشئت الصفقة — الحالة: ' + deal.status);
+    dealsPage = 1; loadDeals();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function dealAction(id, action, btn, extra){
+  btn.disabled = true;
+  try{
+    await apiCall('/deals/' + id + '/' + action, { method: 'POST', body: extra ? JSON.stringify(extra) : undefined });
+    showToast('تم: ' + action);
+    loadDeals(); loadTreasuryAll(); loadOverview();
+  }catch(err){ showToast(err.message, true); btn.disabled = false; }
+}
+
+async function loadDeals(){
+  try{
+    const status = document.getElementById('deals-status-filter').value;
+    const params = new URLSearchParams({ page: dealsPage, pageSize: 10 });
+    if (status) params.set('status', status);
+    const result = await apiCall('/deals?' + params.toString());
+    dealsCache = result.items;
+    renderDealsTable();
+    pagerHtml('deals-pager', dealsPage, 10, result.total, 'p => { dealsPage = p; loadDeals(); }');
+  }catch(err){ document.getElementById('deals-content').innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+function renderDealsTable(){
+  const el = document.getElementById('deals-content');
+  if (!dealsCache.length) { el.textContent = 'لا توجد صفقات مطابقة.'; return; }
+  const now = Date.now();
+  let html = '<div class="table-wrap"><table><thead><tr><th>العميل</th><th>العملة</th><th>الاتجاه</th><th>الكمية</th><th>السعر</th><th>الحالة</th><th>قفل السعر</th><th>إجراء</th></tr></thead><tbody>';
+  dealsCache.forEach(d => {
+    let actions = '—';
+    if (d.status === 'APPROVED') actions = `<button class="btn-primary btn-sm" onclick="dealAction('${d.id}','execute', this)">تنفيذ</button> <button class="btn-danger btn-sm" onclick="dealAction('${d.id}','cancel', this)">إلغاء</button>`;
+    else if (d.status === 'PENDING_APPROVAL') actions = `<button class="btn-ghost btn-sm" onclick="dealAction('${d.id}','approve', this)">اعتماد</button> <button class="btn-danger btn-sm" onclick="rejectDealPrompt('${d.id}', this)">رفض</button>`;
+
+    let timerHtml = '—';
+    if (d.status === 'APPROVED' || d.status === 'PENDING_APPROVAL') {
+      const remainMs = new Date(d.lockExpiresAt).getTime() - now;
+      timerHtml = remainMs <= 0 ? '<span class="lock-timer expired">انتهت المهلة</span>' : `<span class="lock-timer ${Math.ceil(remainMs/1000) <= 15 ? 'warn2' : ''}">${Math.ceil(remainMs/1000)} ث</span>`;
+    }
+    html += `<tr><td>${d.client.fullName}</td><td>${d.currency.code}</td><td>${d.direction === 'BUY' ? 'شراء' : 'بيع'}</td><td class="num">${d.amount}</td><td class="num">${d.lockedRate}</td><td><span class="pill ${pillClass(d.status)}">${d.status}</span></td><td>${timerHtml}</td><td>${actions}</td></tr>`;
+  });
+  el.innerHTML = html + '</tbody></table></div>';
+}
+
+function rejectDealPrompt(id, btn){
+  const reason = prompt('سبب الرفض:');
+  if (!reason) return;
+  dealAction(id, 'reject', btn, { reason });
+}
+
+// ---------------- الخزينة ----------------
+
+async function loadTreasuryAll(){
+  const el = document.getElementById('treasury-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const positions = await apiCall('/treasury/positions');
+    if (positions.length === 0) { el.textContent = 'لا توجد مراكز خزينة بعد — فعّل خط عملة من تبويب الإعدادات.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>الفرع</th><th>العملة</th><th>الرصيد</th><th>الحد الأدنى</th><th>سقف التعرّض</th><th>الحالة</th></tr></thead><tbody>';
+    positions.forEach(p => {
+      let flag = '<span class="pill ok">طبيعي</span>';
+      if (p.aboveMaxExposure) flag = '<span class="pill bad">تجاوز السقف</span>';
+      else if (p.belowMinThreshold) flag = '<span class="pill warn">دون الحد الأدنى</span>';
+      html += `<tr><td>${p.branch.name}</td><td>${p.currency.code}</td><td class="num">${p.balance}</td><td class="num">${p.minThreshold}</td><td class="num">${p.maxExposure}</td><td>${flag}</td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function recordMovement(){
+  const branchId = document.getElementById('mv-branch').value;
+  const currencyCode = document.getElementById('mv-currency').value;
+  const type = document.getElementById('mv-type').value;
+  const amount = document.getElementById('mv-amount').value.trim();
+  const reason = document.getElementById('mv-reason').value.trim();
+  if (!branchId || !amount || !reason) { showToast('عبّئ الفرع والمبلغ والسبب', true); return; }
+  await runBusy('record-movement-btn', async () => {
+    await apiCall('/treasury/branches/' + branchId + '/movements', { method: 'POST', body: JSON.stringify({ currencyCode, type, amount, reason }) });
+    showToast('سُجّلت الحركة بنجاح');
+    document.getElementById('mv-amount').value = ''; document.getElementById('mv-reason').value = '';
+    loadTreasuryAll(); loadOverview();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadMovementsLog(){
+  const branchId = document.getElementById('log-branch').value;
+  const el = document.getElementById('movements-log-content');
+  if (!branchId) { showToast('اختر فرعًا أولًا', true); return; }
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const movements = await apiCall('/treasury/branches/' + branchId + '/movements?limit=30');
+    if (movements.length === 0) { el.textContent = 'لا توجد حركات مسجّلة لهذا الفرع بعد.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>النوع</th><th>العملة</th><th>المبلغ</th><th>الرصيد بعدها</th><th>السبب</th><th>المنفّذ</th><th>الوقت</th></tr></thead><tbody>';
+    movements.forEach(m => { html += `<tr><td>${m.type}</td><td>${m.currency.code}</td><td class="num">${m.amount}</td><td class="num">${m.balanceAfter}</td><td class="wrap">${m.reason}</td><td>${m.performedBy.fullName}</td><td>${fmtDate(m.createdAt)}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+// ---------------- واتساب ----------------
+
+async function broadcastRate(){
+  const code = document.getElementById('broadcast-currency').value;
+  await runBusy('broadcast-btn', async () => {
+    const result = await apiCall('/whatsapp/broadcast/' + code, { method: 'POST' });
+    showToast(`بُثّت لـ ${result.recipients} عميل — نجح: ${result.sent}، فشل: ${result.failed}`);
+    loadWhatsapp();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadWhatsapp(){
+  const el = document.getElementById('whatsapp-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const result = await apiCall('/whatsapp/messages?pageSize=20');
+    if (result.items.length === 0) { el.textContent = 'لا توجد رسائل واتساب مسجّلة بعد.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>الاتجاه</th><th>النوع</th><th>الرقم</th><th>المحتوى</th><th>الحالة</th><th>الوقت</th></tr></thead><tbody>';
+    result.items.forEach(m => { html += `<tr><td>${m.direction === 'INBOUND' ? 'واردة' : 'صادرة'}</td><td>${m.kind === 'TEMPLATE' ? 'قالب: ' + (m.templateName || '') : 'نص حر'}</td><td class="num">${m.waPhoneNumber}</td><td class="wrap">${m.body}</td><td><span class="pill ${pillClass(m.status)}">${m.status}</span></td><td>${fmtDate(m.createdAt)}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+// ---------------- سجل التدقيق ----------------
+
+async function loadAudit(){
+  const el = document.getElementById('audit-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const entityType = document.getElementById('audit-entity-type').value.trim();
+    const params = new URLSearchParams({ page: auditPage, pageSize: 20 });
+    if (entityType) params.set('entityType', entityType);
+    const result = await apiCall('/audit?' + params.toString());
+    if (result.items.length === 0) { el.textContent = 'لا توجد سجلات مطابقة.'; document.getElementById('audit-pager').innerHTML = ''; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>الكيان</th><th>الإجراء</th><th>المنفّذ</th><th>الوقت</th></tr></thead><tbody>';
+    result.items.forEach(a => { html += `<tr><td>${a.entityType} <span class="num" style="color:var(--ink-faint)">#${a.entityId.slice(0,8)}</span></td><td><b>${a.action}</b></td><td>${a.actor.fullName} <span style="color:var(--ink-faint)">(${a.actor.role})</span></td><td>${fmtDate(a.createdAt)}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+    pagerHtml('audit-pager', auditPage, 20, result.total, 'p => { auditPage = p; loadAudit(); }');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+// ---------------- الإعدادات ----------------
+
+async function loadBranches(){
+  const el = document.getElementById('branches-content');
+  try{
+    const branches = await apiCall('/treasury/branches');
+    branchesCache = branches;
+    const bOpts = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    ['mv-branch','log-branch','pos-branch'].forEach(id => { document.getElementById(id).innerHTML = bOpts; });
+    document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
+    document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
+    document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
+    let html = '<div class="table-wrap"><table><thead><tr><th>الرمز</th><th>الاسم</th><th>المدينة</th></tr></thead><tbody>';
+    branches.forEach(b => { html += `<tr><td class="num">${b.code}</td><td>${b.name}</td><td>${b.city}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function createBranch(){
+  const code = document.getElementById('br-code').value.trim();
+  const name = document.getElementById('br-name').value.trim();
+  const city = document.getElementById('br-city').value.trim();
+  if (!code || !name || !city) { showToast('عبّئ كل حقول الفرع', true); return; }
+  await runBusy('create-branch-btn', async () => {
+    await apiCall('/treasury/branches', { method: 'POST', body: JSON.stringify({ code, name, city }) });
+    showToast('أُضيف الفرع بنجاح');
+    document.getElementById('br-code').value = ''; document.getElementById('br-name').value = ''; document.getElementById('br-city').value = '';
+    loadBranches();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadCurrencies(){
+  const el = document.getElementById('currencies-content');
+  try{
+    const currencies = await apiCall('/currencies');
+    let html = '<div class="table-wrap"><table><thead><tr><th>الرمز</th><th>الاسم</th><th>المنازل العشرية</th></tr></thead><tbody>';
+    currencies.forEach(c => { html += `<tr><td class="num">${c.code}</td><td>${c.name}</td><td class="num">${c.decimalPlaces}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function createCurrency(){
+  const code = document.getElementById('cur-code').value.trim();
+  const name = document.getElementById('cur-name').value.trim();
+  const decimalPlaces = parseInt(document.getElementById('cur-decimals').value.trim() || '2', 10);
+  if (!code || !name) { showToast('عبّئ الرمز والاسم', true); return; }
+  await runBusy('create-currency-btn', async () => {
+    await apiCall('/currencies', { method: 'POST', body: JSON.stringify({ code, name, decimalPlaces }) });
+    showToast('أُضيفت العملة بنجاح — أعد تسجيل الدخول لتحديث القوائم المنسدلة');
+    document.getElementById('cur-code').value = ''; document.getElementById('cur-name').value = '';
+    loadCurrencies();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function configurePosition(){
+  const branchId = document.getElementById('pos-branch').value;
+  const currencyCode = document.getElementById('pos-currency').value;
+  const maxExposure = document.getElementById('pos-max').value.trim();
+  const minThreshold = document.getElementById('pos-min').value.trim() || '0';
+  if (!branchId || !maxExposure) { showToast('اختر فرعًا وأدخل سقف التعرّض', true); return; }
+  await runBusy('configure-position-btn', async () => {
+    await apiCall('/treasury/branches/' + branchId + '/positions', { method: 'POST', body: JSON.stringify({ currencyCode, maxExposure, minThreshold }) });
+    showToast('حُفظ إعداد خط العملة بنجاح');
+    loadTreasuryAll();
+  })().catch(err => showToast(err.message, true));
+}
+
+// ---------------- المصاريف ----------------
+
+async function createExpense(){
+  const category = document.getElementById('ex-category').value;
+  const amount = document.getElementById('ex-amount').value.trim();
+  const currencyCode = document.getElementById('ex-currency').value;
+  const branchId = document.getElementById('ex-branch').value;
+  const description = document.getElementById('ex-description').value.trim();
+  if (!amount || !description) { showToast('أدخل المبلغ والوصف', true); return; }
+  await runBusy('create-expense-btn', async () => {
+    const body = { category, amount, currencyCode, description };
+    if (branchId) body.branchId = branchId;
+    await apiCall('/expenses', { method: 'POST', body: JSON.stringify(body) });
+    showToast('سُجّل المصروف بنجاح');
+    document.getElementById('ex-amount').value = ''; document.getElementById('ex-description').value = '';
+    expensesPage = 1; loadExpenses(); loadReports();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadExpenses(){
+  const el = document.getElementById('expenses-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const category = document.getElementById('ex-filter-category').value;
+    const from = document.getElementById('ex-filter-from').value;
+    const to = document.getElementById('ex-filter-to').value;
+    const params = new URLSearchParams({ page: expensesPage, pageSize: 10 });
+    if (category) params.set('category', category);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const result = await apiCall('/expenses?' + params.toString());
+    if (result.items.length === 0) { el.textContent = 'لا توجد مصاريف مطابقة.'; document.getElementById('expenses-pager').innerHTML = ''; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الفئة</th><th>الفرع</th><th>الوصف</th><th>المبلغ</th><th>المسجِّل</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    result.items.forEach(e => {
+      const actions = e.isVoided ? '—' : `<button class="btn-danger btn-sm" onclick="voidExpensePrompt('${e.id}', this)">إلغاء</button>`;
+      html += `<tr><td>${fmtDate(e.expenseDate)}</td><td>${EXPENSE_CATEGORY_LABELS[e.category] || e.category}</td><td>${e.branch ? e.branch.name : 'مركزي'}</td><td class="wrap">${e.description}</td><td class="num">${e.amount} ${e.currency.code}</td><td>${e.recordedBy.fullName}</td><td>${e.isVoided ? '<span class="pill bad">ملغى</span>' : '<span class="pill ok">فعّال</span>'}</td><td>${actions}</td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+    pagerHtml('expenses-pager', expensesPage, 10, result.total, 'p => { expensesPage = p; loadExpenses(); }');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+function voidExpensePrompt(id, btn){
+  const reason = prompt('سبب إلغاء المصروف:');
+  if (!reason) return;
+  btn.disabled = true;
+  apiCall('/expenses/' + id + '/void', { method: 'POST', body: JSON.stringify({ reason }) })
+    .then(() => { showToast('أُلغي المصروف'); loadExpenses(); loadReports(); })
+    .catch(err => { showToast(err.message, true); btn.disabled = false; });
+}
+
+// ---------------- التقارير ----------------
+
+/** رسم قائمة أشرطة أفقية بسيطة (بلا مكتبة خارجية) — قيمة سالبة تُرسم بالأحمر. */
+function barListHtml(items, labelFn, valueFn){
+  if (!items.length) return '<div class="state-msg">لا توجد بيانات لهذه الفترة.</div>';
+  const max = Math.max(...items.map(i => Math.abs(parseFloat(valueFn(i))) || 0), 1);
+  return '<div style="display:flex;flex-direction:column;gap:9px">' + items.map(i => {
+    const val = parseFloat(valueFn(i)) || 0;
+    const pct = Math.min(100, Math.abs(val) / max * 100);
+    const neg = val < 0;
+    return `<div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>${labelFn(i)}</span><span class="num" style="${neg ? 'color:var(--critical)' : ''}">${val.toLocaleString('ar-LY', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></div>
+      <div style="background:var(--accent-soft);border-radius:5px;height:8px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${neg ? 'var(--critical)' : 'var(--accent)'};border-radius:5px"></div></div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+async function loadReports(){
+  const from = document.getElementById('rp-from').value;
+  const to = document.getElementById('rp-to').value;
+  const branchId = document.getElementById('rp-branch').value;
+  const params = new URLSearchParams();
+  if (from) params.set('from', new Date(from + 'T00:00:00').toISOString());
+  if (to) params.set('to', new Date(to + 'T23:59:59').toISOString());
+  if (branchId) params.set('branchId', branchId);
+  const qs = params.toString();
+
+  const kpisEl = document.getElementById('reports-kpis');
+  kpisEl.innerHTML = '<div class="kpi"><div class="l">جارِ التحميل...</div></div>';
+  try{
+    const [summary, byCategory, trend, consolidated] = await Promise.all([
+      apiCall('/reports/summary' + (qs ? '?' + qs : '')),
+      apiCall('/reports/expenses-by-category' + (qs ? '?' + qs : '')),
+      apiCall('/reports/deals-trend' + (qs ? '?' + qs : '')),
+      apiCall('/reports/treasury-consolidated' + (branchId ? '?branchId=' + branchId : '')),
+    ]);
+
+    kpisEl.innerHTML = `
+      <div class="kpi"><div class="l">الصفقات المنفَّذة</div><div class="v num">${summary.deals.count}</div></div>
+      <div class="kpi"><div class="l">حجمها بما يعادل الدينار</div><div class="v num">${parseFloat(summary.deals.totalLydEquivalent).toLocaleString('ar-LY')}</div></div>
+      <div class="kpi"><div class="l">عملاء جدد بالفترة</div><div class="v num">${summary.newClients}</div></div>
+      <div class="kpi"><div class="l">صفقات بانتظار موافقة</div><div class="v num gold">${summary.pendingDealsAwaitingApproval}</div></div>
+    `;
+
+    document.getElementById('reports-expenses-currency').innerHTML = barListHtml(summary.expenses.total, i => i.currency, i => i.total);
+    document.getElementById('reports-treasury-net').innerHTML = barListHtml(summary.treasuryNetMovement, i => i.currency, i => i.net);
+    document.getElementById('reports-expenses-category').innerHTML = barListHtml(
+      byCategory.items, i => (EXPENSE_CATEGORY_LABELS[i.category] || i.category) + ' — ' + i.currency, i => i.total,
+    );
+
+    if (trend.points.length === 0) {
+      document.getElementById('reports-deals-trend').innerHTML = '<div class="state-msg">لا توجد صفقات منفَّذة لهذه الفترة.</div>';
+    } else {
+      let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>العملة</th><th>عدد الصفقات</th><th>الحجم بالدينار</th></tr></thead><tbody>';
+      trend.points.forEach(p => { html += `<tr><td>${p.date}</td><td>${p.currency}</td><td class="num">${p.dealsCount}</td><td class="num">${p.totalLydEquivalent}</td></tr>`; });
+      document.getElementById('reports-deals-trend').innerHTML = html + '</tbody></table></div>';
+    }
+
+    document.getElementById('reports-treasury-consolidated').innerHTML = barListHtml(consolidated, i => i.currency, i => i.totalBalance);
+  }catch(err){ kpisEl.innerHTML = `<div class="kpi"><div class="l" style="color:var(--critical)">${err.message}</div></div>`; }
+}
+</script>
+</body>
+</html>

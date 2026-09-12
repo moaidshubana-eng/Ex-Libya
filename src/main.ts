@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { join } from 'path';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -12,6 +13,11 @@ async function bootstrap() {
   // واتساب (X-Hub-Signature-256) يحتاج الجسم الخام (Buffer) قبل تحويله JSON.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   const config = app.get(ConfigService);
+
+  // لوحة التحكم (public/index.html) تُخدَّم من نفس الخادم على المسار الرئيسي "/" —
+  // فلا حاجة لملف HTML منفصل يُدار يدويًا على جهاز أي مستخدم؛ أي تعديل يُدفع على
+  // الفرع ينعكس تلقائيًا هنا مع بقية الخادم.
+  app.useStaticAssets(join(process.cwd(), 'public'));
 
   app.use(
     express.json({
