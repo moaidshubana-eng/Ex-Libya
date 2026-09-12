@@ -17,11 +17,11 @@ datasource db {
 // ------------------------------------------------------------------
 
 enum StaffRole {
-  ADMIN               // إدارة النظام والصلاحيات
-  TREASURY_MANAGER    // اعتماد صفقات كبيرة، تعديل أسعار يدويًا، حركات الخزينة
-  TELLER              // تنفيذ صفقات الصرافين وإدخال حركات الخزينة العادية
-  COMPLIANCE_OFFICER  // مراجعة الامتثال وتقارير مكافحة غسل الأموال
-  CUSTOMER_SERVICE    // إدارة ملفات العملاء والرد على الاستفسارات
+  ADMIN // إدارة النظام والصلاحيات
+  TREASURY_MANAGER // اعتماد صفقات كبيرة، تعديل أسعار يدويًا، حركات الخزينة
+  TELLER // تنفيذ صفقات الصرافين وإدخال حركات الخزينة العادية
+  COMPLIANCE_OFFICER // مراجعة الامتثال وتقارير مكافحة غسل الأموال
+  CUSTOMER_SERVICE // إدارة ملفات العملاء والرد على الاستفسارات
 }
 
 model User {
@@ -42,14 +42,15 @@ model User {
   mfaSecretEncrypted    String?
   mfaRecoveryCodeHashes String[] @default([]) // كل رمز استرداد يُستهلك مرة واحدة فقط (يُحذف من المصفوفة بعد الاستخدام)
 
-  treasuryMovements TreasuryMovement[] @relation("MovementActor")
-  publishedRates    ExchangeRate[]     @relation("RateActor")
-  auditLogs         AuditLog[]         @relation("AuditActor")
-  requestedDeals    Transaction[]      @relation("DealRequestedBy")
-  approvedDeals     Transaction[]      @relation("DealApprovedBy")
-  executedDeals     Transaction[]      @relation("DealExecutedBy")
-  recordedExpenses  Expense[]          @relation("ExpenseRecordedBy")
-  voidedExpenses    Expense[]          @relation("ExpenseVoidedBy")
+  treasuryMovements               TreasuryMovement[]      @relation("MovementActor")
+  publishedRates                  ExchangeRate[]          @relation("RateActor")
+  auditLogs                       AuditLog[]              @relation("AuditActor")
+  requestedDeals                  Transaction[]           @relation("DealRequestedBy")
+  approvedDeals                   Transaction[]           @relation("DealApprovedBy")
+  executedDeals                   Transaction[]           @relation("DealExecutedBy")
+  recordedExpenses                Expense[]               @relation("ExpenseRecordedBy")
+  voidedExpenses                  Expense[]               @relation("ExpenseVoidedBy")
+  clientBalanceMovementsPerformed ClientBalanceMovement[] @relation("ClientBalanceMovementActor")
 
   @@map("users")
 }
@@ -82,12 +83,13 @@ model Currency {
   decimalPlaces Int     @default(2)
   isActive      Boolean @default(true)
 
-  positions  TreasuryPosition[]
-  movements  TreasuryMovement[]
-  rates      ExchangeRate[]
-  balances   ClientBalance[]
-  deals      Transaction[]
-  expenses   Expense[]
+  positions        TreasuryPosition[]
+  movements        TreasuryMovement[]
+  rates            ExchangeRate[]
+  balances         ClientBalance[]
+  balanceMovements ClientBalanceMovement[]
+  deals            Transaction[]
+  expenses         Expense[]
 
   @@map("currencies")
 }
@@ -109,25 +111,26 @@ enum KycStatus {
 }
 
 model Client {
-  id                String    @id @default(uuid())
-  fullName          String
-  clientType        String    @default("individual") // individual | company
-  nationalIdOrReg   String    @unique // الرقم الوطني أو رقم السجل التجاري
-  phone             String    @unique // رقم واتساب الأساسي للعميل
-  address           String?
-  kycStatus         KycStatus @default(PENDING)
-  riskTier          RiskTier  @default(MEDIUM)
+  id              String    @id @default(uuid())
+  fullName        String
+  clientType      String    @default("individual") // individual | company
+  nationalIdOrReg String    @unique // الرقم الوطني أو رقم السجل التجاري
+  phone           String    @unique // رقم واتساب الأساسي للعميل
+  address         String?
+  kycStatus       KycStatus @default(PENDING)
+  riskTier        RiskTier  @default(MEDIUM)
 
   // الحدود مُعبَّر عنها بما يعادلها بالدولار الأمريكي لتبسيط المقارنة عبر العملات
-  dailyLimitUsd     Decimal   @db.Decimal(18, 2)
-  creditLimitUsd    Decimal   @db.Decimal(18, 2)
+  dailyLimitUsd  Decimal @db.Decimal(18, 2)
+  creditLimitUsd Decimal @db.Decimal(18, 2)
 
-  whatsappOptIn     Boolean   @default(false) // موافقة صريحة على تحديثات واتساب الجماعية
-  isActive          Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  whatsappOptIn Boolean  @default(false) // موافقة صريحة على تحديثات واتساب الجماعية
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   balances         ClientBalance[]
+  balanceMovements ClientBalanceMovement[]
   deals            Transaction[]
   whatsappMessages WhatsAppMessage[]
 
@@ -135,17 +138,50 @@ model Client {
   @@map("clients")
 }
 
+// رصيد وديعة العميل لدى الشركة (Custody) — منفصل تمامًا عن صفقات الصرف الفورية
+// عند الشباك. يُحدَّث فقط عبر applyClientBalanceMovement ضمن معاملة واحدة مع
+// صف ClientBalanceMovement المقابل — لا تحديث مباشر على balance من أي مكان آخر.
 model ClientBalance {
   id         String   @id @default(uuid())
   clientId   String
   client     Client   @relation(fields: [clientId], references: [id])
   currencyId String
   currency   Currency @relation(fields: [currencyId], references: [id])
-  balance    Decimal  @db.Decimal(18, 2) @default(0)
+  balance    Decimal  @default(0) @db.Decimal(18, 2) // قد يكون سالبًا (عميل مدين) — لا قيد يمنع ذلك عمدًا
   updatedAt  DateTime @updatedAt
 
   @@unique([clientId, currencyId])
   @@map("client_balances")
+}
+
+enum ClientBalanceMovementType {
+  DEPOSIT // إيداع يُضاف لرصيد وديعة العميل لدى الشركة
+  WITHDRAWAL // سحب من رصيد وديعة العميل
+  ADJUSTMENT_INCREASE // تصحيح يدوي بالزيادة (خطأ سابق، تسوية إدارية...)
+  ADJUSTMENT_DECREASE // تصحيح يدوي بالنقصان
+}
+
+// دفتر تراكمي (Append-only) لكل حركة على رصيد وديعة عميل — لا تحديث ولا حذف
+// على مستوى التطبيق، تمامًا كسجل TreasuryMovement. treasuryMovementId يربط
+// الحركة بحركة الخزينة الفعلية إن كان الإيداع/السحب نقديًا حقيقيًا من شباك فرع
+// (حقل نصي بسيط بلا علاقة Prisma، على غرار Expense.treasuryMovementId).
+model ClientBalanceMovement {
+  id                 String                    @id @default(uuid())
+  clientId           String
+  client             Client                    @relation(fields: [clientId], references: [id])
+  currencyId         String
+  currency           Currency                  @relation(fields: [currencyId], references: [id])
+  type               ClientBalanceMovementType
+  amount             Decimal                   @db.Decimal(18, 2) // دومًا قيمة موجبة؛ الاتجاه يحدده type
+  balanceAfter       Decimal                   @db.Decimal(18, 2) // قد يكون سالبًا (عميل مدين)
+  reason             String
+  performedById      String
+  performedBy        User                      @relation("ClientBalanceMovementActor", fields: [performedById], references: [id])
+  treasuryMovementId String?
+  createdAt          DateTime                  @default(now())
+
+  @@index([clientId, currencyId, createdAt])
+  @@map("client_balance_movements")
 }
 
 // ------------------------------------------------------------------
@@ -153,29 +189,29 @@ model ClientBalance {
 // ------------------------------------------------------------------
 
 model TreasuryPosition {
-  id            String   @id @default(uuid())
-  branchId      String
-  branch        Branch   @relation(fields: [branchId], references: [id])
-  currencyId    String
-  currency      Currency @relation(fields: [currencyId], references: [id])
-  balance       Decimal  @db.Decimal(18, 2) @default(0)
-  minThreshold  Decimal? @db.Decimal(18, 2) // حد أدنى تحذيري — اختياري، بلا حد أدنى إن تُرك فارغًا
-  maxExposure   Decimal? @db.Decimal(18, 2) // سقف التعرّض المسموح به — اختياري، بلا سقف إن تُرك فارغًا
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  branchId     String
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  currencyId   String
+  currency     Currency @relation(fields: [currencyId], references: [id])
+  balance      Decimal  @default(0) @db.Decimal(18, 2)
+  minThreshold Decimal? @db.Decimal(18, 2) // حد أدنى تحذيري — اختياري، بلا حد أدنى إن تُرك فارغًا
+  maxExposure  Decimal? @db.Decimal(18, 2) // سقف التعرّض المسموح به — اختياري، بلا سقف إن تُرك فارغًا
+  updatedAt    DateTime @updatedAt
 
   @@unique([branchId, currencyId])
   @@map("treasury_positions")
 }
 
 enum MovementType {
-  DEPOSIT             // إيداع في الخزينة (تغذية)
-  WITHDRAWAL          // سحب من الخزينة
-  TRANSFER_IN         // تحويل وارد من فرع/خزينة أخرى
-  TRANSFER_OUT        // تحويل صادر إلى فرع/خزينة أخرى
+  DEPOSIT // إيداع في الخزينة (تغذية)
+  WITHDRAWAL // سحب من الخزينة
+  TRANSFER_IN // تحويل وارد من فرع/خزينة أخرى
+  TRANSFER_OUT // تحويل صادر إلى فرع/خزينة أخرى
   ADJUSTMENT_INCREASE // تسوية جرد بالزيادة
   ADJUSTMENT_DECREASE // تسوية جرد بالنقصان
-  TRADE_BUY           // زيادة ناتجة عن شراء عملة من عميل (تنفيذ صفقة)
-  TRADE_SELL          // نقصان ناتج عن بيع عملة لعميل (تنفيذ صفقة)
+  TRADE_BUY // زيادة ناتجة عن شراء عملة من عميل (تنفيذ صفقة)
+  TRADE_SELL // نقصان ناتج عن بيع عملة لعميل (تنفيذ صفقة)
 }
 
 // دفتر حركات الخزينة — سجل تراكمي فقط (Append-only)، لا تُنفَّذ عليه عمليات تعديل أو حذف
@@ -192,7 +228,7 @@ model TreasuryMovement {
   reason        String
   performedById String
   performedBy   User         @relation("MovementActor", fields: [performedById], references: [id])
-  dealId        String?      // إن كانت الحركة ناتجة عن تنفيذ صفقة تداول (TRADE_BUY/TRADE_SELL)
+  dealId        String? // إن كانت الحركة ناتجة عن تنفيذ صفقة تداول (TRADE_BUY/TRADE_SELL)
   deal          Transaction? @relation(fields: [dealId], references: [id])
   createdAt     DateTime     @default(now())
 
@@ -206,10 +242,10 @@ model TreasuryMovement {
 // ------------------------------------------------------------------
 
 enum RateSource {
-  PROVIDER    // مصدر بيانات آلي (بنك/مزوّد تسعير)
-  AGGREGATED  // متوسط مرجّح من عدة مصادر
-  MANUAL      // إدخال يدوي عادي ضمن الانحراف المسموح
-  OVERRIDE    // تجاوز يدوي موثّق تجاوز فحص الانحراف التلقائي
+  PROVIDER // مصدر بيانات آلي (بنك/مزوّد تسعير)
+  AGGREGATED // متوسط مرجّح من عدة مصادر
+  MANUAL // إدخال يدوي عادي ضمن الانحراف المسموح
+  OVERRIDE // تجاوز يدوي موثّق تجاوز فحص الانحراف التلقائي
 }
 
 model ExchangeRate {
@@ -235,29 +271,29 @@ model ExchangeRate {
 // ------------------------------------------------------------------
 
 enum DealDirection {
-  BUY  // الشركة تشتري العملة الأجنبية من العميل (تدخل الخزينة)
+  BUY // الشركة تشتري العملة الأجنبية من العميل (تدخل الخزينة)
   SELL // الشركة تبيع العملة الأجنبية للعميل (تخرج من الخزينة)
 }
 
 enum DealStatus {
   PENDING_APPROVAL // بانتظار موافقة ضابط ثانٍ (تتجاوز حد الموافقة المزدوجة)
-  APPROVED         // معتمدة (تلقائيًا إن كانت ضمن الحد، أو بعد موافقة ضابط ثانٍ) وجاهزة للتنفيذ
-  REJECTED         // رفضها المعتمد
-  EXPIRED          // انتهت مهلة قفل السعر قبل التنفيذ أو الاعتماد
-  EXECUTED         // نُفِّذت وأثّرت على رصيد الخزينة
-  CANCELLED        // ألغاها منشئها قبل الاعتماد أو التنفيذ
+  APPROVED // معتمدة (تلقائيًا إن كانت ضمن الحد، أو بعد موافقة ضابط ثانٍ) وجاهزة للتنفيذ
+  REJECTED // رفضها المعتمد
+  EXPIRED // انتهت مهلة قفل السعر قبل التنفيذ أو الاعتماد
+  EXECUTED // نُفِّذت وأثّرت على رصيد الخزينة
+  CANCELLED // ألغاها منشئها قبل الاعتماد أو التنفيذ
 }
 
 // صفقة تداول: من طلب العميل إلى قفل السعر فالموافقة المزدوجة (عند الحاجة) فالتنفيذ.
 // كل تحوّل حالة يُسجَّل في AuditLog؛ التنفيذ الفعلي يُنشئ TreasuryMovement مرتبطًا بالصفقة.
 model Transaction {
-  id       String   @id @default(uuid())
-  clientId String
-  client   Client   @relation(fields: [clientId], references: [id])
-  branchId String
-  branch   Branch   @relation(fields: [branchId], references: [id])
+  id         String   @id @default(uuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id])
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id])
   currencyId String
-  currency Currency @relation(fields: [currencyId], references: [id])
+  currency   Currency @relation(fields: [currencyId], references: [id])
 
   direction DealDirection
 
@@ -306,43 +342,43 @@ model Transaction {
 // ------------------------------------------------------------------
 
 enum MessageDirection {
-  INBOUND  // من العميل إلى الشركة
+  INBOUND // من العميل إلى الشركة
   OUTBOUND // من الشركة إلى العميل
 }
 
 enum MessageKind {
   FREE_TEXT // رد حر داخل نافذة خدمة العميل (24 ساعة من آخر رسالة واردة)
-  TEMPLATE  // قالب معتمد مسبقًا — إلزامي لأي رسالة تبدأها الشركة
+  TEMPLATE // قالب معتمد مسبقًا — إلزامي لأي رسالة تبدأها الشركة
 }
 
 enum MessageIntent {
-  RATE_INQUIRY   // استفسار سعر فوري
-  HUMAN_HANDOFF  // تحويل لموظف بشري
+  RATE_INQUIRY // استفسار سعر فوري
+  HUMAN_HANDOFF // تحويل لموظف بشري
   OTHER
 }
 
 enum MessageStatus {
   RECEIVED // رسالة واردة سُجّلت
-  SENT     // أُرسلت بنجاح عبر Meta Cloud API
-  FAILED   // فشل الإرسال (يُحفظ السبب في errorMessage)
+  SENT // أُرسلت بنجاح عبر Meta Cloud API
+  FAILED // فشل الإرسال (يُحفظ السبب في errorMessage)
 }
 
 model WhatsAppMessage {
-  id            String            @id @default(uuid())
-  direction     MessageDirection
-  kind          MessageKind
-  intent        MessageIntent?    // للرسائل الواردة فقط
-  waPhoneNumber String            // رقم واتساب بالصيغة الدولية
-  clientId      String?
-  client        Client?           @relation(fields: [clientId], references: [id])
-  templateName  String?
-  body          String            // النص الفعلي المُرسَل أو المُستقبَل — للتدقيق والعرض
-  status        MessageStatus
-  errorMessage  String?
-  providerMessageId String?       // معرّف الرسالة من Meta، إن توفّر
-  relatedDealId String?
-  relatedDeal   Transaction?      @relation(fields: [relatedDealId], references: [id])
-  createdAt     DateTime          @default(now())
+  id                String           @id @default(uuid())
+  direction         MessageDirection
+  kind              MessageKind
+  intent            MessageIntent? // للرسائل الواردة فقط
+  waPhoneNumber     String // رقم واتساب بالصيغة الدولية
+  clientId          String?
+  client            Client?          @relation(fields: [clientId], references: [id])
+  templateName      String?
+  body              String // النص الفعلي المُرسَل أو المُستقبَل — للتدقيق والعرض
+  status            MessageStatus
+  errorMessage      String?
+  providerMessageId String? // معرّف الرسالة من Meta، إن توفّر
+  relatedDealId     String?
+  relatedDeal       Transaction?     @relation(fields: [relatedDealId], references: [id])
+  createdAt         DateTime         @default(now())
 
   @@index([clientId, createdAt])
   @@index([waPhoneNumber, createdAt])
@@ -355,9 +391,9 @@ model WhatsAppMessage {
 
 model AuditLog {
   id         String   @id @default(uuid())
-  entityType String   // مثال: "Client", "ExchangeRate", "TreasuryMovement"
+  entityType String // مثال: "Client", "ExchangeRate", "TreasuryMovement"
   entityId   String
-  action     String   // مثال: "CREATE", "UPDATE_LIMITS", "PUBLISH_RATE_OVERRIDE"
+  action     String // مثال: "CREATE", "UPDATE_LIMITS", "PUBLISH_RATE_OVERRIDE"
   actorId    String
   actor      User     @relation("AuditActor", fields: [actorId], references: [id])
   before     Json?
@@ -375,23 +411,23 @@ model AuditLog {
 // ------------------------------------------------------------------
 
 enum ExpenseCategory {
-  SALARIES           // رواتب وأجور
-  RENT                // إيجارات
-  UTILITIES           // كهرباء، ماء، اتصالات وإنترنت
-  MAINTENANCE         // صيانة ومستلزمات تشغيل
-  OFFICE_SUPPLIES     // مستلزمات مكتبية
-  MARKETING           // تسويق وإعلان
-  PROFESSIONAL_FEES   // أتعاب مهنية (محاماة، محاسبة، استشارات)
-  TAXES_GOVERNMENT    // رسوم ومستحقات حكومية
-  TRAVEL              // سفر وتنقلات
-  OTHER               // أخرى
+  SALARIES // رواتب وأجور
+  RENT // إيجارات
+  UTILITIES // كهرباء، ماء، اتصالات وإنترنت
+  MAINTENANCE // صيانة ومستلزمات تشغيل
+  OFFICE_SUPPLIES // مستلزمات مكتبية
+  MARKETING // تسويق وإعلان
+  PROFESSIONAL_FEES // أتعاب مهنية (محاماة، محاسبة، استشارات)
+  TAXES_GOVERNMENT // رسوم ومستحقات حكومية
+  TRAVEL // سفر وتنقلات
+  OTHER // أخرى
 }
 
 // سجل تراكمي — لا حذف فعلي لأي مصروف؛ تصحيح الخطأ يكون بإلغائه (isVoided)
 // مع سبب موثّق، فيبقى أثره ظاهرًا في السجل والتدقيق.
 model Expense {
   id          String          @id @default(uuid())
-  branchId    String?         // فارغ للمصاريف المركزية غير المرتبطة بفرع بعينه
+  branchId    String? // فارغ للمصاريف المركزية غير المرتبطة بفرع بعينه
   branch      Branch?         @relation(fields: [branchId], references: [id])
   currencyId  String
   currency    Currency        @relation(fields: [currencyId], references: [id])

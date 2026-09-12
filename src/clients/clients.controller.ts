@@ -5,6 +5,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { ClientsService } from './clients.service';
+import { AdjustClientBalanceDto } from './dto/adjust-client-balance.dto';
 import { CreateClientDto } from './dto/create-client.dto';
 import { ListClientsQuery } from './dto/list-clients.query';
 import { UpdateKycDto } from './dto/update-kyc.dto';
@@ -55,5 +56,34 @@ export class ClientsController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.clientsService.updateKyc(id, dto, actor);
+  }
+
+  @Get(':id/balance-movements')
+  @ApiOperation({
+    summary: 'سجل حركات رصيد وديعة العميل (إيداع/سحب/تعديلات) — اختياريًا لعملة واحدة',
+  })
+  listBalanceMovements(
+    @Param('id') id: string,
+    @Query('currencyCode') currencyCode?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.clientsService.listBalanceMovements(
+      id,
+      currencyCode,
+      limit ? parseInt(limit, 10) : undefined,
+    );
+  }
+
+  @Post(':id/balance-adjustments')
+  @Roles(StaffRole.ADMIN, StaffRole.TREASURY_MANAGER)
+  @ApiOperation({
+    summary: 'تصحيح يدوي لرصيد وديعة عميل (بلا أثر على خزينة أي فرع) — يتطلب سببًا موثّقًا',
+  })
+  adjustBalance(
+    @Param('id') id: string,
+    @Body() dto: AdjustClientBalanceDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.clientsService.adjustBalance(id, dto, actor);
   }
 }

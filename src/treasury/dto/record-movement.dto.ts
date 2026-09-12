@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MovementType } from '@prisma/client';
-import { IsEnum, IsString, Length, MinLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, Length, MinLength } from 'class-validator';
 import { IsDecimalString } from '../../common/validators/is-decimal-string.decorator';
 
 export class RecordMovementDto {
@@ -24,4 +24,14 @@ export class RecordMovementDto {
   @IsString()
   @MinLength(5, { message: 'السبب يجب أن يكون موصّفًا بوضوح (5 أحرف على الأقل)' })
   reason!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'اختياري — لا يُقبل إلا مع DEPOSIT أو WITHDRAWAL: يربط هذه الحركة برصيد وديعة عميل لدى ' +
+      'الشركة (custody) فيُحدَّث رصيده تلقائيًا بنفس القيمة ضمن نفس المعاملة؛ إن تُرك فارغًا تبقى ' +
+      'الحركة حركة خزينة عادية بلا أي أثر على أرصدة العملاء',
+  })
+  @IsOptional()
+  @IsUUID()
+  clientId?: string;
 }

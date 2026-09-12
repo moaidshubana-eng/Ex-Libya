@@ -1,7 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ClientBalanceMovementType, MovementType, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { applyClientBalanceMovement } from '../clients/apply-client-balance-movement';
 import { toMoney } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
 import { applyMovement } from './apply-movement';
@@ -151,6 +157,24 @@ export class TreasuryService {
     await this.getBranchOrThrow(branchId);
     const currency = await this.getCurrencyOrThrow(dto.currencyCode);
 
+    // ربط اختياري برصيد وديعة عميل — لا يُقبل إلا مع إيداع/سحب فعلي نقدي حقيقي؛
+    // باقي الأنواع (تحويل بين فروع، تسوية جرد، ناتج صفقة) لا معنى لربطها بعميل هنا.
+    let client: { id: string; fullName: string; isActive: boolean } | null = null;
+    if (dto.clientId) {
+      if (dto.type !== MovementType.DEPOSIT && dto.type !== MovementType.WITHDRAWAL) {
+        throw new BadRequestException(
+          'ربط الحركة برصيد عميل غير مسموح إلا مع نوع DEPOSIT أو WITHDRAWAL',
+        );
+      }
+      client = await this.prisma.client.findUnique({
+        where: { id: dto.clientId },
+        select: { id: true, fullName: true, isActive: true },
+      });
+      if (!client) throw new NotFoundException('العميل غير موجود');
+      if (!client.isActive)
+        throw new BadRequestException('العميل معطَّل — لا يمكن تسجيل حركة على رصيده');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const result = await applyMovement(tx, {
         branchId,
@@ -176,10 +200,47 @@ export class TreasuryService {
         },
       });
 
+      let clientBalanceMovement = null;
+      if (client) {
+        const clientResult = await applyClientBalanceMovement(tx, {
+          clientId: client.id,
+          currencyId: currency.id,
+          type:
+            dto.type === MovementType.DEPOSIT
+              ? ClientBalanceMovementType.DEPOSIT
+              : ClientBalanceMovementType.WITHDRAWAL,
+          amount: dto.amount,
+          reason: dto.reason,
+          performedById: actor.id,
+          treasuryMovementId: result.movement.id,
+        });
+
+        await this.audit.record({
+          entityType: 'ClientBalanceMovement',
+          entityId: clientResult.movement.id,
+          action: 'RECORD_MOVEMENT',
+          actorId: actor.id,
+          before: { balance: clientResult.balanceBefore.toFixed(2) },
+          after: {
+            balance: clientResult.balanceAfter.toFixed(2),
+            type: clientResult.movement.type,
+            amount: dto.amount,
+            clientId: client.id,
+            treasuryMovementId: result.movement.id,
+          },
+        });
+
+        clientBalanceMovement = {
+          ...clientResult.movement,
+          clientFullName: client.fullName,
+        };
+      }
+
       return {
         ...result.movement,
         exceedsMaxExposure: result.exceedsMaxExposure,
         belowMinThreshold: result.belowMinThreshold,
+        clientBalanceMovement,
       };
     });
   }

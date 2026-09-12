@@ -334,6 +334,22 @@
             <div class="field"><label>سبب التحديث</label><input type="text" id="cd-kyc-reason" placeholder="مثال: اكتملت المستندات" /></div>
           </div>
           <button class="btn-ghost btn-sm" id="update-kyc-btn" onclick="updateClientKyc()">تحديث KYC والمخاطر</button>
+          <hr class="divider">
+          <div class="card-head"><h3>تصحيح يدوي لرصيد الوديعة</h3><span class="sub">لتصحيح أخطاء إدخال سابقة فقط — بلا أثر على خزينة أي فرع (يتطلب ADMIN أو مدير خزينة)</span></div>
+          <div class="form-grid">
+            <div class="field"><label>العملة</label><select id="cba-currency"></select></div>
+            <div class="field"><label>الاتجاه</label><select id="cba-direction"><option value="INCREASE">زيادة</option><option value="DECREASE">نقصان</option></select></div>
+            <div class="field"><label>المبلغ</label><input type="text" id="cba-amount" placeholder="100.00" /></div>
+            <div class="field"><label>سبب التصحيح</label><input type="text" id="cba-reason" placeholder="مثال: تصحيح خطأ إدخال إيصال رقم 1042" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="adjust-balance-btn" onclick="adjustClientBalance()">تنفيذ التصحيح</button>
+          <hr class="divider">
+          <div class="card-head"><h3>سجل حركات الرصيد</h3></div>
+          <div class="filter-bar">
+            <select id="cbm-currency"><option value="">كل العملات</option></select>
+            <button class="btn-ghost btn-sm" onclick="loadClientBalanceMovements()">عرض السجل</button>
+          </div>
+          <div id="client-balance-movements-content" class="state-msg">اضغط "عرض السجل"</div>
         </div>
       </div>
 
@@ -392,7 +408,11 @@
             </div>
             <div class="field"><label>المبلغ</label><input type="text" id="mv-amount" placeholder="10000.00" /></div>
             <div class="field"><label>السبب</label><input type="text" id="mv-reason" placeholder="مثال: تغذية من الحساب المصرفي" /></div>
+            <div class="field"><label>ربط برصيد عميل (اختياري)</label>
+              <select id="mv-client"><option value="">— حركة خزينة عادية بلا ربط بعميل —</option></select>
+            </div>
           </div>
+          <p class="form-note">لا يُتاح ربط الحركة بعميل إلا مع "إيداع" أو "سحب" — يزيد/ينقص رصيد وديعة العميل تلقائيًا بنفس القيمة فورًا.</p>
           <button class="btn-primary" id="record-movement-btn" onclick="recordMovement()">تسجيل الحركة</button>
         </div>
         <div class="card">
@@ -675,9 +695,10 @@ async function onLoggedIn(token, user){
     });
     // الدينار عملة خزينة/مصروف صالحة تمامًا (كاش، إيجار، رواتب...) — يُضاف يدويًا لهذي القوائم
     const optsWithLyd = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
-    ['mv-currency','pos-currency','ex-currency'].forEach(id => {
+    ['mv-currency','pos-currency','ex-currency','cba-currency'].forEach(id => {
       document.getElementById(id).innerHTML = optsWithLyd;
     });
+    document.getElementById('cbm-currency').innerHTML = '<option value="">كل العملات</option>' + optsWithLyd;
     const branchRes = await apiCall('/treasury/branches');
     branchesCache = branchRes;
     const bOpts = branchesCache.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
@@ -789,6 +810,7 @@ async function loadClients(){
     const result = await apiCall('/clients?' + params.toString());
     clientsCache = result.items;
     document.getElementById('deal-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
+    document.getElementById('mv-client').innerHTML = '<option value="">— حركة خزينة عادية بلا ربط بعميل —</option>' + clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
     if (result.items.length === 0) { el.textContent = 'لا يوجد عملاء مطابقون.'; document.getElementById('clients-pager').innerHTML = ''; return; }
     let html = '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>KYC</th><th>المخاطر</th><th>الحد اليومي</th><th>السقف الائتماني</th><th></th></tr></thead><tbody>';
     result.items.forEach(c => {
@@ -822,17 +844,23 @@ async function openClientDetail(id){
     document.getElementById('client-detail-card').style.display = 'block';
     document.getElementById('client-detail-title').textContent = 'تفاصيل: ' + c.fullName;
     const balancesHtml = c.balances.length
-      ? c.balances.map(b => `${b.currency.code}: <b class="num">${b.balance}</b>`).join(' · ')
-      : 'لا توجد أرصدة محفوظة (تسوية نقدية عند الشباك)';
+      ? c.balances.map(b => {
+          const isDebtor = parseFloat(b.balance) < 0;
+          const color = isDebtor ? 'var(--critical)' : 'var(--success)';
+          const label = isDebtor ? 'مدين' : 'دائن';
+          return `${b.currency.code}: <b class="num" style="color:${color}">${fmtNum(b.balance)}</b> <span class="pill ${isDebtor ? 'bad' : 'ok'}">${label}</span>`;
+        }).join(' &nbsp;·&nbsp; ')
+      : 'لا يوجد رصيد وديعة محفوظ بعد لهذا العميل';
     document.getElementById('client-detail-body').innerHTML = `
       <p style="font-size:13px;color:var(--ink-soft)">
-        الهاتف: <b class="num">${c.phone}</b> · النوع: ${c.clientType === 'company' ? 'شركة' : 'فرد'} · الرقم: <span class="num">${c.nationalIdOrReg}</span><br>
-        الأرصدة: ${balancesHtml}
-      </p>`;
+        الهاتف: <b class="num">${c.phone}</b> · النوع: ${c.clientType === 'company' ? 'شركة' : 'فرد'} · الرقم: <span class="num">${c.nationalIdOrReg}</span>
+      </p>
+      <p style="font-size:14px;margin-top:6px">رصيد الوديعة لدى الشركة: ${balancesHtml}</p>`;
     document.getElementById('cd-daily').value = c.dailyLimitUsd;
     document.getElementById('cd-credit').value = c.creditLimitUsd;
     document.getElementById('cd-kyc').value = c.kycStatus;
     document.getElementById('cd-risk').value = c.riskTier;
+    document.getElementById('client-balance-movements-content').innerHTML = 'اضغط "عرض السجل"';
     document.getElementById('client-detail-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }catch(err){ showToast(err.message, true); }
 }
@@ -865,6 +893,48 @@ async function updateClientKyc(){
     document.getElementById('cd-kyc-reason').value = '';
     loadClients(); openClientDetail(selectedClientId);
   })().catch(err => showToast(err.message, true));
+}
+
+async function adjustClientBalance(){
+  if (!selectedClientId) return;
+  const currencyCode = document.getElementById('cba-currency').value;
+  const direction = document.getElementById('cba-direction').value;
+  const amount = document.getElementById('cba-amount').value.trim();
+  const reason = document.getElementById('cba-reason').value.trim();
+  if (!amount || !reason) { showToast('عبّئ المبلغ وسبب التصحيح', true); return; }
+  await runBusy('adjust-balance-btn', async () => {
+    await apiCall('/clients/' + selectedClientId + '/balance-adjustments', { method: 'POST', body: JSON.stringify({ currencyCode, direction, amount, reason }) });
+    showToast('تم تصحيح رصيد العميل بنجاح');
+    document.getElementById('cba-amount').value = ''; document.getElementById('cba-reason').value = '';
+    openClientDetail(selectedClientId); loadClientBalanceMovements();
+  })().catch(err => showToast(err.message, true));
+}
+
+const CBM_TYPE_LABELS = {
+  DEPOSIT: 'إيداع', WITHDRAWAL: 'سحب',
+  ADJUSTMENT_INCREASE: 'تصحيح (زيادة)', ADJUSTMENT_DECREASE: 'تصحيح (نقصان)',
+};
+const CBM_INCREASING = ['DEPOSIT', 'ADJUSTMENT_INCREASE'];
+
+async function loadClientBalanceMovements(){
+  if (!selectedClientId) return;
+  const el = document.getElementById('client-balance-movements-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const currencyCode = document.getElementById('cbm-currency').value;
+    const params = currencyCode ? '?currencyCode=' + currencyCode : '';
+    const items = await apiCall('/clients/' + selectedClientId + '/balance-movements' + params);
+    if (!items.length) { el.textContent = 'لا توجد حركات مسجّلة على رصيد هذا العميل بعد.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الرصيد بعدها</th><th>السبب</th><th>بواسطة</th></tr></thead><tbody>';
+    items.forEach(m => {
+      const increasing = CBM_INCREASING.includes(m.type);
+      const sign = increasing ? '+' : '-';
+      const color = increasing ? 'var(--success)' : 'var(--critical)';
+      const balanceColor = parseFloat(m.balanceAfter) < 0 ? 'var(--critical)' : 'var(--success)';
+      html += `<tr><td>${new Date(m.createdAt).toLocaleString('ar-LY')}</td><td>${CBM_TYPE_LABELS[m.type] || m.type} (${m.currency.code})</td><td class="num" style="color:${color}">${sign}${fmtNum(m.amount)}</td><td class="num" style="color:${balanceColor}">${fmtNum(m.balanceAfter)}</td><td>${m.reason}</td><td>${m.performedBy ? m.performedBy.fullName : '—'}</td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
 }
 
 // ---------------- الصفقات ----------------
@@ -995,12 +1065,17 @@ async function recordMovement(){
   const type = document.getElementById('mv-type').value;
   const amount = document.getElementById('mv-amount').value.trim();
   const reason = document.getElementById('mv-reason').value.trim();
+  const clientId = document.getElementById('mv-client').value;
   if (!branchId || !amount || !reason) { showToast('عبّئ الفرع والمبلغ والسبب', true); return; }
+  if (clientId && type !== 'DEPOSIT' && type !== 'WITHDRAWAL') { showToast('ربط عميل غير متاح إلا مع إيداع أو سحب', true); return; }
+  const body = { currencyCode, type, amount, reason };
+  if (clientId) body.clientId = clientId;
   await runBusy('record-movement-btn', async () => {
-    await apiCall('/treasury/branches/' + branchId + '/movements', { method: 'POST', body: JSON.stringify({ currencyCode, type, amount, reason }) });
-    showToast('سُجّلت الحركة بنجاح');
-    document.getElementById('mv-amount').value = ''; document.getElementById('mv-reason').value = '';
+    const result = await apiCall('/treasury/branches/' + branchId + '/movements', { method: 'POST', body: JSON.stringify(body) });
+    showToast(result.clientBalanceMovement ? 'سُجّلت الحركة وتحدّث رصيد العميل بنجاح' : 'سُجّلت الحركة بنجاح');
+    document.getElementById('mv-amount').value = ''; document.getElementById('mv-reason').value = ''; document.getElementById('mv-client').value = '';
     loadTreasuryAll(); loadOverview();
+    if (selectedClientId === clientId) openClientDetail(selectedClientId);
   })().catch(err => showToast(err.message, true));
 }
 

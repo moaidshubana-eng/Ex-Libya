@@ -1,8 +1,10 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ClientBalanceMovementType, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { applyClientBalanceMovement } from './apply-client-balance-movement';
+import { AdjustClientBalanceDto } from './dto/adjust-client-balance.dto';
 import { CreateClientDto } from './dto/create-client.dto';
 import { ListClientsQuery } from './dto/list-clients.query';
 import { UpdateKycDto } from './dto/update-kyc.dto';
@@ -130,5 +132,75 @@ export class ClientsService {
     });
 
     return after;
+  }
+
+  // ---- رصيد وديعة العميل (Custody) ----
+
+  private async getCurrencyOrThrow(currencyCode: string) {
+    const currency = await this.prisma.currency.findUnique({
+      where: { code: currencyCode.toUpperCase() },
+    });
+    if (!currency || !currency.isActive) {
+      throw new NotFoundException(`العملة ${currencyCode} غير مسجّلة أو غير مفعّلة`);
+    }
+    return currency;
+  }
+
+  /** سجل حركات رصيد العميل (إيداع/سحب/تعديلات) — اختياريًا لعملة واحدة، الأحدث أولًا. */
+  async listBalanceMovements(clientId: string, currencyCode?: string, take = 50) {
+    await this.findOne(clientId);
+    const currency = currencyCode ? await this.getCurrencyOrThrow(currencyCode) : null;
+
+    return this.prisma.clientBalanceMovement.findMany({
+      where: { clientId, ...(currency && { currencyId: currency.id }) },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(take, 200),
+      include: {
+        currency: true,
+        performedBy: { select: { id: true, fullName: true, role: true } },
+      },
+    });
+  }
+
+  /**
+   * تصحيح يدوي لرصيد وديعة عميل — لا علاقة له بخزينة أي فرع (لا يُنشئ أي
+   * TreasuryMovement)، ومخصص فقط لتصحيح أخطاء إدخال سابقة أو تسويات إدارية
+   * موثّقة بسبب واضح. الإيداع/السحب الفعلي المرتبط بخزينة فرع يمر عبر
+   * TreasuryService.recordMovement (حقل clientId) لا من هنا.
+   */
+  async adjustBalance(clientId: string, dto: AdjustClientBalanceDto, actor: AuthenticatedUser) {
+    const client = await this.findOne(clientId);
+    if (!client.isActive) throw new ConflictException('العميل معطَّل — لا يمكن تعديل رصيده');
+    const currency = await this.getCurrencyOrThrow(dto.currencyCode);
+
+    const result = await this.prisma.$transaction((tx) =>
+      applyClientBalanceMovement(tx, {
+        clientId,
+        currencyId: currency.id,
+        type:
+          dto.direction === 'INCREASE'
+            ? ClientBalanceMovementType.ADJUSTMENT_INCREASE
+            : ClientBalanceMovementType.ADJUSTMENT_DECREASE,
+        amount: dto.amount,
+        reason: dto.reason,
+        performedById: actor.id,
+      }),
+    );
+
+    await this.audit.record({
+      entityType: 'ClientBalanceMovement',
+      entityId: result.movement.id,
+      action: 'ADJUST_CLIENT_BALANCE',
+      actorId: actor.id,
+      before: { balance: result.balanceBefore.toFixed(2) },
+      after: {
+        balance: result.balanceAfter.toFixed(2),
+        direction: dto.direction,
+        amount: dto.amount,
+        reason: dto.reason,
+      },
+    });
+
+    return result.movement;
   }
 }

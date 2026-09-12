@@ -20,12 +20,17 @@ const usdCurrency = {
   decimalPlaces: 2,
 };
 
-function buildPrismaMock(position: {
-  id: string;
-  balance: string;
-  maxExposure: string | null;
-  minThreshold: string | null;
-}) {
+const activeClient = { id: 'client-1', fullName: 'محمد الصالح', isActive: true };
+
+function buildPrismaMock(
+  position: {
+    id: string;
+    balance: string;
+    maxExposure: string | null;
+    minThreshold: string | null;
+  },
+  options: { client?: unknown; clientBalance?: { balance: string } | null } = {},
+) {
   const tx = {
     treasuryPosition: {
       findUnique: jest.fn().mockResolvedValue(position),
@@ -36,11 +41,27 @@ function buildPrismaMock(position: {
         .fn()
         .mockImplementation(({ data }: any) => Promise.resolve({ id: 'move-1', ...data })),
     },
+    clientBalance: {
+      findUnique: jest.fn().mockResolvedValue(options.clientBalance ?? null),
+      upsert: jest
+        .fn()
+        .mockImplementation(({ create, update }: any) =>
+          Promise.resolve(options.clientBalance ? update : create),
+        ),
+    },
+    clientBalanceMovement: {
+      create: jest
+        .fn()
+        .mockImplementation(({ data }: any) => Promise.resolve({ id: 'cbm-1', ...data })),
+    },
   };
 
   return {
     branch: { findUnique: jest.fn().mockResolvedValue({ id: 'branch-1', code: 'TRP-01' }) },
     currency: { findUnique: jest.fn().mockResolvedValue(usdCurrency) },
+    client: {
+      findUnique: jest.fn().mockResolvedValue('client' in options ? options.client : activeClient),
+    },
     $transaction: jest.fn().mockImplementation((callback: any) => callback(tx)),
     tx,
   } as unknown as PrismaService & { tx: typeof tx };
@@ -126,6 +147,105 @@ describe('TreasuryService.recordMovement', () => {
 
     expect(result.exceedsMaxExposure).toBe(false);
     expect(result.belowMinThreshold).toBe(false);
+  });
+
+  it('يزيد رصيد وديعة العميل تلقائيًا عند إيداع خزينة مرتبط بـ clientId', async () => {
+    const prisma = buildPrismaMock(
+      { id: 'pos-1', balance: '10000.00', maxExposure: null, minThreshold: null },
+      { clientBalance: { balance: '200.00' } },
+    );
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    const result = await service.recordMovement(
+      'branch-1',
+      {
+        currencyCode: 'USD',
+        type: 'DEPOSIT' as any,
+        amount: '500.00',
+        reason: 'إيداع عميل بالشباك',
+        clientId: 'client-1',
+      },
+      actor,
+    );
+
+    expect(prisma.tx.clientBalance.upsert).toHaveBeenCalled();
+    expect(result.clientBalanceMovement).toEqual(
+      expect.objectContaining({ type: 'DEPOSIT', balanceAfter: expect.anything() }),
+    );
+    expect(result.clientBalanceMovement!.balanceAfter.toString()).toBe('700');
+    expect(audit.record).toHaveBeenCalledTimes(2);
+  });
+
+  it('ينقص رصيد وديعة العميل (وقد يصبح سالبًا) عند سحب خزينة مرتبط بـ clientId', async () => {
+    const prisma = buildPrismaMock(
+      { id: 'pos-1', balance: '10000.00', maxExposure: null, minThreshold: null },
+      { clientBalance: { balance: '100.00' } },
+    );
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    const result = await service.recordMovement(
+      'branch-1',
+      {
+        currencyCode: 'USD',
+        type: 'WITHDRAWAL' as any,
+        amount: '400.00',
+        reason: 'سحب عميل بالشباك',
+        clientId: 'client-1',
+      },
+      actor,
+    );
+
+    expect(result.clientBalanceMovement!.balanceAfter.toString()).toBe('-300');
+  });
+
+  it('يرفض ربط clientId بحركة ليست إيداعًا أو سحبًا', async () => {
+    const prisma = buildPrismaMock({
+      id: 'pos-1',
+      balance: '10000.00',
+      maxExposure: null,
+      minThreshold: null,
+    });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    await expect(
+      service.recordMovement(
+        'branch-1',
+        {
+          currencyCode: 'USD',
+          type: 'ADJUSTMENT_INCREASE' as any,
+          amount: '100.00',
+          reason: 'تسوية جرد',
+          clientId: 'client-1',
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('يرفض ربط clientId بعميل غير موجود', async () => {
+    const prisma = buildPrismaMock(
+      { id: 'pos-1', balance: '10000.00', maxExposure: null, minThreshold: null },
+      { client: null },
+    );
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    await expect(
+      service.recordMovement(
+        'branch-1',
+        {
+          currencyCode: 'USD',
+          type: 'DEPOSIT' as any,
+          amount: '100.00',
+          reason: 'إيداع عميل',
+          clientId: 'missing-client',
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
