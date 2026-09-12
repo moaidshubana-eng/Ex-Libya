@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { StaffRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { ConfigurePositionDto } from './dto/configure-position.dto';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { RecordMovementDto } from './dto/record-movement.dto';
+import { UpdateBranchStatusDto } from './dto/update-branch-status.dto';
 import { TreasuryService } from './treasury.service';
 
 @ApiTags('الخزينة')
@@ -23,9 +24,24 @@ export class TreasuryController {
   }
 
   @Get('branches')
-  @ApiOperation({ summary: 'قائمة الفروع' })
-  listBranches() {
-    return this.treasuryService.listBranches();
+  @ApiOperation({
+    summary: 'قائمة الفروع — الفعّالة فقط افتراضيًا؛ أضف includeInactive=true لعرض المعطَّلة أيضًا',
+  })
+  listBranches(@Query('includeInactive') includeInactive?: string) {
+    return this.treasuryService.listBranches(includeInactive === 'true');
+  }
+
+  @Patch('branches/:id/status')
+  @Roles(StaffRole.ADMIN)
+  @ApiOperation({
+    summary: 'تعطيل/تفعيل فرع — بلا حذف فعلي؛ الفرع المعطَّل يختفي من كل قوائم الاختيار التشغيلية',
+  })
+  setBranchActive(
+    @Param('id') id: string,
+    @Body() dto: UpdateBranchStatusDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.treasuryService.setBranchActive(id, dto.isActive, actor);
   }
 
   @Post('branches/:branchId/positions')
@@ -40,9 +56,15 @@ export class TreasuryController {
   }
 
   @Get('positions')
-  @ApiOperation({ summary: 'مراكز الخزينة الحالية (اختياريًا لفرع واحد)' })
-  listPositions(@Query('branchId') branchId?: string) {
-    return this.treasuryService.listPositions(branchId);
+  @ApiOperation({
+    summary:
+      'مراكز الخزينة الحالية (اختياريًا لفرع واحد) — فروع فعّالة فقط افتراضيًا؛ أضف includeInactive=true لعرض المعطَّلة أيضًا',
+  })
+  listPositions(
+    @Query('branchId') branchId?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.treasuryService.listPositions(branchId, includeInactive === 'true');
   }
 
   @Post('branches/:branchId/movements')

@@ -42,8 +42,35 @@ export class TreasuryService {
     }
   }
 
-  listBranches() {
-    return this.prisma.branch.findMany({ orderBy: { name: 'asc' } });
+  listBranches(includeInactive = false) {
+    return this.prisma.branch.findMany({
+      where: includeInactive ? undefined : { isActive: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /**
+   * تعطيل/إعادة تفعيل فرع — لا حذف فعلي أبدًا: الفرع قد يحمل حركات خزينة
+   * وصفقات وموظفين تاريخيين حقيقيين (onDelete: Restrict يمنع حذفه أصلًا لو
+   * كانت له أي حركة). التعطيل يخفيه من كل قوائم الاختيار التشغيلية (صفقة
+   * جديدة، حركة خزينة، مصروف...) دون فقدان أي سجل تاريخي مرتبط به.
+   */
+  async setBranchActive(id: string, isActive: boolean, actor: AuthenticatedUser) {
+    const branch = await this.prisma.branch.findUnique({ where: { id } });
+    if (!branch) throw new NotFoundException('الفرع غير موجود');
+
+    const updated = await this.prisma.branch.update({ where: { id }, data: { isActive } });
+
+    await this.audit.record({
+      entityType: 'Branch',
+      entityId: id,
+      action: isActive ? 'ACTIVATE_BRANCH' : 'DEACTIVATE_BRANCH',
+      actorId: actor.id,
+      before: { isActive: branch.isActive },
+      after: { isActive: updated.isActive },
+    });
+
+    return updated;
   }
 
   private async getCurrencyOrThrow(currencyCode: string) {
@@ -98,9 +125,12 @@ export class TreasuryService {
     return position;
   }
 
-  async listPositions(branchId?: string) {
+  async listPositions(branchId?: string, includeInactiveBranches = false) {
     const positions = await this.prisma.treasuryPosition.findMany({
-      where: branchId ? { branchId } : undefined,
+      where: {
+        ...(branchId && { branchId }),
+        ...(!includeInactiveBranches && { branch: { isActive: true } }),
+      },
       include: { branch: true, currency: true },
       orderBy: [{ branch: { name: 'asc' } }, { currency: { code: 'asc' } }],
     });

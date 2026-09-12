@@ -1043,17 +1043,37 @@ async function loadAudit(){
 async function loadBranches(){
   const el = document.getElementById('branches-content');
   try{
-    const branches = await apiCall('/treasury/branches');
-    branchesCache = branches;
-    const bOpts = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    // الفروع الفعّالة فقط لكل قوائم الاختيار التشغيلية — والقائمة الكاملة (فعّالة + معطَّلة) لجدول الإعدادات
+    const [activeBranches, allBranches] = await Promise.all([
+      apiCall('/treasury/branches'),
+      apiCall('/treasury/branches?includeInactive=true'),
+    ]);
+    branchesCache = activeBranches;
+    const bOpts = activeBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
     ['mv-branch','log-branch','pos-branch'].forEach(id => { document.getElementById(id).innerHTML = bOpts; });
     document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
     document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
     document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
-    let html = '<div class="table-wrap"><table><thead><tr><th>الرمز</th><th>الاسم</th><th>المدينة</th></tr></thead><tbody>';
-    branches.forEach(b => { html += `<tr><td class="num">${b.code}</td><td>${b.name}</td><td>${b.city}</td></tr>`; });
+
+    let html = '<div class="table-wrap"><table><thead><tr><th>الرمز</th><th>الاسم</th><th>المدينة</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    allBranches.forEach(b => {
+      const statusPill = b.isActive ? '<span class="pill ok">فعّال</span>' : '<span class="pill bad">معطَّل</span>';
+      const actionBtn = b.isActive
+        ? `<button class="btn-danger btn-sm" onclick="toggleBranchActive('${b.id}', false, this)">تعطيل</button>`
+        : `<button class="btn-ghost btn-sm" onclick="toggleBranchActive('${b.id}', true, this)">تفعيل</button>`;
+      html += `<tr><td class="num">${b.code}</td><td>${b.name}</td><td>${b.city}</td><td>${statusPill}</td><td>${actionBtn}</td></tr>`;
+    });
     el.innerHTML = html + '</tbody></table></div>';
   }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function toggleBranchActive(id, isActive, btn){
+  btn.disabled = true;
+  try{
+    await apiCall('/treasury/branches/' + id + '/status', { method: 'PATCH', body: JSON.stringify({ isActive }) });
+    showToast(isActive ? 'أُعيد تفعيل الفرع' : 'عُطِّل الفرع — اختفى من كل قوائم الاختيار');
+    loadBranches();
+  }catch(err){ showToast(err.message, true); btn.disabled = false; }
 }
 
 async function createBranch(){

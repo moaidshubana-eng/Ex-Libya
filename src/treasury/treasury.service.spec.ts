@@ -108,3 +108,40 @@ describe('TreasuryService.recordMovement', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe('TreasuryService.setBranchActive', () => {
+  function buildBranchPrismaMock(existing: { id: string; isActive: boolean } | null) {
+    return {
+      branch: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: any) => Promise.resolve({ ...existing, ...data })),
+      },
+    } as unknown as PrismaService;
+  }
+
+  it('يعطّل فرعًا موجودًا ويدوّن ذلك في سجل التدقيق', async () => {
+    const prisma = buildBranchPrismaMock({ id: 'branch-1', isActive: true });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    const result = await service.setBranchActive('branch-1', false, actor);
+
+    expect(result.isActive).toBe(false);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DEACTIVATE_BRANCH' }),
+    );
+  });
+
+  it('يرفض تعطيل فرع غير موجود', async () => {
+    const prisma = buildBranchPrismaMock(null);
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    await expect(service.setBranchActive('missing', false, actor)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+});
