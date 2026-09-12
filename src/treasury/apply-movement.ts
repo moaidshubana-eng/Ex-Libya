@@ -68,7 +68,8 @@ export async function applyMovement(tx: TreasuryTxClient, input: ApplyMovementIn
     movement,
     balanceBefore: position.balance,
     balanceAfter: newBalance,
-    exceedsMaxExposure: newBalance.greaterThan(position.maxExposure),
-    belowMinThreshold: newBalance.lessThan(position.minThreshold),
+    exceedsMaxExposure:
+      position.maxExposure !== null && newBalance.greaterThan(position.maxExposure),
+    belowMinThreshold: position.minThreshold !== null && newBalance.lessThan(position.minThreshold),
   };
 }

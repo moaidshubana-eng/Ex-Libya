@@ -100,15 +100,15 @@ export class TreasuryService {
       where: { branchId_currencyId: { branchId, currencyId: currency.id } },
     });
 
+    // حقل فارغ في الطلب يعني إلغاء الحد الحالي صراحةً (null)، لا الإبقاء عليه —
+    // فعدم إرسال القيمة يُترجَم صراحةً إلى إزالة الحد لا تجاهل التعديل.
+    const maxExposure = dto.maxExposure ?? null;
+    const minThreshold = dto.minThreshold ?? null;
+
     const position = await this.prisma.treasuryPosition.upsert({
       where: { branchId_currencyId: { branchId, currencyId: currency.id } },
-      create: {
-        branchId,
-        currencyId: currency.id,
-        maxExposure: dto.maxExposure,
-        minThreshold: dto.minThreshold,
-      },
-      update: { maxExposure: dto.maxExposure, minThreshold: dto.minThreshold },
+      create: { branchId, currencyId: currency.id, maxExposure, minThreshold },
+      update: { maxExposure, minThreshold },
     });
 
     await this.audit.record({
@@ -137,8 +137,11 @@ export class TreasuryService {
 
     return positions.map((position) => ({
       ...position,
-      belowMinThreshold: toMoney(position.balance).lessThan(position.minThreshold),
-      aboveMaxExposure: toMoney(position.balance).greaterThan(position.maxExposure),
+      belowMinThreshold:
+        position.minThreshold !== null && toMoney(position.balance).lessThan(position.minThreshold),
+      aboveMaxExposure:
+        position.maxExposure !== null &&
+        toMoney(position.balance).greaterThan(position.maxExposure),
     }));
   }
 

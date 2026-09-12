@@ -23,8 +23,8 @@ const usdCurrency = {
 function buildPrismaMock(position: {
   id: string;
   balance: string;
-  maxExposure: string;
-  minThreshold: string;
+  maxExposure: string | null;
+  minThreshold: string | null;
 }) {
   const tx = {
     treasuryPosition: {
@@ -106,6 +106,54 @@ describe('TreasuryService.recordMovement', () => {
         actor,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('لا يعلّم أي تجاوز حد عند رصيد بلا سقف تعرّض ولا حد أدنى (كلاهما فارغ)', async () => {
+    const prisma = buildPrismaMock({
+      id: 'pos-1',
+      balance: '10000.00',
+      maxExposure: null,
+      minThreshold: null,
+    });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    const result = await service.recordMovement(
+      'branch-1',
+      { currencyCode: 'USD', type: 'DEPOSIT' as any, amount: '5000000.00', reason: 'تغذية ضخمة' },
+      actor,
+    );
+
+    expect(result.exceedsMaxExposure).toBe(false);
+    expect(result.belowMinThreshold).toBe(false);
+  });
+});
+
+describe('TreasuryService.configurePosition', () => {
+  function buildPositionPrismaMock(existing: unknown) {
+    return {
+      branch: { findUnique: jest.fn().mockResolvedValue({ id: 'branch-1', code: 'TRP-01' }) },
+      currency: { findUnique: jest.fn().mockResolvedValue(usdCurrency) },
+      treasuryPosition: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        upsert: jest
+          .fn()
+          .mockImplementation(({ create, update }: any) =>
+            Promise.resolve({ id: 'pos-1', ...(existing ? update : create) }),
+          ),
+      },
+    } as unknown as PrismaService;
+  }
+
+  it('يخزّن null صراحةً للحد الأدنى/السقف عند عدم إرسالهما — لا يُبقي القيمة الافتراضية', async () => {
+    const prisma = buildPositionPrismaMock(null);
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TreasuryService(prisma, audit);
+
+    const result = await service.configurePosition('branch-1', { currencyCode: 'USD' }, actor);
+
+    expect(result.maxExposure).toBeNull();
+    expect(result.minThreshold).toBeNull();
   });
 });
 

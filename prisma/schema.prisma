@@ -159,8 +159,8 @@ model TreasuryPosition {
   currencyId    String
   currency      Currency @relation(fields: [currencyId], references: [id])
   balance       Decimal  @db.Decimal(18, 2) @default(0)
-  minThreshold  Decimal  @db.Decimal(18, 2) @default(0) // حد أدنى تحذيري
-  maxExposure   Decimal  @db.Decimal(18, 2) // سقف التعرّض المسموح به لهذه العملة في هذا الفرع
+  minThreshold  Decimal? @db.Decimal(18, 2) // حد أدنى تحذيري — اختياري، بلا حد أدنى إن تُرك فارغًا
+  maxExposure   Decimal? @db.Decimal(18, 2) // سقف التعرّض المسموح به — اختياري، بلا سقف إن تُرك فارغًا
   updatedAt     DateTime @updatedAt
 
   @@unique([branchId, currencyId])

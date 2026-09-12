@@ -548,11 +548,11 @@
           <div class="form-grid" style="margin-top:12px">
             <div class="field"><label>الفرع</label><select id="pos-branch"></select></div>
             <div class="field"><label>العملة</label><select id="pos-currency"></select></div>
-            <div class="field"><label>سقف التعرّض الأقصى</label><input type="text" id="pos-max" placeholder="500000.00" /></div>
-            <div class="field"><label>الحد الأدنى التحذيري</label><input type="text" id="pos-min" placeholder="20000.00" /></div>
+            <div class="field"><label>سقف التعرّض الأقصى (اختياري)</label><input type="text" id="pos-max" placeholder="بلا سقف" /></div>
+            <div class="field"><label>الحد الأدنى التحذيري (اختياري)</label><input type="text" id="pos-min" placeholder="بلا حد أدنى" /></div>
           </div>
           <button class="btn-ghost btn-sm" id="configure-position-btn" onclick="configurePosition()">حفظ الإعداد</button>
-          <p class="form-note">هذا يفعّل خط العملة أو يحدّث سقفه فقط — لا يمسّ الرصيد الحالي؛ استخدم "تسجيل حركة خزينة" في تبويب الخزينة لتمويله.</p>
+          <p class="form-note">هذا يفعّل خط العملة أو يحدّث سقفه فقط — لا يمسّ الرصيد الحالي؛ استخدم "تسجيل حركة خزينة" في تبويب الخزينة لتمويله. اترك الحقلين فارغين لإلغاء أي حد — لا تحذير ولا رفض عند أي رصيد.</p>
         </details>
       </div>
 
@@ -950,20 +950,33 @@ async function loadTreasuryAll(){
     byBranch.forEach(({ branch, items }) => {
       html += `<div class="branch-card"><h4>${branch.name} <span class="code">${branch.code}</span></h4>`;
       items.forEach(p => {
-        const balance = parseFloat(p.balance), max = parseFloat(p.maxExposure), min = parseFloat(p.minThreshold);
-        const pct = max > 0 ? Math.min(100, balance / max * 100) : 0;
-        const minPct = max > 0 ? Math.min(100, min / max * 100) : 0;
+        const balance = parseFloat(p.balance);
+        const max = p.maxExposure !== null ? parseFloat(p.maxExposure) : null;
+        const min = p.minThreshold !== null ? parseFloat(p.minThreshold) : null;
         let tone = '', pill = '<span class="pill ok">طبيعي</span>';
         if (p.aboveMaxExposure) { tone = 'bad'; pill = '<span class="pill bad">تجاوز السقف</span>'; }
         else if (p.belowMinThreshold) { tone = 'warn'; pill = '<span class="pill warn">دون الحد الأدنى</span>'; }
+
+        // الشريط البصري له معنى فقط إن كان في سقف تعرّض مضبوط (نسبة مئوية من شي محدَّد)؛
+        // بلا سقف، نعرض الرقم والحالة بلا شريط قياس وهمي.
+        let gaugeHtml = '';
+        if (max !== null && max > 0) {
+          const pct = Math.min(100, balance / max * 100);
+          const minPct = min !== null ? Math.min(100, min / max * 100) : null;
+          gaugeHtml = `<div class="bt-gauge">
+            <div class="fill ${tone}" style="width:${pct}%"></div>
+            ${minPct !== null ? `<div class="min-marker" style="inset-inline-start:${minPct}%"></div>` : ''}
+          </div>`;
+        }
+        const metaParts = [];
+        metaParts.push(min !== null ? `الحد الأدنى ${fmtNum(min)}` : 'بلا حد أدنى');
+        metaParts.push(max !== null ? `السقف ${fmtNum(max)}` : 'بلا سقف تعرّض');
+
         html += `
           <div class="balance-tile">
             <div class="bt-top"><span class="cur">${p.currency.name} <span style="color:var(--ink-faint)">(${p.currency.code})</span></span><span class="amt ${tone}">${fmtNum(balance)}</span></div>
-            <div class="bt-gauge">
-              <div class="fill ${tone}" style="width:${pct}%"></div>
-              <div class="min-marker" style="inset-inline-start:${minPct}%"></div>
-            </div>
-            <div class="bt-meta"><span>الحد الأدنى ${fmtNum(min)} · السقف ${fmtNum(max)}</span>${pill}</div>
+            ${gaugeHtml}
+            <div class="bt-meta"><span>${metaParts.join(' · ')}</span>${pill}</div>
           </div>`;
       });
       html += '</div>';
@@ -1120,10 +1133,13 @@ async function configurePosition(){
   const branchId = document.getElementById('pos-branch').value;
   const currencyCode = document.getElementById('pos-currency').value;
   const maxExposure = document.getElementById('pos-max').value.trim();
-  const minThreshold = document.getElementById('pos-min').value.trim() || '0';
-  if (!branchId || !maxExposure) { showToast('اختر فرعًا وأدخل سقف التعرّض', true); return; }
+  const minThreshold = document.getElementById('pos-min').value.trim();
+  if (!branchId) { showToast('اختر فرعًا', true); return; }
   await runBusy('configure-position-btn', async () => {
-    await apiCall('/treasury/branches/' + branchId + '/positions', { method: 'POST', body: JSON.stringify({ currencyCode, maxExposure, minThreshold }) });
+    const body = { currencyCode };
+    if (maxExposure) body.maxExposure = maxExposure;
+    if (minThreshold) body.minThreshold = minThreshold;
+    await apiCall('/treasury/branches/' + branchId + '/positions', { method: 'POST', body: JSON.stringify(body) });
     showToast('حُفظ إعداد خط العملة بنجاح');
     loadTreasuryAll();
   })().catch(err => showToast(err.message, true));
