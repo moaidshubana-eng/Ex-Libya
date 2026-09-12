@@ -39,7 +39,7 @@ async function bootstrap() {
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('منصّة الصرف الليبية — API')
+    .setTitle('شركة المراسل — نظام الخزينة والتداول (API)')
     .setDescription('واجهة برمجة التطبيقات لإدارة الخزينة والعملاء وأسعار الصرف')
     .setVersion('0.1.0')
     .addBearerAuth()
