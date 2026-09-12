@@ -231,6 +231,10 @@
           <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="12" height="12" rx="1.3"/><path d="M7 8 H13 M7 11 H13 M7 14 H10.5" stroke-linecap="round"/></svg>
           المصاريف
         </button>
+        <button class="nav-btn" data-tab="remittances" onclick="switchTab('remittances')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6 H17 M3 6 L6 3 M3 6 L6 9" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 14 H3 M17 14 L14 11 M17 14 L14 17" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          الحوالات
+        </button>
         <button class="nav-btn" data-tab="reports" onclick="switchTab('reports')">
           <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16.5 V3.5 M4 16.5 H16.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.7 13.5 V9.5 M10.3 13.5 V6 M14 13.5 V11" stroke-linecap="round"/></svg>
           التقارير
@@ -476,6 +480,81 @@
         </div>
       </div>
 
+      <!-- ---- الحوالات ---- -->
+      <div class="panel" id="panel-remittances">
+        <div class="page-head"><h2>الحوالات (وسترن يونيون / موني جرام)</h2><button class="btn-ghost btn-sm" onclick="remittancesPage=1;loadRemittances()">تحديث</button></div>
+        <div class="card">
+          <div class="card-head"><h3>تسجيل حوالة جديدة</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>الشبكة</label>
+              <select id="rm-provider">
+                <option value="WESTERN_UNION">وسترن يونيون</option>
+                <option value="MONEYGRAM">موني جرام</option>
+              </select>
+            </div>
+            <div class="field"><label>الاتجاه</label>
+              <select id="rm-direction">
+                <option value="SEND">إرسال (العميل يرسل)</option>
+                <option value="RECEIVE">استلام (العميل يستلم)</option>
+              </select>
+            </div>
+            <div class="field"><label>تصنيف العميل</label>
+              <select id="rm-customer-type" onchange="onRemittanceCustomerTypeChange()">
+                <option value="INTERNAL">عميل داخلي (مسجَّل في النظام)</option>
+                <option value="EXTERNAL">زبون خارجي (عابر)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid" id="rm-internal-fields">
+            <div class="field"><label>العميل</label><select id="rm-client"></select></div>
+          </div>
+          <div class="form-grid" id="rm-external-fields" style="display:none">
+            <div class="field"><label>اسم الزبون الخارجي</label><input type="text" id="rm-ext-name" placeholder="اسم الزبون العابر" /></div>
+            <div class="field"><label>هاتف الزبون (اختياري)</label><input type="text" id="rm-ext-phone" placeholder="+218910000000" /></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>اسم الطرف الآخر</label><input type="text" id="rm-counterparty" placeholder="المستفيد النهائي أو المرسِل الأصلي" /></div>
+            <div class="field"><label>الرقم المرجعي (MTCN)</label><input type="text" id="rm-reference" placeholder="مثال: 9214563870" /></div>
+            <div class="field"><label>بلد الطرف الآخر (اختياري)</label><input type="text" id="rm-country" placeholder="مثال: EG" /></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>القيمة الأساسية للحوالة</label><input type="text" id="rm-principal" placeholder="500.00" oninput="updateRemittanceProfitPreview()" /></div>
+            <div class="field"><label>العملة</label><select id="rm-currency" onchange="updateRemittanceProfitPreview()"></select></div>
+            <div class="field"><label>الفرع (اختياري)</label><select id="rm-branch"><option value="">— بلا فرع محدَّد —</option></select></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>تكلفة الحوالة على الشركة</label><input type="text" id="rm-cost" placeholder="15.00" oninput="updateRemittanceProfitPreview()" /></div>
+            <div class="field"><label>قيمة بيع الحوالة للعميل</label><input type="text" id="rm-sale" placeholder="25.00" oninput="updateRemittanceProfitPreview()" /></div>
+            <div class="field"><label>الربح الصافي المتوقَّع</label><input type="text" id="rm-profit-preview" disabled placeholder="0.00" /></div>
+          </div>
+          <button class="btn-primary" id="create-remittance-btn" onclick="createRemittance()">تسجيل الحوالة</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>ملخص أداء الحوالات</h3><span class="sub">التكلفة وقيمة البيع والربح الصافي مجمَّعة حسب الشبكة والاتجاه</span></div>
+          <div class="filter-bar">
+            <div class="field" style="margin:0"><label>من تاريخ</label><input type="date" id="rms-from" /></div>
+            <div class="field" style="margin:0"><label>إلى تاريخ</label><input type="date" id="rms-to" /></div>
+            <div class="field" style="margin:0"><label>الفرع</label><select id="rms-branch"><option value="">كل الفروع</option></select></div>
+            <button class="btn-primary btn-sm" style="align-self:flex-end" onclick="loadRemittancesSummary()">تحديث الملخص</button>
+          </div>
+          <div class="grid-kpi" id="remittances-summary-kpis"><div class="kpi"><div class="l">جارِ التحميل...</div></div></div>
+          <div id="remittances-summary-table" class="state-msg">جارِ التحميل...</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>قائمة الحوالات</h3></div>
+          <div class="filter-bar">
+            <select id="rm-filter-provider"><option value="">كل الشبكات</option><option value="WESTERN_UNION">وسترن يونيون</option><option value="MONEYGRAM">موني جرام</option></select>
+            <select id="rm-filter-direction"><option value="">كل الاتجاهات</option><option value="SEND">إرسال</option><option value="RECEIVE">استلام</option></select>
+            <select id="rm-filter-customer-type"><option value="">كل العملاء</option><option value="INTERNAL">داخلي</option><option value="EXTERNAL">خارجي</option></select>
+            <button class="btn-ghost btn-sm" onclick="remittancesPage=1;loadRemittances()">فلترة</button>
+          </div>
+          <div id="remittances-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="remittances-pager"></div>
+        </div>
+      </div>
+
       <!-- ---- التقارير ---- -->
       <div class="panel" id="panel-reports">
         <div class="page-head"><h2>التقارير والتحليلات</h2><button class="btn-ghost btn-sm" onclick="loadReports()">تحديث</button></div>
@@ -590,7 +669,7 @@
 const API = window.location.origin; // الواجهة تُخدَّم من نفس الخادم — لا حاجة لرابط ثابت
 let accessToken = null, currentUser = null, pendingMfaChallenge = null;
 let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [];
-let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1;
+let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1;
 let selectedClientId = null;
 
 const EXPENSE_CATEGORY_LABELS = {
@@ -695,7 +774,7 @@ async function onLoggedIn(token, user){
     });
     // الدينار عملة خزينة/مصروف صالحة تمامًا (كاش، إيجار، رواتب...) — يُضاف يدويًا لهذي القوائم
     const optsWithLyd = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
-    ['mv-currency','pos-currency','ex-currency','cba-currency'].forEach(id => {
+    ['mv-currency','pos-currency','ex-currency','cba-currency','rm-currency'].forEach(id => {
       document.getElementById(id).innerHTML = optsWithLyd;
     });
     document.getElementById('cbm-currency').innerHTML = '<option value="">كل العملات</option>' + optsWithLyd;
@@ -706,14 +785,18 @@ async function onLoggedIn(token, user){
     document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
     document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
     document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
+    document.getElementById('rm-branch').innerHTML = '<option value="">— بلا فرع محدَّد —</option>' + bOpts;
+    document.getElementById('rms-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
   }catch(err){ showToast('تعذّر تحميل العملات/الفروع: ' + err.message, true); }
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   document.getElementById('rp-from').value = monthStart.toISOString().slice(0, 10);
   document.getElementById('rp-to').value = now.toISOString().slice(0, 10);
+  document.getElementById('rms-from').value = monthStart.toISOString().slice(0, 10);
+  document.getElementById('rms-to').value = now.toISOString().slice(0, 10);
 
-  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports();
+  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary();
   if (!window._tickerStarted) { window._tickerStarted = true; setInterval(renderDealsTable, 1000); }
 }
 
@@ -811,6 +894,7 @@ async function loadClients(){
     clientsCache = result.items;
     document.getElementById('deal-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
     document.getElementById('mv-client').innerHTML = '<option value="">— حركة خزينة عادية بلا ربط بعميل —</option>' + clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
+    document.getElementById('rm-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
     if (result.items.length === 0) { el.textContent = 'لا يوجد عملاء مطابقون.'; document.getElementById('clients-pager').innerHTML = ''; return; }
     let html = '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>KYC</th><th>المخاطر</th><th>الحد اليومي</th><th>السقف الائتماني</th><th></th></tr></thead><tbody>';
     result.items.forEach(c => {
@@ -1277,6 +1361,137 @@ function voidExpensePrompt(id, btn){
   apiCall('/expenses/' + id + '/void', { method: 'POST', body: JSON.stringify({ reason }) })
     .then(() => { showToast('أُلغي المصروف'); loadExpenses(); loadReports(); loadTreasuryAll(); })
     .catch(err => { showToast(err.message, true); btn.disabled = false; });
+}
+
+// ---------------- الحوالات (وسترن يونيون / موني جرام) ----------------
+
+const RM_PROVIDER_LABELS = { WESTERN_UNION: 'وسترن يونيون', MONEYGRAM: 'موني جرام' };
+const RM_DIRECTION_LABELS = { SEND: 'إرسال', RECEIVE: 'استلام' };
+const RM_CUSTOMER_TYPE_LABELS = { INTERNAL: 'داخلي', EXTERNAL: 'خارجي' };
+
+function onRemittanceCustomerTypeChange(){
+  const isInternal = document.getElementById('rm-customer-type').value === 'INTERNAL';
+  document.getElementById('rm-internal-fields').style.display = isInternal ? '' : 'none';
+  document.getElementById('rm-external-fields').style.display = isInternal ? 'none' : '';
+}
+
+function updateRemittanceProfitPreview(){
+  const cost = parseFloat(document.getElementById('rm-cost').value) || 0;
+  const sale = parseFloat(document.getElementById('rm-sale').value) || 0;
+  const currencyCode = document.getElementById('rm-currency').value;
+  const profit = sale - cost;
+  const field = document.getElementById('rm-profit-preview');
+  field.value = fmtNum(profit) + (currencyCode ? ' ' + currencyCode : '');
+  field.style.color = profit < 0 ? 'var(--critical)' : 'var(--success)';
+}
+
+async function createRemittance(){
+  const provider = document.getElementById('rm-provider').value;
+  const direction = document.getElementById('rm-direction').value;
+  const customerType = document.getElementById('rm-customer-type').value;
+  const clientId = document.getElementById('rm-client').value;
+  const externalCustomerName = document.getElementById('rm-ext-name').value.trim();
+  const externalCustomerPhone = document.getElementById('rm-ext-phone').value.trim();
+  const counterpartyName = document.getElementById('rm-counterparty').value.trim();
+  const referenceNumber = document.getElementById('rm-reference').value.trim();
+  const countryCode = document.getElementById('rm-country').value.trim();
+  const principalAmount = document.getElementById('rm-principal').value.trim();
+  const currencyCode = document.getElementById('rm-currency').value;
+  const branchId = document.getElementById('rm-branch').value;
+  const cost = document.getElementById('rm-cost').value.trim();
+  const saleValue = document.getElementById('rm-sale').value.trim();
+
+  if (!counterpartyName || !referenceNumber || !principalAmount || !cost || !saleValue) {
+    showToast('عبّئ اسم الطرف الآخر والرقم المرجعي والقيمة الأساسية والتكلفة وقيمة البيع', true);
+    return;
+  }
+  if (customerType === 'INTERNAL' && !clientId) { showToast('اختر عميلًا داخليًا أولًا', true); return; }
+  if (customerType === 'EXTERNAL' && !externalCustomerName) { showToast('أدخل اسم الزبون الخارجي', true); return; }
+
+  const body = {
+    provider, direction, customerType, counterpartyName, referenceNumber,
+    principalAmount, currencyCode, cost, saleValue,
+  };
+  if (customerType === 'INTERNAL') { body.clientId = clientId; }
+  else { body.externalCustomerName = externalCustomerName; if (externalCustomerPhone) body.externalCustomerPhone = externalCustomerPhone; }
+  if (countryCode) body.countryCode = countryCode;
+  if (branchId) body.branchId = branchId;
+
+  await runBusy('create-remittance-btn', async () => {
+    await apiCall('/remittances', { method: 'POST', body: JSON.stringify(body) });
+    showToast('سُجّلت الحوالة بنجاح');
+    ['rm-counterparty','rm-reference','rm-country','rm-principal','rm-cost','rm-sale','rm-ext-name','rm-ext-phone'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('rm-profit-preview').value = '';
+    remittancesPage = 1; loadRemittances(); loadRemittancesSummary();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadRemittances(){
+  const el = document.getElementById('remittances-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const provider = document.getElementById('rm-filter-provider').value;
+    const direction = document.getElementById('rm-filter-direction').value;
+    const customerType = document.getElementById('rm-filter-customer-type').value;
+    const params = new URLSearchParams({ page: remittancesPage, pageSize: 10 });
+    if (provider) params.set('provider', provider);
+    if (direction) params.set('direction', direction);
+    if (customerType) params.set('customerType', customerType);
+    const result = await apiCall('/remittances?' + params.toString());
+    if (result.items.length === 0) { el.textContent = 'لا توجد حوالات مطابقة.'; document.getElementById('remittances-pager').innerHTML = ''; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الاتجاه</th><th>العميل</th><th>الطرف الآخر</th><th>الرقم المرجعي</th><th>القيمة الأساسية</th><th>التكلفة</th><th>قيمة البيع</th><th>الربح</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    result.items.forEach(r => {
+      const customer = r.customerType === 'INTERNAL' ? (r.client ? r.client.fullName : '—') : `${r.externalCustomerName || '—'} <span class="pill">خارجي</span>`;
+      const profitColor = parseFloat(r.profit) < 0 ? 'var(--critical)' : 'var(--success)';
+      const actions = r.isVoided ? '—' : `<button class="btn-danger btn-sm" onclick="voidRemittancePrompt('${r.id}', this)">إلغاء</button>`;
+      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${RM_DIRECTION_LABELS[r.direction] || r.direction}</td><td>${customer}</td><td>${r.counterpartyName}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.principalAmount)} ${r.currency.code}</td><td class="num">${fmtNum(r.cost)}</td><td class="num">${fmtNum(r.saleValue)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td>${r.isVoided ? '<span class="pill bad">ملغاة</span>' : '<span class="pill ok">فعّالة</span>'}</td><td>${actions}</td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+    pagerHtml('remittances-pager', remittancesPage, 10, result.total, 'p => { remittancesPage = p; loadRemittances(); }');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+function voidRemittancePrompt(id, btn){
+  const reason = prompt('سبب إلغاء الحوالة:');
+  if (!reason) return;
+  btn.disabled = true;
+  apiCall('/remittances/' + id + '/void', { method: 'POST', body: JSON.stringify({ reason }) })
+    .then(() => { showToast('أُلغيت الحوالة'); loadRemittances(); loadRemittancesSummary(); })
+    .catch(err => { showToast(err.message, true); btn.disabled = false; });
+}
+
+async function loadRemittancesSummary(){
+  const from = document.getElementById('rms-from').value;
+  const to = document.getElementById('rms-to').value;
+  const branchId = document.getElementById('rms-branch').value;
+  const params = new URLSearchParams();
+  if (from) params.set('from', new Date(from + 'T00:00:00').toISOString());
+  if (to) params.set('to', new Date(to + 'T23:59:59').toISOString());
+  if (branchId) params.set('branchId', branchId);
+
+  const kpisEl = document.getElementById('remittances-summary-kpis');
+  const tableEl = document.getElementById('remittances-summary-table');
+  kpisEl.innerHTML = '<div class="kpi"><div class="l">جارِ التحميل...</div></div>';
+  try{
+    const summary = await apiCall('/remittances/summary?' + params.toString());
+    const profitColor = parseFloat(summary.totals.totalProfit) < 0 ? 'var(--critical)' : 'var(--success)';
+    kpisEl.innerHTML = `
+      <div class="kpi"><div class="l">عدد الحوالات</div><div class="v num">${summary.totals.count}</div></div>
+      <div class="kpi"><div class="l">إجمالي التكلفة</div><div class="v num">${fmtNum(summary.totals.totalCost)}</div></div>
+      <div class="kpi"><div class="l">إجمالي قيمة البيع</div><div class="v num">${fmtNum(summary.totals.totalSaleValue)}</div></div>
+      <div class="kpi"><div class="l">الربح الصافي</div><div class="v num" style="color:${profitColor}">${fmtNum(summary.totals.totalProfit)}</div></div>
+    `;
+    if (summary.items.length === 0) {
+      tableEl.innerHTML = '<div class="state-msg">لا توجد حوالات فعّالة لهذه الفترة.</div>';
+    } else {
+      let html = '<div class="table-wrap"><table><thead><tr><th>الشبكة</th><th>الاتجاه</th><th>العملة</th><th>العدد</th><th>القيمة الأساسية</th><th>التكلفة</th><th>قيمة البيع</th><th>الربح الصافي</th></tr></thead><tbody>';
+      summary.items.forEach(i => {
+        const c = parseFloat(i.totalProfit) < 0 ? 'var(--critical)' : 'var(--success)';
+        html += `<tr><td>${RM_PROVIDER_LABELS[i.provider] || i.provider}</td><td>${RM_DIRECTION_LABELS[i.direction] || i.direction}</td><td>${i.currency}</td><td class="num">${i.count}</td><td class="num">${fmtNum(i.totalPrincipal)}</td><td class="num">${fmtNum(i.totalCost)}</td><td class="num">${fmtNum(i.totalSaleValue)}</td><td class="num" style="color:${c}">${fmtNum(i.totalProfit)}</td></tr>`;
+      });
+      tableEl.innerHTML = html + '</tbody></table></div>';
+    }
+  }catch(err){ kpisEl.innerHTML = `<div class="kpi"><div class="l" style="color:var(--critical)">${err.message}</div></div>`; tableEl.innerHTML = ''; }
 }
 
 // ---------------- التقارير ----------------

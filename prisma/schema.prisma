@@ -51,6 +51,8 @@ model User {
   recordedExpenses                Expense[]               @relation("ExpenseRecordedBy")
   voidedExpenses                  Expense[]               @relation("ExpenseVoidedBy")
   clientBalanceMovementsPerformed ClientBalanceMovement[] @relation("ClientBalanceMovementActor")
+  recordedRemittances             Remittance[]            @relation("RemittanceRecordedBy")
+  voidedRemittances               Remittance[]            @relation("RemittanceVoidedBy")
 
   @@map("users")
 }
@@ -67,11 +69,12 @@ model Branch {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  users     User[]
-  positions TreasuryPosition[]
-  movements TreasuryMovement[]
-  deals     Transaction[]
-  expenses  Expense[]
+  users       User[]
+  positions   TreasuryPosition[]
+  movements   TreasuryMovement[]
+  deals       Transaction[]
+  expenses    Expense[]
+  remittances Remittance[]
 
   @@map("branches")
 }
@@ -90,6 +93,7 @@ model Currency {
   balanceMovements ClientBalanceMovement[]
   deals            Transaction[]
   expenses         Expense[]
+  remittances      Remittance[]
 
   @@map("currencies")
 }
@@ -133,6 +137,7 @@ model Client {
   balanceMovements ClientBalanceMovement[]
   deals            Transaction[]
   whatsappMessages WhatsAppMessage[]
+  remittances      Remittance[]
 
   @@index([riskTier])
   @@map("clients")
@@ -457,4 +462,73 @@ model Expense {
   @@index([category, expenseDate])
   @@index([branchId, expenseDate])
   @@map("expenses")
+}
+
+// ------------------------------------------------------------------
+// حوالات وسترن يونيون وموني جرام — الشركة وكيل تحويل أموال لهاتين الشبكتين.
+// وحدة مستقلة تمامًا عن حسابات وديعة العملاء (ClientBalance) وحركات خزينة
+// الفروع (TreasuryMovement)؛ الربح لكل حوالة (profit = saleValue - cost)
+// يُحسب ويُخزَّن لحظة التسجيل ولا يتغيّر إلا بإلغاء الحوالة كاملة (isVoided).
+// ------------------------------------------------------------------
+
+enum RemittanceProvider {
+  WESTERN_UNION // وسترن يونيون
+  MONEYGRAM // موني جرام
+}
+
+enum RemittanceDirection {
+  SEND // حوالة صادرة — العميل يرسل مبلغًا عبر الشركة كوكيل
+  RECEIVE // حوالة واردة — العميل يستلم مبلغًا مرسلًا إليه عبر الشركة
+}
+
+enum RemittanceCustomerType {
+  INTERNAL // عميل مسجَّل مسبقًا في النظام (Client) — clientId إلزامي
+  EXTERNAL // زبون عابر غير مسجَّل — بياناته تُدخَل يدويًا لهذه الحوالة فقط
+}
+
+// سجل تراكمي — لا حذف فعلي لأي حوالة؛ تصحيح خطأ التسجيل يكون بإلغائها
+// (isVoided) مع سبب موثّق، فيبقى أثرها ظاهرًا في السجل والتدقيق والتقارير.
+model Remittance {
+  id           String                 @id @default(uuid())
+  provider     RemittanceProvider
+  direction    RemittanceDirection
+  customerType RemittanceCustomerType
+
+  // عميل داخلي مسجَّل (customerType = INTERNAL) — وإلا بيانات زبون خارجي تُدخَل يدويًا
+  clientId              String?
+  client                Client? @relation(fields: [clientId], references: [id])
+  externalCustomerName  String?
+  externalCustomerPhone String?
+
+  // الطرف الآخر في الحوالة: المستفيد النهائي (لو SEND) أو المرسِل الأصلي (لو RECEIVE)
+  counterpartyName String
+  referenceNumber  String // MTCN لوسترن يونيون / الرقم المرجعي لموني جرام
+  countryCode      String? // بلد الطرف الآخر — اختياري
+
+  principalAmount Decimal  @db.Decimal(18, 2) // القيمة الأساسية للحوالة (ما يُرسَل/يُستلَم فعليًا)
+  currencyId      String
+  currency        Currency @relation(fields: [currencyId], references: [id])
+
+  cost      Decimal @db.Decimal(18, 2) // تكلفة الحوالة على الشركة (عمولة الشبكة أو ما يعادلها)
+  saleValue Decimal @db.Decimal(18, 2) // قيمة بيع الحوالة للعميل (ما تحصّله الشركة)
+  profit    Decimal @db.Decimal(18, 2) // = saleValue - cost، محسوبة تلقائيًا عند التسجيل
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  isVoided   Boolean   @default(false)
+  voidReason String?
+  voidedById String?
+  voidedBy   User?     @relation("RemittanceVoidedBy", fields: [voidedById], references: [id])
+  voidedAt   DateTime?
+
+  recordedById String
+  recordedBy   User   @relation("RemittanceRecordedBy", fields: [recordedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provider, direction, createdAt])
+  @@index([branchId, createdAt])
+  @@map("remittances")
 }

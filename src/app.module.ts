@@ -10,6 +10,7 @@ import { CurrenciesModule } from './currencies/currencies.module';
 import { DealsModule } from './deals/deals.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FxRatesModule } from './fx-rates/fx-rates.module';
+import { RemittancesModule } from './remittances/remittances.module';
 import { ReportsModule } from './reports/reports.module';
 import { TreasuryModule } from './treasury/treasury.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
@@ -32,6 +33,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     FxRatesModule,
     DealsModule,
     ExpensesModule,
+    RemittancesModule,
     ReportsModule,
   ],
   controllers: [AppController],
