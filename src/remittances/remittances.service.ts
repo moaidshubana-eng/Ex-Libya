@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, RemittanceCustomerType } from '@prisma/client';
+import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
+import { flipDebitCredit, postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { toMoney } from '../common/money';
@@ -13,6 +15,42 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateRemittanceDto } from './dto/create-remittance.dto';
 import { ListRemittancesQuery } from './dto/list-remittances.query';
 import { VoidRemittanceDto } from './dto/void-remittance.dto';
+
+/**
+ * سطور القيد المحاسبي لهامش حوالة: ذمم الهامش المستحقة تتحرك بصافي الربح
+ * (مدينة إن كان موجبًا، دائنة إن كان خسارة)، مقابل قيمة البيع كاملة كإيراد
+ * وقيمة التكلفة كاملة كمصروف — يعرض الإيراد والتكلفة منفصلين في قائمة الدخل
+ * بدل صافي واحد فقط، ويظل متوازنًا حسابيًا في كل الحالات (انظر post-journal-entry.ts).
+ */
+function remittanceLedgerLines(params: {
+  profit: Prisma.Decimal;
+  cost: Prisma.Decimal.Value;
+  saleValue: Prisma.Decimal.Value;
+  currencyId: string;
+  branchId?: string | null;
+}) {
+  const profitIsGain = !params.profit.isNegative();
+  return [
+    {
+      accountCode: ACCOUNT_CODES.REMITTANCE_RECEIVABLE,
+      ...(profitIsGain ? { debit: params.profit } : { credit: params.profit.abs() }),
+      currencyId: params.currencyId,
+      branchId: params.branchId,
+    },
+    {
+      accountCode: ACCOUNT_CODES.REMITTANCE_MARGIN_REVENUE,
+      credit: params.saleValue,
+      currencyId: params.currencyId,
+      branchId: params.branchId,
+    },
+    {
+      accountCode: ACCOUNT_CODES.REMITTANCE_NETWORK_COST,
+      debit: params.cost,
+      currencyId: params.currencyId,
+      branchId: params.branchId,
+    },
+  ];
+}
 
 const REMITTANCE_INCLUDE = {
   client: { select: { id: true, fullName: true, phone: true } },
@@ -72,28 +110,46 @@ export class RemittancesService {
     const currency = await this.getCurrencyOrThrow(dto.currencyCode);
     const profit = toMoney(dto.saleValue).minus(toMoney(dto.cost));
 
-    const remittance = await this.prisma.remittance.create({
-      data: {
-        provider: dto.provider,
-        direction: dto.direction,
-        customerType: dto.customerType,
-        clientId: dto.customerType === RemittanceCustomerType.INTERNAL ? dto.clientId : null,
-        externalCustomerName:
-          dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerName : null,
-        externalCustomerPhone:
-          dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
-        counterpartyName: dto.counterpartyName,
-        referenceNumber: dto.referenceNumber,
-        countryCode: dto.countryCode,
-        principalAmount: dto.principalAmount,
-        currencyId: currency.id,
-        cost: dto.cost,
-        saleValue: dto.saleValue,
-        profit,
-        branchId: dto.branchId,
-        recordedById: actor.id,
-      },
-      include: REMITTANCE_INCLUDE,
+    const remittance = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.remittance.create({
+        data: {
+          provider: dto.provider,
+          direction: dto.direction,
+          customerType: dto.customerType,
+          clientId: dto.customerType === RemittanceCustomerType.INTERNAL ? dto.clientId : null,
+          externalCustomerName:
+            dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerName : null,
+          externalCustomerPhone:
+            dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
+          counterpartyName: dto.counterpartyName,
+          referenceNumber: dto.referenceNumber,
+          countryCode: dto.countryCode,
+          principalAmount: dto.principalAmount,
+          currencyId: currency.id,
+          cost: dto.cost,
+          saleValue: dto.saleValue,
+          profit,
+          branchId: dto.branchId,
+          recordedById: actor.id,
+        },
+        include: REMITTANCE_INCLUDE,
+      });
+
+      await postJournalEntry(tx, {
+        description: `هامش حوالة ${dto.referenceNumber}`,
+        sourceType: 'Remittance',
+        sourceId: created.id,
+        postedById: actor.id,
+        lines: remittanceLedgerLines({
+          profit,
+          cost: dto.cost,
+          saleValue: dto.saleValue,
+          currencyId: currency.id,
+          branchId: dto.branchId,
+        }),
+      });
+
+      return created;
     });
 
     await this.audit.record({
@@ -161,10 +217,36 @@ export class RemittancesService {
     const remittance = await this.findOne(id);
     if (remittance.isVoided) throw new ConflictException('هذه الحوالة ملغاة بالفعل');
 
-    const updated = await this.prisma.remittance.update({
-      where: { id },
-      data: { isVoided: true, voidReason: dto.reason, voidedById: actor.id, voidedAt: new Date() },
-      include: REMITTANCE_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.remittance.update({
+        where: { id },
+        data: {
+          isVoided: true,
+          voidReason: dto.reason,
+          voidedById: actor.id,
+          voidedAt: new Date(),
+        },
+        include: REMITTANCE_INCLUDE,
+      });
+
+      // عكس محاسبي مباشر بمبادلة كل سطر مرحَّل عند التسجيل — بلا حاجة لجلب القيد الأصلي.
+      await postJournalEntry(tx, {
+        description: `إلغاء هامش حوالة ${remittance.referenceNumber} — ${dto.reason}`,
+        sourceType: 'Remittance',
+        sourceId: remittance.id,
+        postedById: actor.id,
+        lines: flipDebitCredit(
+          remittanceLedgerLines({
+            profit: toMoney(remittance.profit),
+            cost: remittance.cost,
+            saleValue: remittance.saleValue,
+            currencyId: remittance.currencyId,
+            branchId: remittance.branchId,
+          }),
+        ),
+      });
+
+      return result;
     });
 
     await this.audit.record({

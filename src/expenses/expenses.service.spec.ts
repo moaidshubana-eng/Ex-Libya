@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -67,6 +68,7 @@ function buildPrismaMock(
         .fn()
         .mockImplementation(({ data }: any) => Promise.resolve({ id: 'move-1', ...data })),
     },
+    ...buildLedgerMockDelegates(),
   };
 
   return {
@@ -198,6 +200,9 @@ describe('ExpensesService.void', () => {
         amount: '3500.00',
         isVoided: false,
         paidFromTreasury: false,
+        category: 'RENT',
+        currencyId: 'cur-lyd',
+        currency: lydCurrency,
       })
       .mockResolvedValue({
         id: 'exp-1',
@@ -227,6 +232,7 @@ describe('ExpensesService.void', () => {
         currencyId: 'cur-lyd',
         currency: lydCurrency,
         description: 'إيجار نقدًا',
+        category: 'RENT',
       })
       .mockResolvedValue({ id: 'exp-1', isVoided: true, paidFromTreasury: true });
     const audit = { record: jest.fn() } as unknown as AuditService;

@@ -1,5 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClientBalanceMovementType, Prisma } from '@prisma/client';
+import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
+import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -173,19 +175,47 @@ export class ClientsService {
     if (!client.isActive) throw new ConflictException('العميل معطَّل — لا يمكن تعديل رصيده');
     const currency = await this.getCurrencyOrThrow(dto.currencyCode);
 
-    const result = await this.prisma.$transaction((tx) =>
-      applyClientBalanceMovement(tx, {
+    const isIncrease = dto.direction === 'INCREASE';
+    const result = await this.prisma.$transaction(async (tx) => {
+      const movementResult = await applyClientBalanceMovement(tx, {
         clientId,
         currencyId: currency.id,
-        type:
-          dto.direction === 'INCREASE'
-            ? ClientBalanceMovementType.ADJUSTMENT_INCREASE
-            : ClientBalanceMovementType.ADJUSTMENT_DECREASE,
+        type: isIncrease
+          ? ClientBalanceMovementType.ADJUSTMENT_INCREASE
+          : ClientBalanceMovementType.ADJUSTMENT_DECREASE,
         amount: dto.amount,
         reason: dto.reason,
         performedById: actor.id,
-      }),
-    );
+      });
+
+      // ترحيل محاسبي: زيادة التزام تجاه عميل بلا صرف نقدي مقابل = خسارة/مصروف على
+      // الشركة؛ تخفيض التزام بلا سداد فعلي = مكسب/إيراد آخر — تسويات إدارية لا
+      // تمرّ بخزينة أي فرع (خلافًا لحركات الإيداع/السحب المرتبطة بعميل).
+      await postJournalEntry(tx, {
+        description: `تصحيح يدوي لرصيد وديعة عميل: ${dto.reason}`,
+        sourceType: 'ClientBalanceMovement',
+        sourceId: movementResult.movement.id,
+        postedById: actor.id,
+        lines: [
+          {
+            accountCode: isIncrease
+              ? ACCOUNT_CODES.CUSTODY_ADJUSTMENT_EXPENSE
+              : ACCOUNT_CODES.CLIENT_CUSTODY_PAYABLE,
+            debit: dto.amount,
+            currencyId: currency.id,
+          },
+          {
+            accountCode: isIncrease
+              ? ACCOUNT_CODES.CLIENT_CUSTODY_PAYABLE
+              : ACCOUNT_CODES.CUSTODY_ADJUSTMENT_INCOME,
+            credit: dto.amount,
+            currencyId: currency.id,
+          },
+        ],
+      });
+
+      return movementResult;
+    });
 
     await this.audit.record({
       entityType: 'ClientBalanceMovement',

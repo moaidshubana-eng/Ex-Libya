@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ClientBalanceMovementType, MovementType, Prisma } from '@prisma/client';
+import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
+import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { applyClientBalanceMovement } from '../clients/apply-client-balance-movement';
@@ -14,6 +16,32 @@ import { applyMovement } from './apply-movement';
 import { ConfigurePositionDto } from './dto/configure-position.dto';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { RecordMovementDto } from './dto/record-movement.dto';
+
+/**
+ * الحساب المقابل لكل نوع حركة خزينة عادية (بلا ربط بعميل) واتجاه القيد —
+ * TRADE_BUY/TRADE_SELL غير مدرجَين عمدًا: لا يوجد بعد حقل تكلفة/هامش على
+ * الصفقة (Transaction) يسمح بترحيل قيد صحيح لتبادل عملة بعملة أخرى (انظر
+ * ملاحظة الفجوة في README) — تنفَّذ الحركة على الخزينة كالمعتاد لكن بلا أثر
+ * على دفتر الأستاذ حتى يُضاف نموذج هامش الصفقات مستقبلًا.
+ */
+const PLAIN_MOVEMENT_COUNTERPART_ACCOUNT: Partial<Record<MovementType, string>> = {
+  [MovementType.DEPOSIT]: ACCOUNT_CODES.BANK_CASH,
+  [MovementType.WITHDRAWAL]: ACCOUNT_CODES.BANK_CASH,
+  [MovementType.TRANSFER_IN]: ACCOUNT_CODES.INTER_BRANCH_CLEARING,
+  [MovementType.TRANSFER_OUT]: ACCOUNT_CODES.INTER_BRANCH_CLEARING,
+  [MovementType.ADJUSTMENT_INCREASE]: ACCOUNT_CODES.CASH_OVER_INCOME,
+  [MovementType.ADJUSTMENT_DECREASE]: ACCOUNT_CODES.CASH_SHORT_EXPENSE,
+};
+
+/** هل الحركة تزيد النقدية في خزينة الفرع (till) أم تنقصها؟ يحدّد أي طرف من القيد يأخذ التيل كاش. */
+const INCREASES_TILL_CASH: Partial<Record<MovementType, boolean>> = {
+  [MovementType.DEPOSIT]: true,
+  [MovementType.WITHDRAWAL]: false,
+  [MovementType.TRANSFER_IN]: true,
+  [MovementType.TRANSFER_OUT]: false,
+  [MovementType.ADJUSTMENT_INCREASE]: true,
+  [MovementType.ADJUSTMENT_DECREASE]: false,
+};
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -199,6 +227,59 @@ export class TreasuryService {
           reason: dto.reason,
         },
       });
+
+      // ترحيل محاسبي للحركة على الخزينة نفسها. مرتبطة بعميل (DEPOSIT/WITHDRAWAL
+      // فقط، مضمونة سلفًا بالتحقق أعلاه): الطرف الآخر وديعة العميل المستحقة، لا
+      // البنك — فهذا نقل مسؤولية بين الشركة وعميل بعينه، لا تغذية فعلية من حساب
+      // مصرفي. حركة عادية بلا عميل: الطرف الآخر يعتمد على النوع (انظر الخريطة أعلاه).
+      if (client) {
+        const isDeposit = dto.type === MovementType.DEPOSIT;
+        await postJournalEntry(tx, {
+          description: `حركة خزينة مرتبطة برصيد عميل: ${dto.reason}`,
+          sourceType: 'TreasuryMovement',
+          sourceId: result.movement.id,
+          postedById: actor.id,
+          lines: [
+            {
+              accountCode: ACCOUNT_CODES.TILL_CASH,
+              ...(isDeposit ? { debit: dto.amount } : { credit: dto.amount }),
+              currencyId: currency.id,
+              branchId,
+            },
+            {
+              accountCode: ACCOUNT_CODES.CLIENT_CUSTODY_PAYABLE,
+              ...(isDeposit ? { credit: dto.amount } : { debit: dto.amount }),
+              currencyId: currency.id,
+              branchId,
+            },
+          ],
+        });
+      } else {
+        const counterpartCode = PLAIN_MOVEMENT_COUNTERPART_ACCOUNT[dto.type];
+        const tillIncreases = INCREASES_TILL_CASH[dto.type];
+        if (counterpartCode && tillIncreases !== undefined) {
+          await postJournalEntry(tx, {
+            description: `حركة خزينة: ${dto.reason}`,
+            sourceType: 'TreasuryMovement',
+            sourceId: result.movement.id,
+            postedById: actor.id,
+            lines: [
+              {
+                accountCode: ACCOUNT_CODES.TILL_CASH,
+                ...(tillIncreases ? { debit: dto.amount } : { credit: dto.amount }),
+                currencyId: currency.id,
+                branchId,
+              },
+              {
+                accountCode: counterpartCode,
+                ...(tillIncreases ? { credit: dto.amount } : { debit: dto.amount }),
+                currencyId: currency.id,
+                branchId,
+              },
+            ],
+          });
+        }
+      }
 
       let clientBalanceMovement = null;
       if (client) {

@@ -53,6 +53,7 @@ model User {
   clientBalanceMovementsPerformed ClientBalanceMovement[] @relation("ClientBalanceMovementActor")
   recordedRemittances             Remittance[]            @relation("RemittanceRecordedBy")
   voidedRemittances               Remittance[]            @relation("RemittanceVoidedBy")
+  postedJournalEntries            JournalEntry[]
 
   @@map("users")
 }
@@ -69,12 +70,13 @@ model Branch {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  users       User[]
-  positions   TreasuryPosition[]
-  movements   TreasuryMovement[]
-  deals       Transaction[]
-  expenses    Expense[]
-  remittances Remittance[]
+  users        User[]
+  positions    TreasuryPosition[]
+  movements    TreasuryMovement[]
+  deals        Transaction[]
+  expenses     Expense[]
+  remittances  Remittance[]
+  journalLines JournalLine[]
 
   @@map("branches")
 }
@@ -94,6 +96,7 @@ model Currency {
   deals            Transaction[]
   expenses         Expense[]
   remittances      Remittance[]
+  journalLines     JournalLine[]
 
   @@map("currencies")
 }
@@ -531,4 +534,103 @@ model Remittance {
   @@index([provider, direction, createdAt])
   @@index([branchId, createdAt])
   @@map("remittances")
+}
+
+// ------------------------------------------------------------------
+// المحاسبة العامة (دفتر الأستاذ ذو القيد المزدوج) — القوائم المالية
+// (المركز المالي والدخل) تُشتَق حصرًا من هذا الدفتر عبر تجميع (aggregate)
+// قراءة فقط، لا من جمع أرقام متفرقة من وحدات أخرى؛ توازن معادلة
+// (الأصول = الخصوم + حقوق الملكية) مضمون بنيويًا طالما كل قيد متوازن
+// (مجموع المدين = مجموع الدائن ضمن كل عملة على حدة) — لا حاجة لأي "تصحيح"
+// لاحق لإجبار التوازن. القيود تُرحَّل تلقائيًا من: المصاريف، حركات الخزينة
+// (العادية والمرتبطة برصيد عميل)، هامش الحوالات، وتعديلات أرصدة العملاء —
+// وتُدخَل يدويًا لما لا يمكن ترحيله تلقائيًا بثقة (رأس المال، الأصول الثابتة
+// واستهلاكها، القروض، الضريبة، وهامش صفقات الصرف الذي لا يُسجَّل تلقائيًا
+// بعد لعدم وجود حقل تكلفة/هامش على Transaction حاليًا).
+// ------------------------------------------------------------------
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum AccountClass {
+  CURRENT_ASSET
+  FIXED_ASSET
+  CURRENT_LIABILITY
+  LONG_TERM_LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum DebitCredit {
+  DEBIT
+  CREDIT
+}
+
+// شجرة الحسابات — ثابتة الرمز (code) وتُزرَع مرة واحدة (seed) عبر
+// AccountingService.ensureChartOfAccounts()، وهي عملية idempotent (upsert
+// بالرمز) تُستدعى تلقائيًا عند إقلاع التطبيق. isSystem=true يمنع حذف الحساب
+// من أي واجهة إدارية مستقبلية (لا يوجد حذف حسابات في هذا الإصدار أصلًا).
+model Account {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  name          String
+  type          AccountType
+  class         AccountClass
+  normalBalance DebitCredit // الاتجاه الذي تزيد به قيمة الحساب طبيعيًا
+  isSystem      Boolean      @default(true)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+
+  lines JournalLine[]
+
+  @@map("accounts")
+}
+
+// قيد يومية — رأس القيد فقط؛ التفاصيل في JournalLine. دفتر تراكمي صرف: لا
+// تعديل ولا حذف لأي قيد مُرحَّل، حتى لو كان خطأً — يُصحَّح بقيد عكسي جديد
+// (reverseEntry) يشير إليه عبر reversalOfId، فيبقى كِلا القيدين ظاهرَين
+// للتدقيق الكامل (هذا هو معنى "دفتر أستاذ" حقيقي، لا مجرّد جدول قابل للتعديل).
+model JournalEntry {
+  id           String   @id @default(uuid())
+  entryDate    DateTime @default(now())
+  description  String
+  sourceType   String? // 'Expense' | 'TreasuryMovement' | 'ClientBalanceMovement' | 'Remittance' | 'Manual' ...
+  sourceId     String? // معرّف السجل المصدر إن كان القيد مُرحَّلًا تلقائيًا من وحدة أخرى
+  reversalOfId String? // إن كان هذا القيد عكسيًا يُلغي أثر قيد سابق بعينه
+  postedById   String
+  postedBy     User     @relation(fields: [postedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  lines JournalLine[]
+
+  @@index([entryDate])
+  @@index([sourceType, sourceId])
+  @@map("journal_entries")
+}
+
+// سطر قيد — دومًا أحد الحقلين (debit/credit) موجب والآخر صفر، أبدًا كلاهما
+// معًا. currencyId إلزامي لأن كل حساب هنا "حساب تحكّم" متعدد العملات (تمييز
+// الأرصدة الفعلي بالعملة يتم بالتجميع وقت القراءة، لا بتعدد صفوف الحساب).
+model JournalLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id])
+  debit          Decimal      @default(0) @db.Decimal(18, 2)
+  credit         Decimal      @default(0) @db.Decimal(18, 2)
+  currencyId     String
+  currency       Currency     @relation(fields: [currencyId], references: [id])
+  branchId       String?
+  branch         Branch?      @relation(fields: [branchId], references: [id])
+  memo           String?
+
+  @@index([accountId, currencyId])
+  @@map("journal_lines")
 }

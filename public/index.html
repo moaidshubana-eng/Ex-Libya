@@ -173,6 +173,30 @@
     .sidebar nav{ flex-direction:row; padding:0; overflow-y:visible; }
     main.content{ padding:16px 14px 50px; }
   }
+
+  /* ---- المحاسبة: القوائم المالية ---- */
+  .statement-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .statement-head h4{ margin:0; font-size:15px; }
+  .statement-section-title{ font-weight:700; font-size:13.5px; color:var(--accent-strong); margin:14px 0 6px; }
+  .statement-row{ display:flex; justify-content:space-between; padding:5px 2px; font-size:13.5px; border-bottom:1px dashed var(--line); }
+  .statement-row .num{ font-weight:600; }
+  .statement-total{ display:flex; justify-content:space-between; padding:8px 2px; font-weight:700; font-size:14.5px; border-top:2px solid var(--ink); margin-top:4px; }
+  .statement-total.grand{ background:var(--gold-soft); border-radius:8px; padding:10px 10px; margin-top:10px; }
+  .balance-ok{ color:var(--success); font-weight:700; }
+  .balance-bad{ color:var(--critical); font-weight:700; }
+  .je-line-row{ display:grid; grid-template-columns:1.4fr .9fr .9fr .8fr .9fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px; }
+  .je-line-row select, .je-line-row input{ width:100%; }
+  @media (max-width:900px){ .je-line-row{ grid-template-columns:1fr 1fr; } }
+
+  @media print {
+    .no-print{ display:none !important; }
+    body.print-only-bs #income-statement-card, body.print-only-bs #journal-form-card,
+    body.print-only-bs #journal-log-card, body.print-only-bs #accounts-card{ display:none !important; }
+    body.print-only-is #balance-sheet-card, body.print-only-is #journal-form-card,
+    body.print-only-is #journal-log-card, body.print-only-is #accounts-card{ display:none !important; }
+    aside.sidebar{ display:none !important; }
+    main.content{ padding:0 !important; }
+  }
 </style>
 </head>
 <body>
@@ -238,6 +262,10 @@
         <button class="nav-btn" data-tab="reports" onclick="switchTab('reports')">
           <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16.5 V3.5 M4 16.5 H16.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.7 13.5 V9.5 M10.3 13.5 V6 M14 13.5 V11" stroke-linecap="round"/></svg>
           التقارير
+        </button>
+        <button class="nav-btn" data-tab="accounting" onclick="switchTab('accounting')">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 7 H13 M7 10 H13 M7 13 H10.5" stroke-linecap="round"/></svg>
+          المحاسبة
         </button>
         <button class="nav-btn" data-tab="whatsapp" onclick="switchTab('whatsapp')">
           <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16.5 L5 13 C4.2 11.8 3.8 10.4 3.8 9 C3.8 5.5 6.9 2.7 10.6 2.7 C14.3 2.7 17.4 5.5 17.4 9 C17.4 12.5 14.3 15.3 10.6 15.3 C9.3 15.3 8 15 7 14.4 L4 16.5 Z" stroke-linejoin="round"/></svg>
@@ -590,6 +618,65 @@
         </div>
       </div>
 
+      <!-- ---- المحاسبة ---- -->
+      <div class="panel" id="panel-accounting">
+        <div class="page-head"><h2>المحاسبة العامة</h2><button class="btn-ghost btn-sm no-print" onclick="loadAccountingAll()">تحديث</button></div>
+
+        <div class="card" id="balance-sheet-card">
+          <div class="statement-head">
+            <h4>قائمة المركز المالي (الميزانية)</h4>
+            <button class="btn-ghost btn-sm no-print" onclick="printStatement('bs')">طباعة</button>
+          </div>
+          <div class="filter-bar no-print">
+            <div class="field" style="margin:0"><label>حتى تاريخ</label><input type="date" id="bs-asof" /></div>
+            <div class="field" style="margin:0"><label>الفرع</label><select id="bs-branch"><option value="">كل الفروع (نقدية موحَّدة)</option></select></div>
+            <button class="btn-primary btn-sm" style="align-self:flex-end" onclick="loadBalanceSheet()">تحديث</button>
+          </div>
+          <div id="balance-sheet-content" class="state-msg">جارِ التحميل...</div>
+        </div>
+
+        <div class="card" id="income-statement-card">
+          <div class="statement-head">
+            <h4>قائمة الدخل</h4>
+            <button class="btn-ghost btn-sm no-print" onclick="printStatement('is')">طباعة</button>
+          </div>
+          <div class="filter-bar no-print">
+            <div class="field" style="margin:0"><label>من تاريخ</label><input type="date" id="is-from" /></div>
+            <div class="field" style="margin:0"><label>إلى تاريخ</label><input type="date" id="is-to" /></div>
+            <div class="field" style="margin:0"><label>الفرع</label><select id="is-branch"><option value="">كل الفروع</option></select></div>
+            <button class="btn-primary btn-sm" style="align-self:flex-end" onclick="loadIncomeStatement()">تحديث</button>
+          </div>
+          <p class="form-note no-print">الافتراضي: من بداية الشهر الحالي إلى الآن.</p>
+          <div id="income-statement-content" class="state-msg">جارِ التحميل...</div>
+        </div>
+
+        <div class="card no-print" id="journal-form-card">
+          <div class="card-head"><h3>ترحيل قيد يومية يدوي</h3><span class="sub">لرأس المال، الأصول الثابتة وإهلاكها، القروض، الضريبة، وهامش صفقات الصرف (لا يُرحَّل تلقائيًا بعد)</span></div>
+          <div class="field"><label>وصف القيد</label><input type="text" id="je-description" placeholder="مثال: شراء أثاث مكتبي نقدًا من خزينة فرع طرابلس" /></div>
+          <div id="je-lines"></div>
+          <button class="btn-ghost btn-sm" onclick="addJournalLineRow()">+ إضافة سطر</button>
+          <p id="je-balance-preview" class="form-note"></p>
+          <button class="btn-primary" id="post-journal-entry-btn" onclick="postManualJournalEntry()" style="margin-top:8px">ترحيل القيد</button>
+        </div>
+
+        <div class="card no-print" id="journal-log-card">
+          <div class="card-head"><h3>دفتر اليومية</h3></div>
+          <div class="filter-bar">
+            <input type="date" id="jl-from" title="من تاريخ" />
+            <input type="date" id="jl-to" title="إلى تاريخ" />
+            <input type="text" id="jl-account" placeholder="رمز حساب (اختياري)" style="max-width:150px" />
+            <button class="btn-ghost btn-sm" onclick="journalPage=1;loadJournalEntries()">فلترة</button>
+          </div>
+          <div id="journal-entries-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="journal-entries-pager"></div>
+        </div>
+
+        <div class="card no-print" id="accounts-card">
+          <div class="card-head"><h3>شجرة الحسابات</h3></div>
+          <div id="accounts-content" class="state-msg">جارِ التحميل...</div>
+        </div>
+      </div>
+
       <!-- ---- واتساب ---- -->
       <div class="panel" id="panel-whatsapp">
         <div class="page-head"><h2>رسائل واتساب</h2><button class="btn-ghost btn-sm" onclick="loadWhatsapp()">تحديث</button></div>
@@ -669,7 +756,9 @@
 const API = window.location.origin; // الواجهة تُخدَّم من نفس الخادم — لا حاجة لرابط ثابت
 let accessToken = null, currentUser = null, pendingMfaChallenge = null;
 let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [];
-let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1;
+let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1, journalPage = 1;
+let accountsCache = [];
+let currencyOptsWithLydHtml = '', branchOptsHtml = '';
 let selectedClientId = null;
 
 const EXPENSE_CATEGORY_LABELS = {
@@ -774,6 +863,7 @@ async function onLoggedIn(token, user){
     });
     // الدينار عملة خزينة/مصروف صالحة تمامًا (كاش، إيجار، رواتب...) — يُضاف يدويًا لهذي القوائم
     const optsWithLyd = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
+    currencyOptsWithLydHtml = optsWithLyd;
     ['mv-currency','pos-currency','ex-currency','cba-currency','rm-currency'].forEach(id => {
       document.getElementById(id).innerHTML = optsWithLyd;
     });
@@ -781,12 +871,15 @@ async function onLoggedIn(token, user){
     const branchRes = await apiCall('/treasury/branches');
     branchesCache = branchRes;
     const bOpts = branchesCache.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    branchOptsHtml = bOpts;
     ['mv-branch','log-branch','pos-branch'].forEach(id => { document.getElementById(id).innerHTML = bOpts; });
     document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
     document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
     document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
     document.getElementById('rm-branch').innerHTML = '<option value="">— بلا فرع محدَّد —</option>' + bOpts;
     document.getElementById('rms-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
+    document.getElementById('bs-branch').innerHTML = '<option value="">كل الفروع (نقدية موحَّدة)</option>' + bOpts;
+    document.getElementById('is-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
   }catch(err){ showToast('تعذّر تحميل العملات/الفروع: ' + err.message, true); }
 
   const now = new Date();
@@ -795,8 +888,11 @@ async function onLoggedIn(token, user){
   document.getElementById('rp-to').value = now.toISOString().slice(0, 10);
   document.getElementById('rms-from').value = monthStart.toISOString().slice(0, 10);
   document.getElementById('rms-to').value = now.toISOString().slice(0, 10);
+  document.getElementById('bs-asof').value = now.toISOString().slice(0, 10);
+  document.getElementById('is-from').value = monthStart.toISOString().slice(0, 10);
+  document.getElementById('is-to').value = now.toISOString().slice(0, 10);
 
-  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary();
+  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary(); loadAccountingAll();
   if (!window._tickerStarted) { window._tickerStarted = true; setInterval(renderDealsTable, 1000); }
 }
 
@@ -1554,6 +1650,250 @@ async function loadReports(){
 
     document.getElementById('reports-treasury-consolidated').innerHTML = barListHtml(consolidated, i => i.currency, i => i.totalBalance);
   }catch(err){ kpisEl.innerHTML = `<div class="kpi"><div class="l" style="color:var(--critical)">${err.message}</div></div>`; }
+}
+
+// ---------------- المحاسبة العامة (دفتر الأستاذ والقوائم المالية) ----------------
+
+function loadAccountingAll(){
+  loadAccounts();
+  loadBalanceSheet();
+  loadIncomeStatement();
+  journalPage = 1; loadJournalEntries();
+}
+
+async function loadAccounts(){
+  const el = document.getElementById('accounts-content');
+  try{
+    accountsCache = await apiCall('/accounting/accounts');
+    let html = '<div class="table-wrap"><table><thead><tr><th>الرمز</th><th>الاسم</th><th>النوع</th><th>التصنيف</th><th>الطبيعة</th></tr></thead><tbody>';
+    accountsCache.forEach(a => {
+      html += `<tr><td class="num">${a.code}</td><td>${a.name}</td><td>${a.type}</td><td>${a.class}</td><td>${a.normalBalance === 'DEBIT' ? 'مدينة' : 'دائنة'}</td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+    // أول تحميل: جهّز نموذج القيد اليدوي بسطرين فارغين افتراضيًا
+    if (document.getElementById('je-lines').children.length === 0) {
+      addJournalLineRow(); addJournalLineRow();
+    }
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+function accountOptionsHtml(){
+  return accountsCache.map(a => `<option value="${a.code}">${a.code} — ${a.name}</option>`).join('');
+}
+
+function addJournalLineRow(){
+  const container = document.getElementById('je-lines');
+  const row = document.createElement('div');
+  row.className = 'je-line-row';
+  row.innerHTML = `
+    <div class="field" style="margin:0"><label>الحساب</label><select class="je-account">${accountOptionsHtml()}</select></div>
+    <div class="field" style="margin:0"><label>مدين</label><input class="je-debit" type="text" placeholder="0.00" oninput="onJeAmountInput(this)" /></div>
+    <div class="field" style="margin:0"><label>دائن</label><input class="je-credit" type="text" placeholder="0.00" oninput="onJeAmountInput(this)" /></div>
+    <div class="field" style="margin:0"><label>العملة</label><select class="je-currency">${currencyOptsWithLydHtml}</select></div>
+    <div class="field" style="margin:0"><label>الفرع (اختياري)</label><select class="je-branch"><option value="">—</option>${branchOptsHtml}</select></div>
+    <div class="field" style="margin:0"><label>ملاحظة (اختياري)</label><input class="je-memo" type="text" /></div>
+    <button class="btn-danger btn-sm" onclick="removeJournalLineRow(this)">حذف</button>`;
+  container.appendChild(row);
+}
+
+function removeJournalLineRow(btn){
+  const container = document.getElementById('je-lines');
+  if (container.children.length <= 2) { showToast('القيد يتطلب سطرين على الأقل', true); return; }
+  btn.closest('.je-line-row').remove();
+  updateJournalBalancePreview();
+}
+
+function onJeAmountInput(el){
+  const row = el.closest('.je-line-row');
+  if (el.classList.contains('je-debit') && el.value.trim()) row.querySelector('.je-credit').value = '';
+  if (el.classList.contains('je-credit') && el.value.trim()) row.querySelector('.je-debit').value = '';
+  updateJournalBalancePreview();
+}
+
+function updateJournalBalancePreview(){
+  const totals = {};
+  document.querySelectorAll('#je-lines .je-line-row').forEach(row => {
+    const currency = row.querySelector('.je-currency').value;
+    const debit = parseFloat(row.querySelector('.je-debit').value) || 0;
+    const credit = parseFloat(row.querySelector('.je-credit').value) || 0;
+    if (!totals[currency]) totals[currency] = { debit: 0, credit: 0 };
+    totals[currency].debit += debit;
+    totals[currency].credit += credit;
+  });
+  const parts = Object.entries(totals).map(([cur, t]) => {
+    const balanced = Math.abs(t.debit - t.credit) < 0.005;
+    const cls = balanced ? 'balance-ok' : 'balance-bad';
+    return `<span class="${cls}">${cur}: مدين ${fmtNum(t.debit)} / دائن ${fmtNum(t.credit)} ${balanced ? '✓ متوازن' : '✗ غير متوازن'}</span>`;
+  });
+  document.getElementById('je-balance-preview').innerHTML = parts.join(' &nbsp;·&nbsp; ') || '';
+}
+
+async function postManualJournalEntry(){
+  const description = document.getElementById('je-description').value.trim();
+  if (!description) { showToast('اكتب وصف القيد أولًا', true); return; }
+  const lines = [];
+  let invalid = false;
+  document.querySelectorAll('#je-lines .je-line-row').forEach(row => {
+    const accountCode = row.querySelector('.je-account').value;
+    const debit = row.querySelector('.je-debit').value.trim();
+    const credit = row.querySelector('.je-credit').value.trim();
+    const currencyCode = row.querySelector('.je-currency').value;
+    const branchId = row.querySelector('.je-branch').value;
+    const memo = row.querySelector('.je-memo').value.trim();
+    if (!debit && !credit) { invalid = true; return; }
+    const line = { accountCode, currencyCode };
+    if (debit) line.debit = debit; else line.credit = credit;
+    if (branchId) line.branchId = branchId;
+    if (memo) line.memo = memo;
+    lines.push(line);
+  });
+  if (invalid || lines.length < 2) { showToast('كل سطر يجب أن يحمل قيمة مدينة أو دائنة، وسطران على الأقل', true); return; }
+
+  await runBusy('post-journal-entry-btn', async () => {
+    await apiCall('/accounting/journal-entries', { method: 'POST', body: JSON.stringify({ description, lines }) });
+    showToast('تم ترحيل القيد بنجاح');
+    document.getElementById('je-description').value = '';
+    document.getElementById('je-lines').innerHTML = '';
+    addJournalLineRow(); addJournalLineRow();
+    updateJournalBalancePreview();
+    loadAccountingAll();
+  })().catch(err => showToast(err.message, true));
+}
+
+function printStatement(which){
+  const cls = which === 'bs' ? 'print-only-bs' : 'print-only-is';
+  document.body.classList.add(cls);
+  window.print();
+  setTimeout(() => document.body.classList.remove(cls), 500);
+}
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('print-only-bs', 'print-only-is');
+});
+
+function statementLineHtml(item){
+  return `<div class="statement-row"><span>${item.name} <span class="num" style="color:var(--ink-faint)">(${item.code})</span></span><span class="num">${fmtNum(item.balance ?? item.amount)} ${item.currency}</span></div>`;
+}
+
+async function loadBalanceSheet(){
+  const el = document.getElementById('balance-sheet-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const asOf = document.getElementById('bs-asof').value;
+    const branchId = document.getElementById('bs-branch').value;
+    const params = new URLSearchParams();
+    if (asOf) params.set('asOf', new Date(asOf + 'T23:59:59').toISOString());
+    if (branchId) params.set('branchId', branchId);
+    const sheet = await apiCall('/accounting/balance-sheet?' + params.toString());
+
+    const balanced = Math.abs(parseFloat(sheet.balanceCheck.difference)) < 0.01;
+    let html = `<p style="font-size:12.5px;color:var(--ink-soft)">عند: ${fmtDate(sheet.asOf)}</p>`;
+
+    html += '<div class="statement-section-title">الأصول المتداولة</div>';
+    html += sheet.assets.current.length ? sheet.assets.current.map(statementLineHtml).join('') : '<div class="state-msg">لا توجد أرصدة</div>';
+    html += '<div class="statement-section-title">الأصول الثابتة</div>';
+    html += sheet.assets.fixed.length ? sheet.assets.fixed.map(statementLineHtml).join('') : '<div class="state-msg">لا توجد أصول ثابتة مسجَّلة بعد</div>';
+    html += `<div class="statement-total">إجمالي الأصول (بما يعادله بالدينار)<span class="num">${fmtNum(sheet.assets.totalLydEquivalent)}</span></div>`;
+
+    html += '<div class="statement-section-title">الخصوم المتداولة</div>';
+    html += sheet.liabilities.current.length ? sheet.liabilities.current.map(statementLineHtml).join('') : '<div class="state-msg">لا توجد التزامات متداولة</div>';
+    html += '<div class="statement-section-title">الخصوم طويلة الأجل</div>';
+    html += sheet.liabilities.longTerm.length ? sheet.liabilities.longTerm.map(statementLineHtml).join('') : '<div class="state-msg">لا توجد التزامات طويلة الأجل</div>';
+    html += `<div class="statement-total">إجمالي الخصوم<span class="num">${fmtNum(sheet.liabilities.totalLydEquivalent)}</span></div>`;
+
+    html += '<div class="statement-section-title">حقوق الملكية</div>';
+    html += sheet.equity.items.length ? sheet.equity.items.map(statementLineHtml).join('') : '<div class="state-msg">لا يوجد رأس مال مسجَّل بعد</div>';
+    const retColor = parseFloat(sheet.equity.retainedEarningsAndCurrentIncomeLyd) < 0 ? 'var(--critical)' : 'var(--success)';
+    html += `<div class="statement-row"><span>الأرباح المرحّلة ونتيجة الفترة الحالية</span><span class="num" style="color:${retColor}">${fmtNum(sheet.equity.retainedEarningsAndCurrentIncomeLyd)}</span></div>`;
+    html += `<div class="statement-total">إجمالي حقوق الملكية<span class="num">${fmtNum(sheet.equity.totalLydEquivalent)}</span></div>`;
+
+    html += `<div class="statement-total grand">
+      <span>إجمالي الخصوم + حقوق الملكية</span>
+      <span class="num">${fmtNum(sheet.balanceCheck.totalLiabilitiesAndEquityLyd)}</span>
+    </div>`;
+    html += `<p style="text-align:center;margin-top:8px" class="${balanced ? 'balance-ok' : 'balance-bad'}">
+      ${balanced ? '✓ الميزانية متوازنة تمامًا (الأصول = الخصوم + حقوق الملكية)' : '✗ فرق غير متوقَّع: ' + sheet.balanceCheck.difference}
+    </p>`;
+
+    el.innerHTML = html;
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function loadIncomeStatement(){
+  const el = document.getElementById('income-statement-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const from = document.getElementById('is-from').value;
+    const to = document.getElementById('is-to').value;
+    const branchId = document.getElementById('is-branch').value;
+    const params = new URLSearchParams();
+    if (from) params.set('from', new Date(from + 'T00:00:00').toISOString());
+    if (to) params.set('to', new Date(to + 'T23:59:59').toISOString());
+    if (branchId) params.set('branchId', branchId);
+    const statement = await apiCall('/accounting/income-statement?' + params.toString());
+
+    let html = `<p style="font-size:12.5px;color:var(--ink-soft)">من ${statement.period.from.slice(0,10)} إلى ${statement.period.to.slice(0,10)}</p>`;
+    html += '<div class="statement-section-title">الإيرادات</div>';
+    html += statement.revenue.items.length ? statement.revenue.items.map(statementLineHtml).join('') : '<div class="state-msg">لا توجد إيرادات لهذه الفترة</div>';
+    html += `<div class="statement-total">إجمالي الإيرادات<span class="num">${fmtNum(statement.revenue.totalLydEquivalent)}</span></div>`;
+
+    html += '<div class="statement-section-title">المصاريف</div>';
+    html += statement.expenses.items.length ? statement.expenses.items.map(statementLineHtml).join('') : '<div class="state-msg">لا توجد مصاريف لهذه الفترة</div>';
+    html += `<div class="statement-total">إجمالي المصاريف<span class="num">${fmtNum(statement.expenses.totalLydEquivalent)}</span></div>`;
+
+    const beforeColor = parseFloat(statement.netIncomeBeforeTaxLydEquivalent) < 0 ? 'var(--critical)' : 'var(--success)';
+    html += `<div class="statement-total"><span>صافي الربح قبل الضريبة</span><span class="num" style="color:${beforeColor}">${fmtNum(statement.netIncomeBeforeTaxLydEquivalent)}</span></div>`;
+
+    html += '<div class="statement-section-title">ضريبة الدخل</div>';
+    html += statement.incomeTax.items.length ? statement.incomeTax.items.map(statementLineHtml).join('') : '<div class="state-msg">لم تُرحَّل أي ضريبة دخل لهذه الفترة</div>';
+
+    const afterColor = parseFloat(statement.netIncomeAfterTaxLydEquivalent) < 0 ? 'var(--critical)' : 'var(--success)';
+    html += `<div class="statement-total grand"><span>صافي الربح بعد الضريبة</span><span class="num" style="color:${afterColor}">${fmtNum(statement.netIncomeAfterTaxLydEquivalent)}</span></div>`;
+
+    el.innerHTML = html;
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+const JOURNAL_SOURCE_LABELS = {
+  Expense: 'مصروف', TreasuryMovement: 'حركة خزينة', ClientBalanceMovement: 'حركة رصيد عميل',
+  Remittance: 'حوالة', Manual: 'قيد يدوي',
+};
+
+async function loadJournalEntries(){
+  const el = document.getElementById('journal-entries-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const from = document.getElementById('jl-from').value;
+    const to = document.getElementById('jl-to').value;
+    const accountCode = document.getElementById('jl-account').value.trim();
+    const params = new URLSearchParams({ page: journalPage, pageSize: 15 });
+    if (from) params.set('from', new Date(from + 'T00:00:00').toISOString());
+    if (to) params.set('to', new Date(to + 'T23:59:59').toISOString());
+    if (accountCode) params.set('accountCode', accountCode);
+    const result = await apiCall('/accounting/journal-entries?' + params.toString());
+    if (result.items.length === 0) { el.textContent = 'لا توجد قيود مطابقة.'; document.getElementById('journal-entries-pager').innerHTML = ''; return; }
+
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الوصف</th><th>المصدر</th><th>السطور</th><th>بواسطة</th><th></th></tr></thead><tbody>';
+    result.items.forEach(e => {
+      const linesHtml = e.lines.map(l => {
+        const amount = parseFloat(l.debit) > 0 ? `مدين ${fmtNum(l.debit)}` : `دائن ${fmtNum(l.credit)}`;
+        return `${l.account.code} (${amount} ${l.currency.code})`;
+      }).join('<br>');
+      const isReversal = !!e.reversalOfId;
+      const action = isReversal ? '<span style="color:var(--ink-faint)">قيد عكسي</span>' : `<button class="btn-danger btn-sm" onclick="reverseJournalEntryPrompt('${e.id}', this)">عكس</button>`;
+      html += `<tr><td>${fmtDate(e.entryDate)}</td><td class="wrap">${e.description}</td><td>${JOURNAL_SOURCE_LABELS[e.sourceType] || e.sourceType || '—'}</td><td style="font-size:12px">${linesHtml}</td><td>${e.postedBy ? e.postedBy.fullName : '—'}</td><td>${action}</td></tr>`;
+    });
+    el.innerHTML = html + '</tbody></table></div>';
+    pagerHtml('journal-entries-pager', journalPage, 15, result.total, 'p => { journalPage = p; loadJournalEntries(); }');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+function reverseJournalEntryPrompt(id, btn){
+  const reason = prompt('سبب عكس القيد:');
+  if (!reason) return;
+  btn.disabled = true;
+  apiCall('/accounting/journal-entries/' + id + '/reverse', { method: 'POST', body: JSON.stringify({ reason }) })
+    .then(() => { showToast('تم عكس القيد بنجاح'); loadAccountingAll(); })
+    .catch(err => { showToast(err.message, true); btn.disabled = false; });
 }
 </script>
 </body>

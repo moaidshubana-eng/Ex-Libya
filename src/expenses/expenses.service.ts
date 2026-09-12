@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MovementType, Prisma } from '@prisma/client';
+import { ACCOUNT_CODES, EXPENSE_CATEGORY_ACCOUNT_CODE } from '../accounting/chart-of-accounts';
+import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,7 +68,7 @@ export class ExpensesService {
         treasuryMovementId = result.movement.id;
       }
 
-      return tx.expense.create({
+      const created = await tx.expense.create({
         data: {
           category: dto.category,
           amount: dto.amount,
@@ -80,6 +82,34 @@ export class ExpensesService {
         },
         include: EXPENSE_INCLUDE,
       });
+
+      // ترحيل محاسبي: مدين حساب المصروف (حسب الفئة) دومًا؛ الطرف الدائن يختلف
+      // حسب مصدر السداد — نقدًا من خزينة الفرع (تخفيض أصل)، أو ذمة دائنة معلَّقة
+      // إن سُدِّد من مصدر خارجي لم يُسجَّل بعد في هذا النظام (تحويل بنكي مثلًا).
+      await postJournalEntry(tx, {
+        description: `مصروف تشغيلي: ${dto.description}`,
+        sourceType: 'Expense',
+        sourceId: created.id,
+        postedById: actor.id,
+        lines: [
+          {
+            accountCode: EXPENSE_CATEGORY_ACCOUNT_CODE[dto.category],
+            debit: dto.amount,
+            currencyId: currency.id,
+            branchId: dto.branchId,
+          },
+          {
+            accountCode: dto.paidFromTreasury
+              ? ACCOUNT_CODES.TILL_CASH
+              : ACCOUNT_CODES.EXPENSE_CLEARING_PAYABLE,
+            credit: dto.amount,
+            currencyId: currency.id,
+            branchId: dto.branchId,
+          },
+        ],
+      });
+
+      return created;
     });
 
     await this.audit.record({
@@ -158,6 +188,31 @@ export class ExpensesService {
           performedById: actor.id,
         });
       }
+
+      // عكس محاسبي مباشر بنفس المبلغ والحسابين المرحَّلين عند التسجيل، بمبادلة
+      // المدين بالدائن — بلا حاجة لجلب القيد الأصلي، فتفاصيل عكسه معروفة من المصروف نفسه.
+      await postJournalEntry(tx, {
+        description: `إلغاء مصروف تشغيلي: ${expense.description} — ${dto.reason}`,
+        sourceType: 'Expense',
+        sourceId: expense.id,
+        postedById: actor.id,
+        lines: [
+          {
+            accountCode: EXPENSE_CATEGORY_ACCOUNT_CODE[expense.category],
+            credit: expense.amount,
+            currencyId: expense.currencyId,
+            branchId: expense.branchId,
+          },
+          {
+            accountCode: expense.paidFromTreasury
+              ? ACCOUNT_CODES.TILL_CASH
+              : ACCOUNT_CODES.EXPENSE_CLEARING_PAYABLE,
+            debit: expense.amount,
+            currencyId: expense.currencyId,
+            branchId: expense.branchId,
+          },
+        ],
+      });
 
       await tx.expense.update({
         where: { id },

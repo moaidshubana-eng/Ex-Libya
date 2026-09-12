@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -46,6 +47,16 @@ function buildPrismaMock(
     ...options.createdOverrides,
   };
 
+  const txDelegates = {
+    remittance: {
+      create: jest.fn().mockResolvedValue(created),
+      update: jest
+        .fn()
+        .mockImplementation(({ data }: any) => Promise.resolve({ ...created, ...data })),
+    },
+    ...buildLedgerMockDelegates(),
+  };
+
   return {
     client: {
       findUnique: jest.fn().mockResolvedValue('client' in options ? options.client : activeClient),
@@ -57,18 +68,17 @@ function buildPrismaMock(
     },
     currency: { findUnique: jest.fn().mockResolvedValue(usdCurrency) },
     remittance: {
-      create: jest.fn().mockResolvedValue(created),
+      ...txDelegates.remittance,
       findUnique: jest.fn().mockResolvedValue(created),
-      update: jest
-        .fn()
-        .mockImplementation(({ data }: any) => Promise.resolve({ ...created, ...data })),
       findMany: jest.fn().mockResolvedValue([created]),
       count: jest.fn().mockResolvedValue(1),
       groupBy: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest
       .fn()
-      .mockImplementation((arg: any) => (typeof arg === 'function' ? arg({}) : Promise.all(arg))),
+      .mockImplementation((arg: any) =>
+        typeof arg === 'function' ? arg(txDelegates) : Promise.all(arg),
+      ),
   } as unknown as PrismaService;
 }
 

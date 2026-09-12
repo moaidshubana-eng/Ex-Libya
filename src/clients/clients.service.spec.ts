@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -43,6 +44,7 @@ function buildPrismaMock(
         .mockImplementation(({ data }: any) => Promise.resolve({ id: 'cbm-1', ...data })),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    ...buildLedgerMockDelegates(),
   };
 
   return {
