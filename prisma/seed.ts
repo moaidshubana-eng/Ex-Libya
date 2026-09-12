@@ -133,12 +133,12 @@ async function main() {
     }
   }
 
-  // ---- أول سعر صرف منشور لكل عملة أجنبية (رسمي + موازٍ) ----
-  const openingRates: Array<{ currency: typeof usd; officialRate: string; parallelRate: string }> = [
-    { currency: usd, officialRate: '4.850000', parallelRate: '7.900000' },
-    { currency: eur, officialRate: '5.240000', parallelRate: '8.550000' },
-    { currency: egp, officialRate: '0.098000', parallelRate: '0.158000' },
-    { currency: tnd, officialRate: '1.580000', parallelRate: '2.550000' },
+  // ---- أول سعر صرف منشور لكل عملة أجنبية ----
+  const openingRates: Array<{ currency: typeof usd; rate: string }> = [
+    { currency: usd, rate: '7.900000' },
+    { currency: eur, rate: '8.550000' },
+    { currency: egp, rate: '0.158000' },
+    { currency: tnd, rate: '2.550000' },
   ];
   for (const r of openingRates) {
     const exists = await prisma.exchangeRate.findFirst({ where: { currencyId: r.currency.id } });
@@ -146,8 +146,7 @@ async function main() {
       await prisma.exchangeRate.create({
         data: {
           currencyId: r.currency.id,
-          officialRate: r.officialRate,
-          parallelRate: r.parallelRate,
+          rate: r.rate,
           source: 'MANUAL',
           publishedById: admin.id,
         },

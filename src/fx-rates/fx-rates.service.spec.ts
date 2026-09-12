@@ -16,7 +16,7 @@ const actor: AuthenticatedUser = {
 
 const usdCurrency = { id: 'cur-usd', code: 'USD', name: 'دولار أمريكي', isActive: true };
 
-function buildPrismaMock(latestRate: { officialRate: string; parallelRate: string } | null) {
+function buildPrismaMock(latestRate: { rate: string } | null) {
   return {
     currency: { findUnique: jest.fn().mockResolvedValue(usdCurrency) },
     exchangeRate: {
@@ -52,11 +52,7 @@ describe('FxRatesService.publish', () => {
     const whatsApp = buildWhatsApp();
     const service = new FxRatesService(prisma, audit, whatsApp, buildConfig());
 
-    const result = await service.publish(
-      'USD',
-      { officialRate: '4.85', parallelRate: '7.90' },
-      actor,
-    );
+    const result = await service.publish('USD', { rate: '7.90' }, actor);
 
     expect(result.source).toBe('MANUAL');
     expect(result.isOverride).toBe(false);
@@ -65,28 +61,28 @@ describe('FxRatesService.publish', () => {
   });
 
   it('يرفض تغيّرًا يتجاوز حد الانحراف دون سبب تجاوز', async () => {
-    const prisma = buildPrismaMock({ officialRate: '4.85', parallelRate: '7.90' });
+    const prisma = buildPrismaMock({ rate: '7.90' });
     const audit = { record: jest.fn() } as unknown as AuditService;
     const whatsApp = buildWhatsApp();
     const service = new FxRatesService(prisma, audit, whatsApp, buildConfig());
 
-    await expect(
-      service.publish('USD', { officialRate: '6.50', parallelRate: '7.90' }, actor),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.publish('USD', { rate: '6.50' }, actor)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
 
     expect(audit.record).not.toHaveBeenCalled();
     expect(whatsApp.broadcastRateUpdate).not.toHaveBeenCalled();
   });
 
   it('يقبل تجاوز الحد عند إرفاق سبب موثّق، ويسجّله كتجاوز يدوي، ويبثّه عبر واتساب', async () => {
-    const prisma = buildPrismaMock({ officialRate: '4.85', parallelRate: '7.90' });
+    const prisma = buildPrismaMock({ rate: '7.90' });
     const audit = { record: jest.fn() } as unknown as AuditService;
     const whatsApp = buildWhatsApp();
     const service = new FxRatesService(prisma, audit, whatsApp, buildConfig());
 
     const result = await service.publish(
       'USD',
-      { officialRate: '6.50', parallelRate: '7.90', overrideReason: 'تصحيح عاجل إثر تعميم رسمي' },
+      { rate: '6.50', overrideReason: 'تصحيح عاجل إثر تحديث سعر السوق الموازية' },
       actor,
     );
 
@@ -99,10 +95,10 @@ describe('FxRatesService.publish', () => {
   });
 
   it('لا يبثّ عبر واتساب عند تغيّر طفيف أقل من عتبة البثّ', async () => {
-    const prisma = buildPrismaMock({ officialRate: '4.85', parallelRate: '7.90' });
+    const prisma = buildPrismaMock({ rate: '7.90' });
     const audit = { record: jest.fn() } as unknown as AuditService;
     const whatsApp = buildWhatsApp();
-    // عتبة بثّ مرتفعة عمدًا (10%) بينما التغيّر هنا طفيف (~1%)
+    // عتبة بثّ مرتفعة عمدًا (10%) بينما التغيّر هنا طفيف (~0.6%)
     const service = new FxRatesService(
       prisma,
       audit,
@@ -110,13 +106,13 @@ describe('FxRatesService.publish', () => {
       buildConfig({ 'whatsapp.broadcastDeviationPercent': 10 }),
     );
 
-    await service.publish('USD', { officialRate: '4.90', parallelRate: '7.95' }, actor);
+    await service.publish('USD', { rate: '7.95' }, actor);
 
     expect(whatsApp.broadcastRateUpdate).not.toHaveBeenCalled();
   });
 
   it('فشل بثّ واتساب لا يفسد نشر السعر نفسه', async () => {
-    const prisma = buildPrismaMock({ officialRate: '4.85', parallelRate: '7.90' });
+    const prisma = buildPrismaMock({ rate: '7.90' });
     const audit = { record: jest.fn() } as unknown as AuditService;
     const whatsApp = {
       broadcastRateUpdate: jest.fn().mockRejectedValue(new Error('عطل مؤقت في مزوّد واتساب')),
@@ -125,7 +121,7 @@ describe('FxRatesService.publish', () => {
 
     const result = await service.publish(
       'USD',
-      { officialRate: '6.50', parallelRate: '7.90', overrideReason: 'تصحيح عاجل' },
+      { rate: '6.50', overrideReason: 'تصحيح عاجل' },
       actor,
     );
 

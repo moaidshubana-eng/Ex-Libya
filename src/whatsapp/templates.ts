@@ -9,8 +9,8 @@ export const WHATSAPP_TEMPLATES = {
   RATE_UPDATE: {
     name: 'exlibya_rate_update',
     language: 'ar',
-    /** المعاملات بالترتيب: [رمز العملة، السعر الرسمي، السعر الموازي] */
-    describeParams: (params: [string, string, string]) => params,
+    /** المعاملات بالترتيب: [رمز العملة، السعر] */
+    describeParams: (params: [string, string]) => params,
   },
   DEAL_CONFIRMATION: {
     name: 'exlibya_deal_confirmation',

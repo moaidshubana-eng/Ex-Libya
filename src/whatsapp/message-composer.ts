@@ -3,8 +3,7 @@ import { DealDirection } from '@prisma/client';
 export interface RateSummary {
   code: string;
   name: string;
-  officialRate: string;
-  parallelRate: string;
+  rate: string;
 }
 
 /** الرد الحر على استفسار سعر مباشر — نافذة الخدمة مفتوحة دومًا لأنها ردّ على رسالة العميل. */
@@ -12,9 +11,7 @@ export function composeRateInquiryReply(rates: RateSummary[]): string {
   if (rates.length === 0) {
     return 'عذرًا، لا تتوفر أسعار منشورة حاليًا. يرجى المحاولة لاحقًا أو التواصل مع أحد ممثلينا.';
   }
-  const lines = rates.map(
-    (r) => `${r.name} (${r.code}): رسمي ${r.officialRate} — موازٍ ${r.parallelRate}`,
-  );
+  const lines = rates.map((r) => `${r.name} (${r.code}): ${r.rate}`);
   return ['أسعار الصرف الحالية مقابل الدينار الليبي:', ...lines].join('\n');
 }
 
@@ -22,13 +19,13 @@ export function composeHumanHandoffAck(): string {
   return 'شكرًا لتواصلك معنا. تم تحويل رسالتك لأحد ممثلي خدمة العملاء وسيتواصل معك خلال دقائق خلال أوقات الدوام.';
 }
 
-/** [رمز العملة، السعر الرسمي، السعر الموازي] لقالب RATE_UPDATE. */
-export function composeRateUpdateParams(rate: RateSummary): [string, string, string] {
-  return [rate.code, rate.officialRate, rate.parallelRate];
+/** [رمز العملة، السعر] لقالب RATE_UPDATE. */
+export function composeRateUpdateParams(rate: RateSummary): [string, string] {
+  return [rate.code, rate.rate];
 }
 
 export function composeRateUpdateLogBody(rate: RateSummary): string {
-  return `تحديث سعر ${rate.name}: رسمي ${rate.officialRate} — موازٍ ${rate.parallelRate}`;
+  return `تحديث سعر ${rate.name}: ${rate.rate}`;
 }
 
 const DIRECTION_FROM_CLIENT_VIEW: Record<DealDirection, string> = {

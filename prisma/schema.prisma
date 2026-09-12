@@ -216,8 +216,7 @@ model ExchangeRate {
   id             String     @id @default(uuid())
   currencyId     String
   currency       Currency   @relation(fields: [currencyId], references: [id])
-  officialRate   Decimal    @db.Decimal(18, 6) // السعر الرسمي (مصرف ليبيا المركزي) مقابل الدينار
-  parallelRate   Decimal    @db.Decimal(18, 6) // سعر السوق الموازية مقابل الدينار
+  rate           Decimal    @db.Decimal(18, 6) // سعر الصرف مقابل الدينار الليبي
   source         RateSource
   isOverride     Boolean    @default(false)
   overrideReason String?
@@ -238,11 +237,6 @@ model ExchangeRate {
 enum DealDirection {
   BUY  // الشركة تشتري العملة الأجنبية من العميل (تدخل الخزينة)
   SELL // الشركة تبيع العملة الأجنبية للعميل (تخرج من الخزينة)
-}
-
-enum RateType {
-  OFFICIAL
-  PARALLEL
 }
 
 enum DealStatus {
@@ -266,10 +260,9 @@ model Transaction {
   currency Currency @relation(fields: [currencyId], references: [id])
 
   direction DealDirection
-  rateType  RateType
 
   amount              Decimal @db.Decimal(18, 2) // كمية العملة الأجنبية محل الصفقة
-  lockedRate          Decimal @db.Decimal(18, 6) // القيمة المقفلة من rateType عند إنشاء الصفقة
+  lockedRate          Decimal @db.Decimal(18, 6) // سعر الصرف المقفل من ExchangeRate.rate عند إنشاء الصفقة
   lydEquivalent       Decimal @db.Decimal(18, 2) // amount × lockedRate
   amountUsdEquivalent Decimal @db.Decimal(18, 2) // لفحص حدود العميل اليومية والائتمانية
 

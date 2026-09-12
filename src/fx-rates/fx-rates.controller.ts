@@ -15,7 +15,7 @@ export class FxRatesController {
 
   @Public()
   @Get('latest')
-  @ApiOperation({ summary: 'أحدث سعر رسمي وموازي لكل عملة مفعّلة' })
+  @ApiOperation({ summary: 'أحدث سعر منشور لكل عملة مفعّلة' })
   getLatest() {
     return this.fxRatesService.getLatestRates();
   }

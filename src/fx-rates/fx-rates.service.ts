@@ -73,10 +73,8 @@ export class FxRatesService {
     const previous = await this.getLatestRate(currency.id);
 
     const assessment = assessRateChange({
-      previousOfficialRate: previous?.officialRate ?? null,
-      previousParallelRate: previous?.parallelRate ?? null,
-      nextOfficialRate: dto.officialRate,
-      nextParallelRate: dto.parallelRate,
+      previousRate: previous?.rate ?? null,
+      nextRate: dto.rate,
       maxDeviationPercent: this.maxDeviationPercent,
       hasOverrideReason: Boolean(dto.overrideReason),
     });
@@ -84,8 +82,7 @@ export class FxRatesService {
     if (!assessment.accepted) {
       throw new BadRequestException({
         message: `تغيّر السعر يتجاوز الحد الأقصى للانحراف المسموح به (${this.maxDeviationPercent}%). أرفق سبب تجاوز موثّق (overrideReason) لتأكيد النشر.`,
-        officialDeviationPercent: assessment.officialDeviationPercent.toFixed(2),
-        parallelDeviationPercent: assessment.parallelDeviationPercent.toFixed(2),
+        deviationPercent: assessment.deviationPercent.toFixed(2),
         maxDeviationPercent: this.maxDeviationPercent,
       });
     }
@@ -97,8 +94,7 @@ export class FxRatesService {
     const created = await this.prisma.exchangeRate.create({
       data: {
         currencyId: currency.id,
-        officialRate: dto.officialRate,
-        parallelRate: dto.parallelRate,
+        rate: dto.rate,
         source,
         isOverride: assessment.resolvedIsOverride,
         overrideReason: assessment.resolvedIsOverride ? dto.overrideReason : null,
@@ -111,25 +107,16 @@ export class FxRatesService {
       entityId: created.id,
       action: assessment.resolvedIsOverride ? 'PUBLISH_RATE_OVERRIDE' : 'PUBLISH_RATE',
       actorId: actor.id,
-      before: previous
-        ? { officialRate: previous.officialRate, parallelRate: previous.parallelRate }
-        : null,
+      before: previous ? { rate: previous.rate } : null,
       after: {
-        officialRate: created.officialRate,
-        parallelRate: created.parallelRate,
-        officialDeviationPercent: assessment.officialDeviationPercent.toFixed(2),
-        parallelDeviationPercent: assessment.parallelDeviationPercent.toFixed(2),
+        rate: created.rate,
+        deviationPercent: assessment.deviationPercent.toFixed(2),
         overrideReason: created.overrideReason,
       },
     });
 
     // بثّ اختياري للمشتركين — لا يجوز أبدًا أن يفشل نشر السعر نفسه بسبب عطل في واتساب.
-    const maxObservedDeviation = assessment.officialDeviationPercent.greaterThan(
-      assessment.parallelDeviationPercent,
-    )
-      ? assessment.officialDeviationPercent
-      : assessment.parallelDeviationPercent;
-    if (maxObservedDeviation.greaterThanOrEqualTo(this.broadcastDeviationPercent)) {
+    if (assessment.deviationPercent.greaterThanOrEqualTo(this.broadcastDeviationPercent)) {
       try {
         await this.whatsApp.broadcastRateUpdate(currency.code, actor.id);
       } catch (error) {

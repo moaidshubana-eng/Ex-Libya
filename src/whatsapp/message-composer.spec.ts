@@ -6,12 +6,9 @@ import {
 } from './message-composer';
 
 describe('composeRateInquiryReply', () => {
-  it('يبني نصًا يعرض كل عملة بسعرَيها الرسمي والموازي', () => {
-    const text = composeRateInquiryReply([
-      { code: 'USD', name: 'دولار أمريكي', officialRate: '4.85', parallelRate: '7.90' },
-    ]);
+  it('يبني نصًا يعرض سعر كل عملة', () => {
+    const text = composeRateInquiryReply([{ code: 'USD', name: 'دولار أمريكي', rate: '7.90' }]);
     expect(text).toContain('USD');
-    expect(text).toContain('4.85');
     expect(text).toContain('7.90');
   });
 

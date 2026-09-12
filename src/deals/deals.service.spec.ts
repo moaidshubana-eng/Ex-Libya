@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DealDirection, DealStatus, RateType } from '@prisma/client';
+import { DealDirection, DealStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -34,8 +34,7 @@ const verifiedClient = {
 };
 const latestUsdRate = {
   id: 'rate-1',
-  officialRate: '4.85',
-  parallelRate: '7.90',
+  rate: '7.90',
 };
 
 function buildConfig(
@@ -97,7 +96,6 @@ describe('DealsService.create', () => {
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
-        rateType: RateType.OFFICIAL,
         amount: '5000.00',
       },
       teller,
@@ -122,7 +120,6 @@ describe('DealsService.create', () => {
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
-        rateType: RateType.OFFICIAL,
         amount: '5000.00',
       },
       teller,
@@ -143,7 +140,6 @@ describe('DealsService.create', () => {
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
-        rateType: RateType.OFFICIAL,
         amount: '5000.00',
       },
       teller,
@@ -166,7 +162,6 @@ describe('DealsService.create', () => {
           clientId: verifiedClient.id,
           currencyCode: 'USD',
           direction: DealDirection.SELL,
-          rateType: RateType.OFFICIAL,
           amount: '5000.00', // 96000 + 5000 = 101000 > الحد اليومي 100000
         },
         teller,
@@ -185,7 +180,6 @@ describe('DealsService.create', () => {
           clientId: verifiedClient.id,
           currencyCode: 'USD',
           direction: DealDirection.SELL,
-          rateType: RateType.OFFICIAL,
           amount: '5000.00',
         },
         noBranchUser,

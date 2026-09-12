@@ -20,7 +20,6 @@ import {
   computeUsdEquivalent,
   movementTypeForDirection,
   requiresDualApproval,
-  resolveLockedRate,
 } from './deal-pricing';
 
 const DEAL_INCLUDE = {
@@ -81,7 +80,7 @@ export class DealsService {
       );
     }
 
-    const lockedRate = resolveLockedRate(latestRate, dto.rateType);
+    const lockedRate = toMoney(latestRate.rate);
     const lydEquivalent = toMoney(dto.amount).times(lockedRate);
 
     const usdRate =
@@ -96,7 +95,7 @@ export class DealsService {
       currencyCode: currency.code,
       amount: toMoney(dto.amount),
       lydEquivalent,
-      usdOfficialRate: usdRate?.officialRate ?? null,
+      usdRate: usdRate?.rate ?? null,
     });
 
     await this.assertWithinClientLimits(client, amountUsdEquivalent);
@@ -113,7 +112,6 @@ export class DealsService {
         branchId,
         currencyId: currency.id,
         direction: dto.direction,
-        rateType: dto.rateType,
         amount: dto.amount,
         lockedRate,
         lydEquivalent,

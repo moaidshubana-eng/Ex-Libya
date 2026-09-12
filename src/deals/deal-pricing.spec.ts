@@ -1,44 +1,31 @@
-import { DealDirection, MovementType, RateType } from '@prisma/client';
+import { DealDirection, MovementType } from '@prisma/client';
 import {
   computeUsdEquivalent,
   movementTypeForDirection,
   requiresDualApproval,
-  resolveLockedRate,
   UnpricableDealError,
 } from './deal-pricing';
-
-describe('resolveLockedRate', () => {
-  const rate = { officialRate: '4.85', parallelRate: '7.90' };
-
-  it('يختار السعر الرسمي عند RateType.OFFICIAL', () => {
-    expect(resolveLockedRate(rate, RateType.OFFICIAL).toString()).toBe('4.85');
-  });
-
-  it('يختار السعر الموازي عند RateType.PARALLEL', () => {
-    expect(resolveLockedRate(rate, RateType.PARALLEL).toString()).toBe('7.9');
-  });
-});
 
 describe('computeUsdEquivalent', () => {
   it('يعيد المبلغ كما هو إن كانت العملة دولارًا', () => {
     const result = computeUsdEquivalent({
       currencyCode: 'USD',
       amount: '5000',
-      lydEquivalent: '24250',
-      usdOfficialRate: '4.85',
+      lydEquivalent: '39500',
+      usdRate: '7.90',
     });
     expect(result.toString()).toBe('5000');
   });
 
-  it('يحوّل عبر سعر الدولار الرسمي لعملة أخرى', () => {
-    // صفقة EUR بقيمة 1000 يورو مقفلة على 5.24 → 5240 دينار → ÷4.85 دولار ≈ 1080.41
+  it('يحوّل عبر سعر الدولار لعملة أخرى', () => {
+    // صفقة EUR بقيمة 1000 يورو مقفلة على 8.55 → 8550 دينار → ÷7.90 دولار ≈ 1082.28
     const result = computeUsdEquivalent({
       currencyCode: 'EUR',
       amount: '1000',
-      lydEquivalent: '5240',
-      usdOfficialRate: '4.85',
+      lydEquivalent: '8550',
+      usdRate: '7.90',
     });
-    expect(result.toFixed(2)).toBe('1080.41');
+    expect(result.toFixed(2)).toBe('1082.28');
   });
 
   it('يرفض التحويل إن لم يتوفر سعر دولار منشور', () => {
@@ -46,8 +33,8 @@ describe('computeUsdEquivalent', () => {
       computeUsdEquivalent({
         currencyCode: 'EUR',
         amount: '1000',
-        lydEquivalent: '5240',
-        usdOfficialRate: null,
+        lydEquivalent: '8550',
+        usdRate: null,
       }),
     ).toThrow(UnpricableDealError);
   });

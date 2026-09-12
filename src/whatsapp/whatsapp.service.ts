@@ -133,8 +133,7 @@ export class WhatsAppService {
         return {
           code: currency.code,
           name: currency.name,
-          officialRate: rate.officialRate.toFixed(4),
-          parallelRate: rate.parallelRate.toFixed(4),
+          rate: rate.rate.toFixed(4),
         };
       }),
     );
@@ -200,8 +199,7 @@ export class WhatsAppService {
     const rateSummary: RateSummary = {
       code: currency.code,
       name: currency.name,
-      officialRate: rate.officialRate.toFixed(4),
-      parallelRate: rate.parallelRate.toFixed(4),
+      rate: rate.rate.toFixed(4),
     };
     const templateParams = composeRateUpdateParams(rateSummary);
     const logBody = composeRateUpdateLogBody(rateSummary);
