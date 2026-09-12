@@ -20,6 +20,7 @@ export const ACCOUNT_CODES = {
   BANK_CASH: '1015', // النقدية في الحساب المصرفي الرئيسي
   INTER_BRANCH_CLEARING: '1030', // تسوية تحويلات بين الفروع (حساب عبور)
   REMITTANCE_RECEIVABLE: '1020', // ذمم هامش الحوالات المستحقة
+  FX_TRADING_MARGIN_RECEIVABLE: '1025', // ذمم هامش صفقات الصرف المستحقة (فرق سعر البيع عن السوق الموازي)
   FIXED_ASSETS_FURNITURE: '1500', // أصول ثابتة — أثاث ومعدات مكتبية
   FIXED_ASSETS_VEHICLES: '1510', // أصول ثابتة — سيارات
   FIXED_ASSETS_PROPERTY: '1520', // أصول ثابتة — عقارات وتحسينات
@@ -29,7 +30,7 @@ export const ACCOUNT_CODES = {
   LONG_TERM_LOANS: '2500', // قروض طويلة الأجل
   PAID_IN_CAPITAL: '3000', // رأس المال المدفوع
   REMITTANCE_MARGIN_REVENUE: '4010', // إيرادات هامش الحوالات
-  FX_TRADING_REVENUE: '4020', // إيرادات فروقات أسعار الصرف (تُرحَّل يدويًا حاليًا)
+  FX_TRADING_REVENUE: '4020', // إيرادات فروقات أسعار الصرف (تُرحَّل تلقائيًا عند تنفيذ الصفقة)
   OTHER_REVENUE: '4090', // إيرادات أخرى
   CASH_OVER_INCOME: '4900', // فروقات جرد الصندوق (موجبة)
   CUSTODY_ADJUSTMENT_INCOME: '4095', // إيراد تسويات أرصدة عملاء (تخفيض التزام بلا صرف نقدي)
@@ -82,6 +83,13 @@ export const CHART_OF_ACCOUNTS: AccountSeed[] = [
   {
     code: ACCOUNT_CODES.REMITTANCE_RECEIVABLE,
     name: 'ذمم هامش الحوالات المستحقة',
+    type: 'ASSET',
+    class: 'CURRENT_ASSET',
+    normalBalance: 'DEBIT',
+  },
+  {
+    code: ACCOUNT_CODES.FX_TRADING_MARGIN_RECEIVABLE,
+    name: 'ذمم هامش صفقات الصرف المستحقة',
     type: 'ASSET',
     class: 'CURRENT_ASSET',
     normalBalance: 'DEBIT',

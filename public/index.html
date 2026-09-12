@@ -428,12 +428,14 @@
           <div class="form-grid">
             <div class="field"><label>العميل</label><select id="deal-client"></select></div>
             <div class="field"><label>الفرع (لو حسابك غير مرتبط بفرع ثابت)</label><select id="deal-branch"><option value="">— الفرع الافتراضي لحسابك —</option></select></div>
-            <div class="field"><label>العملة</label><select id="deal-currency"></select></div>
-            <div class="field"><label>الاتجاه</label><select id="deal-direction"><option value="SELL">بيع للعميل</option><option value="BUY">شراء من العميل</option></select></div>
-            <div class="field"><label>الكمية</label><input type="text" id="deal-amount" value="500.00" /></div>
+            <div class="field"><label>العملة</label><select id="deal-currency" onchange="updateDealProfitPreview()"></select></div>
+            <div class="field"><label>الاتجاه</label><select id="deal-direction" onchange="updateDealProfitPreview()"><option value="SELL">بيع للعميل</option><option value="BUY">شراء من العميل</option></select></div>
+            <div class="field"><label>الكمية</label><input type="text" id="deal-amount" value="500.00" oninput="updateDealProfitPreview()" /></div>
+            <div class="field"><label>سعر السوق الموازي</label><input type="text" id="deal-parallel-rate" placeholder="7.900000" oninput="updateDealProfitPreview()" /></div>
+            <div class="field"><label>هامش الربح/الخسارة المتوقَّع</label><input type="text" id="deal-profit-preview" disabled placeholder="—" /></div>
           </div>
           <button class="btn-primary" id="create-deal-btn" onclick="createDeal()">إنشاء الصفقة</button>
-          <p class="form-note">السعر يُقفل 60 ثانية فقط من لحظة الإنشاء — نفّذ الصفقة قبل انتهاء العدّاد أدناه.</p>
+          <p class="form-note">سعر الصفقة يُقفل تلقائيًا من آخر سعر منشور لحظة الإنشاء، وتُعتمَد الصفقة مباشرة دون فحص حدود. أدخل سعر السوق الموازي المرجعي لحساب الهامش الذي يُرحَّل تلقائيًا إلى قائمة الدخل عند التنفيذ. السعر يُقفل 60 ثانية فقط — نفّذ الصفقة قبل انتهاء العدّاد أدناه.</p>
         </div>
         <div class="card">
           <div class="card-head"><h3>الصفقات</h3></div>
@@ -791,6 +793,7 @@
 const API = window.location.origin; // الواجهة تُخدَّم من نفس الخادم — لا حاجة لرابط ثابت
 let accessToken = null, currentUser = null, pendingMfaChallenge = null;
 let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [];
+let latestRatesCache = {}; // {code: rate} — آخر سعر منشور لكل عملة، لعرض معاينة تقديرية لهامش الصفقة قبل إنشائها
 let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1, journalPage = 1;
 let accountsCache = [];
 let currencyOptsWithLydHtml = '', branchOptsHtml = '';
@@ -973,6 +976,9 @@ async function loadRates(){
   el.textContent = 'جارِ التحميل...';
   try{
     const rates = await apiCall('/fx-rates/latest');
+    latestRatesCache = {};
+    rates.forEach(r => { latestRatesCache[r.currency.code] = parseFloat(r.rate.rate); });
+    updateDealProfitPreview();
     if (rates.length === 0) { el.textContent = 'لا توجد أسعار منشورة بعد.'; return; }
     let html = '<div class="table-wrap"><table><thead><tr><th>العملة</th><th>السعر</th><th>المصدر</th><th>آخر تحديث</th></tr></thead><tbody>';
     rates.forEach(r => { html += `<tr><td><b>${r.currency.name}</b> <span style="color:var(--ink-faint)">(${r.currency.code})</span></td><td class="num gold">${r.rate.rate}</td><td>${r.rate.source}</td><td>${fmtDate(r.rate.createdAt)}</td></tr>`; });
@@ -1154,18 +1160,47 @@ async function loadClientBalanceMovements(){
 
 // ---------------- الصفقات ----------------
 
+const DEAL_STATUS_LABELS = {
+  PENDING_APPROVAL: 'بانتظار موافقة',
+  APPROVED: 'معتمدة',
+  EXECUTED: 'منفَّذة',
+  REJECTED: 'مرفوضة',
+  EXPIRED: 'منتهية',
+  CANCELLED: 'ملغاة',
+};
+
+/** معاينة تقديرية لهامش ربح/خسارة الصفقة قبل إنشائها — تعتمد على آخر سعر منشور
+ * كتقدير لسعر القفل الفعلي (قد يختلف طفيفًا إن نُشر سعر جديد لحظة الإنشاء). */
+function updateDealProfitPreview(){
+  const field = document.getElementById('deal-profit-preview');
+  const currencyCode = document.getElementById('deal-currency').value;
+  const direction = document.getElementById('deal-direction').value;
+  const amount = parseFloat(document.getElementById('deal-amount').value) || 0;
+  const parallel = parseFloat(document.getElementById('deal-parallel-rate').value) || 0;
+  const lockedRate = latestRatesCache[currencyCode];
+  if (!lockedRate || !parallel || !amount) { field.value = ''; field.style.color = ''; return; }
+  const perUnit = direction === 'SELL' ? (lockedRate - parallel) : (parallel - lockedRate);
+  const profit = perUnit * amount;
+  field.value = fmtNum(profit) + ' د.ل (تقديري، وفق آخر سعر منشور ' + lockedRate.toFixed(4) + ')';
+  field.style.color = profit < 0 ? 'var(--critical)' : profit > 0 ? 'var(--success)' : '';
+}
+
 async function createDeal(){
   const clientId = document.getElementById('deal-client').value;
   const branchId = document.getElementById('deal-branch').value;
   const currencyCode = document.getElementById('deal-currency').value;
   const direction = document.getElementById('deal-direction').value;
   const amount = document.getElementById('deal-amount').value.trim();
+  const parallelMarketRate = document.getElementById('deal-parallel-rate').value.trim();
   if (!clientId) { showToast('اختر عميلًا أولًا (سجّل عميلًا من تبويب العملاء إن كانت القائمة فاضية)', true); return; }
+  if (!parallelMarketRate) { showToast('أدخل سعر السوق الموازي المرجعي', true); return; }
   await runBusy('create-deal-btn', async () => {
-    const body = { clientId, currencyCode, direction, amount };
+    const body = { clientId, currencyCode, direction, amount, parallelMarketRate };
     if (branchId) body.branchId = branchId;
     const deal = await apiCall('/deals', { method: 'POST', body: JSON.stringify(body) });
     showToast('أُنشئت الصفقة — الحالة: ' + deal.status);
+    document.getElementById('deal-parallel-rate').value = '';
+    document.getElementById('deal-profit-preview').value = '';
     dealsPage = 1; loadDeals();
   })().catch(err => showToast(err.message, true));
 }
@@ -1195,7 +1230,7 @@ function renderDealsTable(){
   const el = document.getElementById('deals-content');
   if (!dealsCache.length) { el.textContent = 'لا توجد صفقات مطابقة.'; return; }
   const now = Date.now();
-  let html = '<div class="table-wrap"><table><thead><tr><th>العميل</th><th>العملة</th><th>الاتجاه</th><th>الكمية</th><th>السعر</th><th>الحالة</th><th>قفل السعر</th><th>إجراء</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><thead><tr><th>العميل</th><th>العملية</th><th>الكمية</th><th>سعر الصفقة</th><th>السوق الموازي</th><th>الربح/الخسارة</th><th>الحالة</th><th>قفل السعر</th><th>إجراء</th></tr></thead><tbody>';
   dealsCache.forEach(d => {
     let actions = '—';
     if (d.status === 'APPROVED') actions = `<button class="btn-primary btn-sm" onclick="dealAction('${d.id}','execute', this)">تنفيذ</button> <button class="btn-danger btn-sm" onclick="dealAction('${d.id}','cancel', this)">إلغاء</button>`;
@@ -1206,7 +1241,20 @@ function renderDealsTable(){
       const remainMs = new Date(d.lockExpiresAt).getTime() - now;
       timerHtml = remainMs <= 0 ? '<span class="lock-timer expired">انتهت المهلة</span>' : `<span class="lock-timer ${Math.ceil(remainMs/1000) <= 15 ? 'warn2' : ''}">${Math.ceil(remainMs/1000)} ث</span>`;
     }
-    html += `<tr><td>${d.client.fullName}</td><td>${d.currency.code}</td><td>${d.direction === 'BUY' ? 'شراء' : 'بيع'}</td><td class="num">${d.amount}</td><td class="num">${d.lockedRate}</td><td><span class="pill ${pillClass(d.status)}">${d.status}</span></td><td>${timerHtml}</td><td>${actions}</td></tr>`;
+    const profit = parseFloat(d.profitLyd);
+    const profitColor = profit < 0 ? 'var(--critical)' : profit > 0 ? 'var(--success)' : 'var(--ink-faint)';
+    const directionLabel = d.direction === 'BUY' ? 'شراء من العميل' : 'بيع للعميل';
+    html += `<tr>
+      <td><b>${d.client.fullName}</b></td>
+      <td>${directionLabel} <span style="color:var(--ink-faint)">(${d.currency.code})</span></td>
+      <td class="num">${d.amount}</td>
+      <td class="num">${d.lockedRate}</td>
+      <td class="num">${d.parallelMarketRate}</td>
+      <td class="num" style="color:${profitColor};font-weight:700">${fmtNum(d.profitLyd)}</td>
+      <td><span class="pill ${pillClass(d.status)}">${DEAL_STATUS_LABELS[d.status] || d.status}</span></td>
+      <td>${timerHtml}</td>
+      <td>${actions}</td>
+    </tr>`;
   });
   el.innerHTML = html + '</tbody></table></div>';
 }

@@ -31,4 +31,12 @@ export class CreateDealDto {
   @ApiProperty({ description: 'كمية العملة الأجنبية محل الصفقة', example: '5000.00' })
   @IsDecimalString(2)
   amount!: string;
+
+  @ApiProperty({
+    description:
+      'سعر السوق الموازي المرجعي وقت الصفقة (يُدخله الموظف يدويًا) — أساس احتساب هامش الربح/الخسارة الفعلي مقابل سعر بيع/شراء الصفقة (lockedRate، يُقفل تلقائيًا من آخر سعر منشور)',
+    example: '7.9000',
+  })
+  @IsDecimalString(6)
+  parallelMarketRate!: string;
 }

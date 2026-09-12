@@ -1,8 +1,8 @@
 import { DealDirection, MovementType } from '@prisma/client';
 import {
+  computeDealProfitLyd,
   computeUsdEquivalent,
   movementTypeForDirection,
-  requiresDualApproval,
   UnpricableDealError,
 } from './deal-pricing';
 
@@ -40,13 +40,57 @@ describe('computeUsdEquivalent', () => {
   });
 });
 
-describe('requiresDualApproval', () => {
-  it('لا يتطلب موافقة مزدوجة ضمن الحد', () => {
-    expect(requiresDualApproval('29999.99', 30000)).toBe(false);
+describe('computeDealProfitLyd', () => {
+  it('BUY: ربح عند شراء العملة من العميل بأقل من قيمتها بالسوق الموازي', () => {
+    // الشركة اشترت 1000 دولار بسعر 7.80 (دفعت 7800 دينار) بينما قيمتها بالسوق الموازي 7.90
+    const profit = computeDealProfitLyd({
+      direction: DealDirection.BUY,
+      amount: '1000',
+      lockedRate: '7.80',
+      parallelMarketRate: '7.90',
+    });
+    expect(profit.toFixed(2)).toBe('100.00');
   });
 
-  it('يتطلب موافقة مزدوجة عند تجاوز الحد', () => {
-    expect(requiresDualApproval('30000.01', 30000)).toBe(true);
+  it('BUY: خسارة عند شراء العملة من العميل بأعلى من قيمتها بالسوق الموازي', () => {
+    const profit = computeDealProfitLyd({
+      direction: DealDirection.BUY,
+      amount: '1000',
+      lockedRate: '8.00',
+      parallelMarketRate: '7.90',
+    });
+    expect(profit.toFixed(2)).toBe('-100.00');
+  });
+
+  it('SELL: ربح عند بيع العملة للعميل بأعلى من قيمتها بالسوق الموازي', () => {
+    // الشركة باعت 1000 دولار بسعر 8.00 (حصّلت 8000 دينار) بينما قيمتها بالسوق الموازي 7.90
+    const profit = computeDealProfitLyd({
+      direction: DealDirection.SELL,
+      amount: '1000',
+      lockedRate: '8.00',
+      parallelMarketRate: '7.90',
+    });
+    expect(profit.toFixed(2)).toBe('100.00');
+  });
+
+  it('SELL: خسارة عند بيع العملة للعميل بأقل من قيمتها بالسوق الموازي', () => {
+    const profit = computeDealProfitLyd({
+      direction: DealDirection.SELL,
+      amount: '1000',
+      lockedRate: '7.80',
+      parallelMarketRate: '7.90',
+    });
+    expect(profit.toFixed(2)).toBe('-100.00');
+  });
+
+  it('ربح صفري إن تساوى سعر الصفقة مع السوق الموازي', () => {
+    const profit = computeDealProfitLyd({
+      direction: DealDirection.SELL,
+      amount: '500',
+      lockedRate: '7.90',
+      parallelMarketRate: '7.90',
+    });
+    expect(profit.toFixed(2)).toBe('0.00');
   });
 });
 

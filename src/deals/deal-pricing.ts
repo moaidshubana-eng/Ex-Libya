@@ -25,12 +25,28 @@ export function computeUsdEquivalent(input: UsdEquivalentInput): Money {
   return toMoney(input.lydEquivalent).dividedBy(input.usdRate);
 }
 
-/** هل تتجاوز قيمة الصفقة (بما يعادلها بالدولار) حد الموافقة المزدوجة؟ */
-export function requiresDualApproval(
-  amountUsdEquivalent: Prisma.Decimal.Value,
-  thresholdUsd: number,
-): boolean {
-  return toMoney(amountUsdEquivalent).greaterThan(thresholdUsd);
+export interface DealProfitInput {
+  direction: DealDirection;
+  amount: Prisma.Decimal.Value;
+  /** سعر بيع/شراء الصفقة المقفل من ExchangeRate.rate عند الإنشاء. */
+  lockedRate: Prisma.Decimal.Value;
+  /** سعر السوق الموازي المرجعي وقت الصفقة — أساس التكلفة الحقيقية لاحتساب الهامش. */
+  parallelMarketRate: Prisma.Decimal.Value;
+}
+
+/**
+ * هامش ربح/خسارة الصفقة بالدينار الليبي — الفرق بين سعر البيع المقفل وسعر
+ * السوق الموازي المرجعي، مضروبًا بكمية الصفقة. الاتجاه يقلب الإشارة: في
+ * البيع (SELL) الشركة تُسلِّم للسوق الموازي بسعره وتُحصِّل من العميل بسعرها
+ * — فالهامش موجب إن كان سعرها أعلى من الموازي. في الشراء (BUY) العكس: الشركة
+ * تدفع للعميل بسعرها وتُقيَّم العملة المُستلَمة بسعر السوق الموازي — فالهامش
+ * موجب إن كان سعرها (المدفوع للعميل) أقل من قيمة العملة في السوق الموازي.
+ */
+export function computeDealProfitLyd(input: DealProfitInput): Money {
+  const perUnitDiff = toMoney(input.lockedRate).minus(input.parallelMarketRate);
+  const signedPerUnit =
+    input.direction === DealDirection.SELL ? perUnitDiff : perUnitDiff.negated();
+  return signedPerUnit.times(input.amount);
 }
 
 /** نوع حركة الخزينة الناتجة عن تنفيذ صفقة، بحسب اتجاهها. */

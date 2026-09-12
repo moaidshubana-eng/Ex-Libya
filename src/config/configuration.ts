@@ -21,12 +21,6 @@ export default () => ({
     // قبل أن يرفضه قاطع الدائرة التلقائي (انظر FxRatesService.checkDeviation)
     maxDeviationPercent: parseFloat(process.env.FX_MAX_DEVIATION_PERCENT ?? '8'),
   },
-  trading: {
-    // الحد الأدنى لمبلغ الصفقة (بما يعادله بالدولار) الذي يستوجب موافقة ضابط ثانٍ
-    dualApprovalThresholdUsd: parseFloat(process.env.DUAL_APPROVAL_THRESHOLD_USD ?? '30000'),
-    // نسبة الاستخدام من الحد اليومي/السقف الائتماني التي تُرسل عندها تنبيه اقتراب للعميل
-    limitAlertThresholdPercent: parseFloat(process.env.LIMIT_ALERT_THRESHOLD_PERCENT ?? '80'),
-  },
   whatsapp: {
     apiVersion: process.env.WHATSAPP_API_VERSION ?? 'v20.0',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? '',

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { DealDirection, DealStatus } from '@prisma/client';
+import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
+import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,6 +24,7 @@ const manager: AuthenticatedUser = {
 };
 
 const usdCurrency = { id: 'cur-usd', code: 'USD', name: 'دولار أمريكي', isActive: true };
+const lydCurrency = { id: 'cur-lyd', code: 'LYD', name: 'دينار ليبي', isActive: true };
 const verifiedClient = {
   id: 'client-1',
   isActive: true,
@@ -37,16 +39,6 @@ const latestUsdRate = {
   rate: '7.90',
 };
 
-function buildConfig(
-  overrides: { dualApprovalThresholdUsd?: number; limitAlertThresholdPercent?: number } = {},
-) {
-  const values: Record<string, number> = {
-    'trading.dualApprovalThresholdUsd': overrides.dualApprovalThresholdUsd ?? 30000,
-    'trading.limitAlertThresholdPercent': overrides.limitAlertThresholdPercent ?? 80,
-  };
-  return { get: jest.fn((key: string) => values[key]) } as unknown as ConfigService;
-}
-
 function buildAudit() {
   return { record: jest.fn() } as unknown as AuditService;
 }
@@ -59,9 +51,7 @@ function buildWhatsApp() {
 }
 
 /** يبني عميل Prisma وهميًا كافيًا لتغطية DealsService.create دون قاعدة بيانات حقيقية. */
-function buildPrismaMockForCreate(
-  overrides: { dailyAggSum?: string | null; openAggSum?: string | null } = {},
-) {
+function buildPrismaMockForCreate() {
   return {
     client: { findUnique: jest.fn().mockResolvedValue(verifiedClient) },
     currency: { findUnique: jest.fn().mockResolvedValue(usdCurrency) },
@@ -69,10 +59,6 @@ function buildPrismaMockForCreate(
       findFirst: jest.fn().mockResolvedValue(latestUsdRate),
     },
     transaction: {
-      aggregate: jest
-        .fn()
-        .mockResolvedValueOnce({ _sum: { amountUsdEquivalent: overrides.dailyAggSum ?? null } })
-        .mockResolvedValueOnce({ _sum: { amountUsdEquivalent: overrides.openAggSum ?? null } }),
       create: jest
         .fn()
         .mockImplementation(({ data }: any) => Promise.resolve({ id: 'deal-1', ...data })),
@@ -81,97 +67,52 @@ function buildPrismaMockForCreate(
 }
 
 describe('DealsService.create', () => {
-  it('ينشئ صفقة ضمن الحد دون الحاجة لموافقة مزدوجة (APPROVED مباشرة)، ودون تنبيه حدود', async () => {
+  it('ينشئ الصفقة معتمدة مباشرة (APPROVED) بلا أي فحص حدود أو موافقة مزدوجة، مهما كبر مبلغها', async () => {
     const prisma = buildPrismaMockForCreate();
-    const whatsApp = buildWhatsApp();
-    const service = new DealsService(
-      prisma,
-      buildAudit(),
-      whatsApp,
-      buildConfig({ dualApprovalThresholdUsd: 30000 }),
-    );
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
+    // مبلغ ضخم يتجاوز أي حد كان معتمدًا سابقًا (100000 دولار للعميل) — لا يُرفض الآن مطلقًا
     const deal = await service.create(
       {
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
-        amount: '5000.00',
+        amount: '500000.00',
+        parallelMarketRate: '7.95',
       },
       teller,
     );
 
     expect(deal.status).toBe(DealStatus.APPROVED);
-    expect(deal.requiresDualApproval).toBe(false);
-    expect(whatsApp.sendLimitAlert).not.toHaveBeenCalled(); // 5000/100000 = 5%، دون عتبة التنبيه (80%)
   });
 
-  it('يضع الصفقة بانتظار الموافقة عند تجاوز حد الموافقة المزدوجة', async () => {
+  it('يحسب سعر السوق الموازي وهامش الربح/الخسارة ويخزّنهما مع الصفقة عند الإنشاء', async () => {
     const prisma = buildPrismaMockForCreate();
-    const service = new DealsService(
-      prisma,
-      buildAudit(),
-      buildWhatsApp(),
-      buildConfig({ dualApprovalThresholdUsd: 1000 }), // حد منخفض عمدًا
-    );
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
+    // بيع 1000 دولار بسعر مقفل 7.90 (آخر سعر منشور) بينما السوق الموازي 7.80 → ربح 100 دينار
     const deal = await service.create(
       {
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
-        amount: '5000.00',
+        amount: '1000.00',
+        parallelMarketRate: '7.80',
       },
       teller,
     );
 
-    expect(deal.status).toBe(DealStatus.PENDING_APPROVAL);
-    expect(deal.requiresDualApproval).toBe(true);
-  });
-
-  it('يرسل تنبيه اقتراب من الحد اليومي عبر واتساب دون رفض الصفقة', async () => {
-    // 80000 مستخدمة مسبقًا + 5000 جديدة = 85000 من أصل 100000 → 85% ≥ عتبة 80%
-    const prisma = buildPrismaMockForCreate({ dailyAggSum: '80000.00' });
-    const whatsApp = buildWhatsApp();
-    const service = new DealsService(prisma, buildAudit(), whatsApp, buildConfig());
-
-    const deal = await service.create(
-      {
-        clientId: verifiedClient.id,
-        currencyCode: 'USD',
-        direction: DealDirection.SELL,
-        amount: '5000.00',
-      },
-      teller,
-    );
-
-    expect(deal.status).toBe(DealStatus.APPROVED); // لم يُرفض — التنبيه إعلامي فقط
-    expect(whatsApp.sendLimitAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ id: verifiedClient.id }),
-      expect.objectContaining({ limitType: 'DAILY' }),
-    );
-  });
-
-  it('يرفض صفقة تتجاوز الحد اليومي للعميل', async () => {
-    const prisma = buildPrismaMockForCreate({ dailyAggSum: '96000.00' });
-    const service = new DealsService(prisma, buildAudit(), buildWhatsApp(), buildConfig());
-
-    await expect(
-      service.create(
-        {
-          clientId: verifiedClient.id,
-          currencyCode: 'USD',
-          direction: DealDirection.SELL,
-          amount: '5000.00', // 96000 + 5000 = 101000 > الحد اليومي 100000
-        },
-        teller,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(deal.parallelMarketRate).toBe('7.80');
+    expect(deal.profitLyd.toFixed(2)).toBe('100.00');
+    const callArg = (prisma.transaction.create as jest.Mock).mock.calls[0][0];
+    expect(callArg.data.parallelMarketRate).toBe('7.80');
+    expect(callArg.data.profitLyd.toFixed(2)).toBe('100.00');
+    expect(callArg.data.status).toBe(DealStatus.APPROVED);
   });
 
   it('يطلب تحديد الفرع عند عدم ارتباط المستخدم بفرع ثابت', async () => {
     const prisma = buildPrismaMockForCreate();
-    const service = new DealsService(prisma, buildAudit(), buildWhatsApp(), buildConfig());
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
     const noBranchUser: AuthenticatedUser = { ...manager, branchId: null };
 
     await expect(
@@ -181,14 +122,37 @@ describe('DealsService.create', () => {
           currencyCode: 'USD',
           direction: DealDirection.SELL,
           amount: '5000.00',
+          parallelMarketRate: '7.90',
         },
         noBranchUser,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('يرفض صفقة لعميل لم تكتمل مراجعة التحقق (KYC) الخاصة به', async () => {
+    const prisma = buildPrismaMockForCreate();
+    (prisma.client.findUnique as jest.Mock).mockResolvedValueOnce({
+      ...verifiedClient,
+      kycStatus: 'PENDING',
+    });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await expect(
+      service.create(
+        {
+          clientId: verifiedClient.id,
+          currencyCode: 'USD',
+          direction: DealDirection.SELL,
+          amount: '5000.00',
+          parallelMarketRate: '7.90',
+        },
+        teller,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
 
-describe('DealsService — الموافقة المزدوجة (Maker-Checker)', () => {
+describe('DealsService — الموافقة المزدوجة (مسار قديم لتسوية صفقات سابقة فقط)', () => {
   /**
    * updateManyCounts: نتيجة كل استدعاء متتالٍ لـ transaction.updateMany بالترتيب —
    * الاستدعاء الأول دومًا فحص انتهاء المهلة (expireIfLockPassed)، والثاني (إن وقع) كتابة الاعتماد الفعلية.
@@ -215,7 +179,7 @@ describe('DealsService — الموافقة المزدوجة (Maker-Checker)', (
 
   it('يرفض اعتماد صفقة من نفس منشئها', async () => {
     const prisma = buildPrismaMockForApproval({}, [0]); // فحص المهلة: لم تنتهِ
-    const service = new DealsService(prisma, buildAudit(), buildWhatsApp(), buildConfig());
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
     await expect(service.approve('deal-1', teller)).rejects.toBeInstanceOf(ForbiddenException);
   });
@@ -223,7 +187,7 @@ describe('DealsService — الموافقة المزدوجة (Maker-Checker)', (
   it('يسمح لضابط آخر باعتماد الصفقة', async () => {
     const prisma = buildPrismaMockForApproval({}, [0, 1]); // المهلة لم تنتهِ، ثم كتابة الاعتماد تنجح
     const audit = buildAudit();
-    const service = new DealsService(prisma, audit, buildWhatsApp(), buildConfig());
+    const service = new DealsService(prisma, audit, buildWhatsApp());
 
     await service.approve('deal-1', manager);
 
@@ -232,15 +196,133 @@ describe('DealsService — الموافقة المزدوجة (Maker-Checker)', (
 
   it('يرفض اعتماد صفقة انتهت مهلة قفل سعرها', async () => {
     const prisma = buildPrismaMockForApproval({ lockExpiresAt: new Date(Date.now() - 1000) }, [1]);
-    const service = new DealsService(prisma, buildAudit(), buildWhatsApp(), buildConfig());
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
     await expect(service.approve('deal-1', manager)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('يرفض اعتماد صفقة ليست بانتظار موافقة', async () => {
     const prisma = buildPrismaMockForApproval({ status: DealStatus.EXECUTED }, [0]);
-    const service = new DealsService(prisma, buildAudit(), buildWhatsApp(), buildConfig());
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
     await expect(service.approve('deal-1', manager)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('DealsService.execute — ترحيل هامش الصفقة إلى قائمة الدخل', () => {
+  function buildPrismaMockForExecute(
+    options: {
+      profitLyd?: string;
+      direction?: DealDirection;
+      lydCurrencyOverride?: unknown;
+    } = {},
+  ) {
+    const deal = {
+      id: 'deal-1',
+      status: DealStatus.APPROVED,
+      requestedById: teller.id,
+      clientId: 'client-1',
+      branchId: 'branch-1',
+      currencyId: 'cur-usd',
+      currency: { id: 'cur-usd', code: 'USD' },
+      client: { id: 'client-1', fullName: 'شركة الوفاء' },
+      direction: options.direction ?? DealDirection.SELL,
+      amount: '1000.00',
+      lockedRate: '8.00',
+      profitLyd: options.profitLyd ?? '100.00',
+      lockExpiresAt: new Date(Date.now() + 30_000),
+    };
+
+    const tx = {
+      transaction: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }), // نجاح المطالبة (claim) داخل المعاملة
+      },
+      treasuryPosition: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'pos-1',
+          balance: '50000.00',
+          maxExposure: null,
+          minThreshold: null,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      treasuryMovement: {
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: any) => Promise.resolve({ id: 'move-1', ...data })),
+      },
+      ...buildLedgerMockDelegates(),
+    };
+
+    return {
+      currency: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(
+            'lydCurrencyOverride' in options ? options.lydCurrencyOverride : lydCurrency,
+          ),
+      },
+      transaction: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }), // فحص المهلة خارج المعاملة: لم تنتهِ
+        findUnique: jest.fn().mockResolvedValue(deal),
+      },
+      $transaction: jest.fn().mockImplementation((callback: any) => callback(tx)),
+      tx,
+    } as unknown as PrismaService & { tx: typeof tx };
+  }
+
+  it('يرحّل ربح الصفقة: مدين ذمم الهامش ودائن إيراد الصرف', async () => {
+    const prisma = buildPrismaMockForExecute({ profitLyd: '100.00' });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await service.execute('deal-1', manager);
+
+    expect(prisma.tx.journalEntry.create).toHaveBeenCalledTimes(1);
+    const lines = (prisma.tx.journalEntry.create as jest.Mock).mock.calls[0][0].data.lines.create;
+    const marginLine = lines.find(
+      (l: any) => l.accountId === 'acc-' + ACCOUNT_CODES.FX_TRADING_MARGIN_RECEIVABLE,
+    );
+    const revenueLine = lines.find(
+      (l: any) => l.accountId === 'acc-' + ACCOUNT_CODES.FX_TRADING_REVENUE,
+    );
+    expect(marginLine.debit.toString()).toBe('100');
+    expect(marginLine.credit.toString()).toBe('0');
+    expect(revenueLine.credit.toString()).toBe('100');
+    expect(revenueLine.debit.toString()).toBe('0');
+  });
+
+  it('يرحّل خسارة الصفقة معكوسة: دائن ذمم الهامش ومدين إيراد الصرف', async () => {
+    const prisma = buildPrismaMockForExecute({ profitLyd: '-50.00', direction: DealDirection.BUY });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await service.execute('deal-1', manager);
+
+    const lines = (prisma.tx.journalEntry.create as jest.Mock).mock.calls[0][0].data.lines.create;
+    const marginLine = lines.find(
+      (l: any) => l.accountId === 'acc-' + ACCOUNT_CODES.FX_TRADING_MARGIN_RECEIVABLE,
+    );
+    const revenueLine = lines.find(
+      (l: any) => l.accountId === 'acc-' + ACCOUNT_CODES.FX_TRADING_REVENUE,
+    );
+    expect(marginLine.credit.toString()).toBe('50');
+    expect(revenueLine.debit.toString()).toBe('50');
+  });
+
+  it('لا يرحّل أي قيد عندما يكون هامش الصفقة صفرًا (لا أثر على قائمة الدخل)', async () => {
+    const prisma = buildPrismaMockForExecute({ profitLyd: '0.00' });
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await service.execute('deal-1', manager);
+
+    expect(prisma.tx.journalEntry.create).not.toHaveBeenCalled();
+    expect(prisma.tx.treasuryMovement.create).toHaveBeenCalledTimes(1); // حركة الخزينة تبقى قائمة دومًا
+  });
+
+  it('يرفض التنفيذ إن لم تكن عملة الدينار الليبي مسجّلة في النظام', async () => {
+    const prisma = buildPrismaMockForExecute({ lydCurrencyOverride: null } as any);
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await expect(service.execute('deal-1', manager)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

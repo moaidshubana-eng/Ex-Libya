@@ -306,15 +306,26 @@ model Transaction {
   direction DealDirection
 
   amount              Decimal @db.Decimal(18, 2) // كمية العملة الأجنبية محل الصفقة
-  lockedRate          Decimal @db.Decimal(18, 6) // سعر الصرف المقفل من ExchangeRate.rate عند إنشاء الصفقة
+  lockedRate          Decimal @db.Decimal(18, 6) // سعر بيع/شراء الصفقة المقفل من ExchangeRate.rate عند إنشائها
   lydEquivalent       Decimal @db.Decimal(18, 2) // amount × lockedRate
-  amountUsdEquivalent Decimal @db.Decimal(18, 2) // لفحص حدود العميل اليومية والائتمانية
+  amountUsdEquivalent Decimal @db.Decimal(18, 2) // بما يعادله بالدولار — لغرض العرض والتقارير المقارنة عبر العملات فقط، لا لأي فحص حدّ
+
+  // سعر السوق الموازي المرجعي وقت الصفقة (يُدخله الموظف يدويًا) — أساس احتساب هامش
+  // الربح/الخسارة الفعلي؛ يُقفل مع lockedRate ولا يُعاد حسابه لاحقًا. profitLyd محسوبة
+  // ومخزَّنة عند الإنشاء (DealsService.create عبر computeDealProfitLyd)، وتُرحَّل
+  // محاسبيًا لقائمة الدخل تلقائيًا عند التنفيذ الفعلي (DealsService.execute)، لا عند
+  // مجرد الإنشاء — فصفقة أُلغيت أو انتهت مهلتها لا تمسّ القوائم المالية إطلاقًا.
+  parallelMarketRate Decimal @db.Decimal(18, 6)
+  profitLyd          Decimal @db.Decimal(18, 2)
 
   sourceRateId String // سعر الصرف الذي اشتُقّ منه القفل (للتتبّع والتدقيق)
   sourceRate   ExchangeRate @relation("DealSourceRate", fields: [sourceRateId], references: [id])
 
-  status               DealStatus @default(PENDING_APPROVAL)
-  requiresDualApproval Boolean
+  // كل صفقة جديدة تُنشأ مباشرة بحالة APPROVED (لا فحص حدود عميل ولا موافقة مزدوجة
+  // بعد الآن — أُلغيت الخاصيتان صراحةً). PENDING_APPROVAL يبقى في التعداد وتبقى
+  // مساراته (approve/reject) تعمل فقط لتسوية أي صفقة تاريخية سابقة كانت قد دخلت
+  // هذه الحالة قبل الإلغاء؛ لا صفقة جديدة تدخلها بعد اليوم.
+  status DealStatus @default(APPROVED)
 
   lockExpiresAt DateTime
 

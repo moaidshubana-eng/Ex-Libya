@@ -5,8 +5,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { DealDirection, DealStatus, Prisma } from '@prisma/client';
+import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
+import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { toMoney } from '../common/money';
@@ -17,9 +18,9 @@ import { CreateDealDto } from './dto/create-deal.dto';
 import { ListDealsQuery } from './dto/list-deals.query';
 import { RejectDealDto } from './dto/reject-deal.dto';
 import {
+  computeDealProfitLyd,
   computeUsdEquivalent,
   movementTypeForDirection,
-  requiresDualApproval,
 } from './deal-pricing';
 
 const DEAL_INCLUDE = {
@@ -34,20 +35,16 @@ const DEAL_INCLUDE = {
 @Injectable()
 export class DealsService {
   private readonly lockTtlSeconds = 60;
-  private readonly dualApprovalThresholdUsd: number;
-  private readonly limitAlertThresholdPercent: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly whatsApp: WhatsAppService,
-    config: ConfigService,
-  ) {
-    this.dualApprovalThresholdUsd = config.get<number>('trading.dualApprovalThresholdUsd')!;
-    this.limitAlertThresholdPercent = config.get<number>('trading.limitAlertThresholdPercent')!;
-  }
+  ) {}
 
-  // ---- إنشاء صفقة (تسعير + قفل سعر + تحديد الحاجة لموافقة مزدوجة) ----
+  // ---- إنشاء صفقة (تسعير + قفل سعر + احتساب هامش الربح/الخسارة) ----
+  // لا فحص حدود عميل ولا موافقة مزدوجة قائمة على حد عام — أُلغيت الخاصيتان
+  // صراحةً؛ كل صفقة صحيحة البيانات تُنشأ معتمدة (APPROVED) مباشرة.
 
   async create(dto: CreateDealDto, actor: AuthenticatedUser) {
     const branchId = actor.branchId ?? dto.branchId;
@@ -98,12 +95,13 @@ export class DealsService {
       usdRate: usdRate?.rate ?? null,
     });
 
-    await this.assertWithinClientLimits(client, amountUsdEquivalent);
+    const profitLyd = computeDealProfitLyd({
+      direction: dto.direction,
+      amount: dto.amount,
+      lockedRate,
+      parallelMarketRate: dto.parallelMarketRate,
+    });
 
-    const dualApprovalRequired = requiresDualApproval(
-      amountUsdEquivalent,
-      this.dualApprovalThresholdUsd,
-    );
     const lockExpiresAt = new Date(Date.now() + this.lockTtlSeconds * 1000);
 
     const deal = await this.prisma.transaction.create({
@@ -116,9 +114,10 @@ export class DealsService {
         lockedRate,
         lydEquivalent,
         amountUsdEquivalent,
+        parallelMarketRate: dto.parallelMarketRate,
+        profitLyd,
         sourceRateId: latestRate.id,
-        status: dualApprovalRequired ? DealStatus.PENDING_APPROVAL : DealStatus.APPROVED,
-        requiresDualApproval: dualApprovalRequired,
+        status: DealStatus.APPROVED,
         lockExpiresAt,
         requestedById: actor.id,
       },
@@ -136,78 +135,14 @@ export class DealsService {
         currency: currency.code,
         amount: deal.amount,
         lockedRate: deal.lockedRate,
+        parallelMarketRate: deal.parallelMarketRate,
+        profitLyd: deal.profitLyd,
         amountUsdEquivalent: deal.amountUsdEquivalent,
         status: deal.status,
       },
     });
 
     return deal;
-  }
-
-  /**
-   * يفحص الحد اليومي (صفقات اليوم) والسقف الائتماني (الصفقات المفتوحة غير المسوّاة بعد) للعميل،
-   * ويُرسل تنبيه اقتراب عبر واتساب (بلا حظر العملية) عند تجاوز نسبة التنبيه المُعدّة دون تجاوز الحد نفسه.
-   */
-  private async assertWithinClientLimits(
-    client: {
-      id: string;
-      fullName: string;
-      phone: string;
-      dailyLimitUsd: Prisma.Decimal;
-      creditLimitUsd: Prisma.Decimal;
-    },
-    newDealUsd: Prisma.Decimal,
-  ) {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const [dailyAgg, openAgg] = await Promise.all([
-      this.prisma.transaction.aggregate({
-        where: {
-          clientId: client.id,
-          createdAt: { gte: startOfDay },
-          status: { notIn: [DealStatus.REJECTED, DealStatus.CANCELLED, DealStatus.EXPIRED] },
-        },
-        _sum: { amountUsdEquivalent: true },
-      }),
-      this.prisma.transaction.aggregate({
-        where: {
-          clientId: client.id,
-          status: { in: [DealStatus.PENDING_APPROVAL, DealStatus.APPROVED] },
-        },
-        _sum: { amountUsdEquivalent: true },
-      }),
-    ]);
-
-    const dailyUsed = toMoney(dailyAgg._sum.amountUsdEquivalent ?? 0).plus(newDealUsd);
-    if (dailyUsed.greaterThan(client.dailyLimitUsd)) {
-      throw new BadRequestException(
-        `تتجاوز هذه الصفقة الحد اليومي المسموح به للعميل (المستخدم اليوم بعد هذه الصفقة: ${dailyUsed.toFixed(2)} دولار، الحد: ${toMoney(client.dailyLimitUsd).toFixed(2)} دولار)`,
-      );
-    }
-
-    const openExposure = toMoney(openAgg._sum.amountUsdEquivalent ?? 0).plus(newDealUsd);
-    if (openExposure.greaterThan(client.creditLimitUsd)) {
-      throw new BadRequestException(
-        `تتجاوز هذه الصفقة السقف الائتماني للعميل (التعرّض المفتوح بعد هذه الصفقة: ${openExposure.toFixed(2)} دولار، السقف: ${toMoney(client.creditLimitUsd).toFixed(2)} دولار)`,
-      );
-    }
-
-    const dailyUsagePercent = dailyUsed.dividedBy(client.dailyLimitUsd).times(100);
-    if (dailyUsagePercent.greaterThanOrEqualTo(this.limitAlertThresholdPercent)) {
-      await this.whatsApp.sendLimitAlert(client, {
-        limitType: 'DAILY',
-        usagePercent: dailyUsagePercent.toFixed(0),
-      });
-    }
-
-    const creditUsagePercent = openExposure.dividedBy(client.creditLimitUsd).times(100);
-    if (creditUsagePercent.greaterThanOrEqualTo(this.limitAlertThresholdPercent)) {
-      await this.whatsApp.sendLimitAlert(client, {
-        limitType: 'CREDIT',
-        usagePercent: creditUsagePercent.toFixed(0),
-      });
-    }
   }
 
   // ---- الاستعلام ----
@@ -332,6 +267,15 @@ export class DealsService {
       throw new ConflictException('لا يمكن تنفيذ صفقة ليست في حالة معتمدة');
     }
 
+    // هامش الصفقة (profitLyd) بالدينار الليبي دومًا — نحتاج معرّف عملة الدينار
+    // نفسها لترحيله محاسبيًا، بصرف النظر عن عملة الصفقة الأجنبية (deal.currencyId).
+    const lydCurrency = await this.prisma.currency.findUnique({ where: { code: 'LYD' } });
+    if (!lydCurrency) {
+      throw new BadRequestException(
+        'عملة الدينار الليبي غير مسجَّلة في النظام — تعذّر ترحيل هامش الصفقة',
+      );
+    }
+
     const result = await this.prisma.$transaction(async (tx) => {
       // تحديث شرطي (optimistic) يمنع تنفيذ الصفقة مرتين في حال تزامن الطلبات
       const claimed = await tx.transaction.updateMany({
@@ -353,6 +297,33 @@ export class DealsService {
         dealId: deal.id,
       });
 
+      // ترحيل محاسبي لهامش الصفقة فقط (لا لكامل قيمتها) — عند التنفيذ الفعلي لا
+      // عند مجرد الإنشاء، فصفقة أُلغيت أو انتهت مهلتها لا تمسّ قائمة الدخل إطلاقًا.
+      // قيد بسيط بسطرين بالدينار: ربح ← مدين ذمم الهامش / دائن الإيراد، وخسارة
+      // تُبادل الجانبين تلقائيًا (postJournalEntry يرفض أي سطر صفري القيمتين).
+      const profitLyd = toMoney(deal.profitLyd);
+      if (!profitLyd.isZero()) {
+        const isGain = profitLyd.isPositive();
+        await postJournalEntry(tx, {
+          description: `هامش صفقة #${deal.id.slice(0, 8)} — ${deal.direction === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName} (${deal.currency.code})`,
+          sourceType: 'Transaction',
+          sourceId: deal.id,
+          postedById: actor.id,
+          lines: [
+            {
+              accountCode: ACCOUNT_CODES.FX_TRADING_MARGIN_RECEIVABLE,
+              ...(isGain ? { debit: profitLyd } : { credit: profitLyd.abs() }),
+              currencyId: lydCurrency.id,
+            },
+            {
+              accountCode: ACCOUNT_CODES.FX_TRADING_REVENUE,
+              ...(isGain ? { credit: profitLyd } : { debit: profitLyd.abs() }),
+              currencyId: lydCurrency.id,
+            },
+          ],
+        });
+      }
+
       return movementResult;
     });
 
@@ -367,6 +338,7 @@ export class DealsService {
         treasuryBalanceBefore: result.balanceBefore,
         treasuryBalanceAfter: result.balanceAfter.toFixed(2),
         exceedsMaxExposure: result.exceedsMaxExposure,
+        profitLyd: deal.profitLyd.toString(),
       },
     });
 
