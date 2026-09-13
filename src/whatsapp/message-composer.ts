@@ -1,4 +1,4 @@
-import { DealDirection } from '@prisma/client';
+import { ClientBalanceMovementType, DealDirection } from '@prisma/client';
 
 export interface RateSummary {
   code: string;
@@ -75,4 +75,45 @@ export function composeLimitAlertParams(input: LimitAlertInput): [string, string
 
 export function composeLimitAlertLogBody(input: LimitAlertInput): string {
   return `تنبيه اقتراب من ${LIMIT_TYPE_LABEL[input.limitType]} (${input.usagePercent}%) للعميل ${input.clientName}`;
+}
+
+// نفس تصنيف الحركة المعروض في لوحة التحكم (CBM_TYPE_LABELS في public/index.html) —
+// أي تعديل هنا يجب أن يُطابَق هناك ليبقى النص المرسَل للعميل مطابقًا للمعروض للموظف.
+export const CLIENT_BALANCE_MOVEMENT_TYPE_LABEL: Record<ClientBalanceMovementType, string> = {
+  DEPOSIT: 'إيداع',
+  WITHDRAWAL: 'سحب',
+  ADJUSTMENT_INCREASE: 'تصحيح بالزيادة',
+  ADJUSTMENT_DECREASE: 'تصحيح بالنقصان',
+};
+
+const CLIENT_BALANCE_MOVEMENT_INCREASING: ClientBalanceMovementType[] = [
+  ClientBalanceMovementType.DEPOSIT,
+  ClientBalanceMovementType.ADJUSTMENT_INCREASE,
+];
+
+export interface ClientBalanceUpdateInput {
+  clientName: string;
+  type: ClientBalanceMovementType;
+  /** قيمة موجبة دومًا — الإشارة تُشتَق من type، تمامًا كما في ClientBalanceMovement.amount. */
+  amount: string;
+  balanceAfter: string;
+  currencyCode: string;
+}
+
+/** [اسم العميل، نوع الحركة بالعربية، المبلغ الموقَّع والعملة، الرصيد الجديد والعملة] لقالب CLIENT_BALANCE_UPDATE. */
+export function composeClientBalanceUpdateParams(
+  input: ClientBalanceUpdateInput,
+): [string, string, string, string] {
+  const sign = CLIENT_BALANCE_MOVEMENT_INCREASING.includes(input.type) ? '+' : '-';
+  return [
+    input.clientName,
+    CLIENT_BALANCE_MOVEMENT_TYPE_LABEL[input.type],
+    `${sign}${input.amount} ${input.currencyCode}`,
+    `${input.balanceAfter} ${input.currencyCode}`,
+  ];
+}
+
+export function composeClientBalanceUpdateLogBody(input: ClientBalanceUpdateInput): string {
+  const sign = CLIENT_BALANCE_MOVEMENT_INCREASING.includes(input.type) ? '+' : '-';
+  return `${CLIENT_BALANCE_MOVEMENT_TYPE_LABEL[input.type]}: ${sign}${input.amount} ${input.currencyCode} — الرصيد الجديد: ${input.balanceAfter} ${input.currencyCode}`;
 }

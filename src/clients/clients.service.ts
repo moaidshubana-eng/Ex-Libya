@@ -5,6 +5,7 @@ import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { applyClientBalanceMovement } from './apply-client-balance-movement';
 import { AdjustClientBalanceDto } from './dto/adjust-client-balance.dto';
 import { CreateClientDto } from './dto/create-client.dto';
@@ -19,6 +20,7 @@ export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly whatsApp: WhatsAppService,
   ) {}
 
   async create(dto: CreateClientDto, actor: AuthenticatedUser) {
@@ -148,7 +150,11 @@ export class ClientsService {
     return currency;
   }
 
-  /** سجل حركات رصيد العميل (إيداع/سحب/تعديلات) — اختياريًا لعملة واحدة، الأحدث أولًا. */
+  /**
+   * سجل حركات رصيد العميل (إيداع/سحب/تعديلات) — اختياريًا لعملة واحدة، الأحدث
+   * أولًا. يضمّ كل صف أحدث إشعار واتساب أُرسل بشأنه (whatsappMessages، صف
+   * واحد على الأكثر عمليًا) لتُظهر الواجهة حالة التسليم بجانب كل حركة مباشرة.
+   */
   async listBalanceMovements(clientId: string, currencyCode?: string, take = 50) {
     await this.findOne(clientId);
     const currency = currencyCode ? await this.getCurrencyOrThrow(currencyCode) : null;
@@ -160,6 +166,11 @@ export class ClientsService {
       include: {
         currency: true,
         performedBy: { select: { id: true, fullName: true, role: true } },
+        whatsappMessages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { status: true, errorMessage: true, createdAt: true },
+        },
       },
     });
   }
@@ -230,6 +241,10 @@ export class ClientsService {
         reason: dto.reason,
       },
     });
+
+    // إشعار واتساب تلقائي بالرصيد الجديد بعد نجاح التصحيح فعليًا — لا يكسر
+    // العملية إن فشل (انظر WhatsAppService.sendTemplateSafely).
+    await this.whatsApp.sendClientBalanceUpdate(client, result.movement, currency.code);
 
     return result.movement;
   }

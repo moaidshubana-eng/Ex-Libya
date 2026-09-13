@@ -1,11 +1,13 @@
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ClientBalanceMovementType,
   DealDirection,
   MessageDirection,
   MessageIntent,
   MessageKind,
   MessageStatus,
+  Prisma,
 } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +15,8 @@ import { ListMessagesQuery } from './dto/list-messages.query';
 import { extractInboundTextMessages } from './inbound-payload';
 import { classifyIntent } from './intent-router';
 import {
+  composeClientBalanceUpdateLogBody,
+  composeClientBalanceUpdateParams,
   composeDealConfirmationLogBody,
   composeDealConfirmationParams,
   composeHumanHandoffAck,
@@ -182,6 +186,42 @@ export class WhatsAppService {
     });
   }
 
+  /**
+   * إشعار تلقائي بالرصيد الجديد للعميل بعد أي حركة على رصيد وديعته (إيداع،
+   * سحب، أو تصحيح يدوي) — يُستدعى من TreasuryService.recordMovement (عند
+   * ربط الحركة بعميل) وClientsService.adjustBalance، بعد نجاح الحركة فعليًا
+   * (خارج معاملة قاعدة البيانات، على غرار sendDealConfirmation)، بصرف النظر
+   * عن whatsappOptIn — إشعار معاملاتي شخصي بنتيجة فعل العميل نفسه أو تصحيح
+   * على رصيده، لا بثّ تسويقي جماعي (ذاك وحده يتطلب الموافقة الصريحة).
+   */
+  async sendClientBalanceUpdate(
+    client: { id: string; fullName: string; phone: string },
+    movement: {
+      id: string;
+      type: ClientBalanceMovementType;
+      amount: Prisma.Decimal.Value;
+      balanceAfter: Prisma.Decimal.Value;
+    },
+    currencyCode: string,
+  ) {
+    const input = {
+      clientName: client.fullName,
+      type: movement.type,
+      amount: String(movement.amount),
+      balanceAfter: String(movement.balanceAfter),
+      currencyCode,
+    };
+
+    await this.sendTemplateSafely({
+      to: toDigitsOnly(client.phone),
+      clientId: client.id,
+      templateKey: 'CLIENT_BALANCE_UPDATE',
+      templateParams: composeClientBalanceUpdateParams(input),
+      logBody: composeClientBalanceUpdateLogBody(input),
+      relatedClientBalanceMovementId: movement.id,
+    });
+  }
+
   /** يبثّ تحديث سعر لكل عميل مفعّل ومكتمل KYC وافق صراحة (whatsappOptIn) على تحديثات واتساب الجماعية. */
   async broadcastRateUpdate(currencyCode: string, triggeredByActorId: string) {
     const currency = await this.prisma.currency.findUnique({
@@ -291,6 +331,7 @@ export class WhatsAppService {
     templateParams: readonly string[];
     logBody: string;
     relatedDealId?: string;
+    relatedClientBalanceMovementId?: string;
   }) {
     const template = WHATSAPP_TEMPLATES[input.templateKey];
     try {
@@ -308,6 +349,7 @@ export class WhatsAppService {
           status: MessageStatus.SENT,
           providerMessageId: result.providerMessageId,
           relatedDealId: input.relatedDealId,
+          relatedClientBalanceMovementId: input.relatedClientBalanceMovementId,
         },
       });
       return MessageStatus.SENT;
@@ -324,6 +366,7 @@ export class WhatsAppService {
           status: MessageStatus.FAILED,
           errorMessage: (error as Error).message,
           relatedDealId: input.relatedDealId,
+          relatedClientBalanceMovementId: input.relatedClientBalanceMovementId,
         },
       });
       return MessageStatus.FAILED;

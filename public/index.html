@@ -1130,6 +1130,15 @@ const CBM_TYPE_LABELS = {
 };
 const CBM_INCREASING = ['DEPOSIT', 'ADJUSTMENT_INCREASE'];
 
+/** بادج حالة إشعار واتساب المرتبط بحركة — أحدث رسالة فقط (whatsappMessages من الخادم، صف واحد على الأكثر). */
+function cbmWhatsAppBadge(m){
+  const wa = m.whatsappMessages && m.whatsappMessages[0];
+  if (!wa) return '<span style="color:var(--ink-faint)" title="حركة سابقة على تفعيل الإشعار التلقائي، أو لم يُحاول الإرسال">—</span>';
+  if (wa.status === 'SENT') return '<span class="pill ok" title="أُرسل بنجاح إلى هاتف العميل">أُرسل</span>';
+  const errMsg = (wa.errorMessage || 'سبب غير معروف').replace(/"/g, '&quot;');
+  return `<span class="pill bad" title="فشل الإرسال: ${errMsg}">فشل الإرسال</span>`;
+}
+
 async function loadClientBalanceMovements(){
   if (!selectedClientId) return;
   const el = document.getElementById('client-balance-movements-content');
@@ -1139,13 +1148,27 @@ async function loadClientBalanceMovements(){
     const params = currencyCode ? '?currencyCode=' + currencyCode : '';
     const items = await apiCall('/clients/' + selectedClientId + '/balance-movements' + params);
     if (!items.length) { el.textContent = 'لا توجد حركات مسجّلة على رصيد هذا العميل بعد.'; return; }
-    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الرصيد بعدها</th><th>السبب</th><th>بواسطة</th></tr></thead><tbody>';
+    let html = `<p style="font-size:12px;color:var(--ink-faint);margin:0 0 10px">آخر ${items.length} حركة على رصيد الوديعة، الأحدث أولًا — كل حركة تُرسل تلقائيًا للعميل عبر واتساب فور تسجيلها.</p>`;
+    html += '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الرصيد بعدها</th><th>المصدر</th><th>إشعار واتساب</th><th>السبب</th><th>بواسطة</th></tr></thead><tbody>';
     items.forEach(m => {
       const increasing = CBM_INCREASING.includes(m.type);
       const sign = increasing ? '+' : '-';
       const color = increasing ? 'var(--success)' : 'var(--critical)';
       const balanceColor = parseFloat(m.balanceAfter) < 0 ? 'var(--critical)' : 'var(--success)';
-      html += `<tr><td>${new Date(m.createdAt).toLocaleString('ar-LY')}</td><td>${CBM_TYPE_LABELS[m.type] || m.type} (${m.currency.code})</td><td class="num" style="color:${color}">${sign}${fmtNum(m.amount)}</td><td class="num" style="color:${balanceColor}">${fmtNum(m.balanceAfter)}</td><td>${m.reason}</td><td>${m.performedBy ? m.performedBy.fullName : '—'}</td></tr>`;
+      const typePill = `<span class="pill ${increasing ? 'ok' : 'bad'}">${CBM_TYPE_LABELS[m.type] || m.type}</span>`;
+      const sourceBadge = m.treasuryMovementId
+        ? '<span class="pill info" title="نقد فعلي عبر شباك الفرع — مرتبط بحركة خزينة">نقدي (خزينة)</span>'
+        : '<span class="pill warn" title="تصحيح إداري بلا نقد فعلي — لا يمسّ خزينة أي فرع">تصحيح يدوي</span>';
+      html += `<tr>
+        <td>${new Date(m.createdAt).toLocaleString('ar-LY')}</td>
+        <td>${typePill} <span style="color:var(--ink-faint)">(${m.currency.code})</span></td>
+        <td class="num" style="color:${color};font-weight:700">${sign}${fmtNum(m.amount)}</td>
+        <td class="num" style="color:${balanceColor};font-weight:700">${fmtNum(m.balanceAfter)}</td>
+        <td>${sourceBadge}</td>
+        <td>${cbmWhatsAppBadge(m)}</td>
+        <td class="wrap">${m.reason}</td>
+        <td>${m.performedBy ? m.performedBy.fullName : '—'}</td>
+      </tr>`;
     });
     el.innerHTML = html + '</tbody></table></div>';
   }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }

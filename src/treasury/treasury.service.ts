@@ -12,6 +12,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { applyClientBalanceMovement } from '../clients/apply-client-balance-movement';
 import { toMoney } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { applyMovement } from './apply-movement';
 import { ConfigurePositionDto } from './dto/configure-position.dto';
 import { CreateBranchDto } from './dto/create-branch.dto';
@@ -50,6 +51,7 @@ export class TreasuryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly whatsApp: WhatsAppService,
   ) {}
 
   // ---- الفروع ----
@@ -187,7 +189,7 @@ export class TreasuryService {
 
     // ربط اختياري برصيد وديعة عميل — لا يُقبل إلا مع إيداع/سحب فعلي نقدي حقيقي؛
     // باقي الأنواع (تحويل بين فروع، تسوية جرد، ناتج صفقة) لا معنى لربطها بعميل هنا.
-    let client: { id: string; fullName: string; isActive: boolean } | null = null;
+    let client: { id: string; fullName: string; phone: string; isActive: boolean } | null = null;
     if (dto.clientId) {
       if (dto.type !== MovementType.DEPOSIT && dto.type !== MovementType.WITHDRAWAL) {
         throw new BadRequestException(
@@ -196,14 +198,14 @@ export class TreasuryService {
       }
       client = await this.prisma.client.findUnique({
         where: { id: dto.clientId },
-        select: { id: true, fullName: true, isActive: true },
+        select: { id: true, fullName: true, phone: true, isActive: true },
       });
       if (!client) throw new NotFoundException('العميل غير موجود');
       if (!client.isActive)
         throw new BadRequestException('العميل معطَّل — لا يمكن تسجيل حركة على رصيده');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const result = await applyMovement(tx, {
         branchId,
         currencyId: currency.id,
@@ -324,6 +326,18 @@ export class TreasuryService {
         clientBalanceMovement,
       };
     });
+
+    // إشعار واتساب تلقائي بالرصيد الجديد — بعد نجاح الحركة فعليًا، خارج المعاملة
+    // (على غرار DealsService.execute)؛ فشل الإشعار مسجَّل داخليًا ولا يكسر الحركة.
+    if (client && result.clientBalanceMovement) {
+      await this.whatsApp.sendClientBalanceUpdate(
+        client,
+        result.clientBalanceMovement,
+        currency.code,
+      );
+    }
+
+    return result;
   }
 
   async listMovements(branchId: string, currencyCode?: string, take = 50) {

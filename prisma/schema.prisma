@@ -191,6 +191,10 @@ model ClientBalanceMovement {
   treasuryMovementId String?
   createdAt          DateTime                  @default(now())
 
+  // إشعار واتساب برصيد العميل بعد هذه الحركة (WhatsAppService.sendClientBalanceUpdate)
+  // — صف واحد عادةً (نجح أو فشل)؛ غيابه يعني حركة سابقة على إضافة هذه الميزة.
+  whatsappMessages WhatsAppMessage[]
+
   @@index([clientId, currencyId, createdAt])
   @@map("client_balance_movements")
 }
@@ -405,6 +409,10 @@ model WhatsAppMessage {
   providerMessageId String? // معرّف الرسالة من Meta، إن توفّر
   relatedDealId     String?
   relatedDeal       Transaction?     @relation(fields: [relatedDealId], references: [id])
+  // إشعار رصيد تلقائي مرتبط بحركة على رصيد وديعة عميل (إيداع/سحب/تصحيح) —
+  // انظر WhatsAppService.sendClientBalanceUpdate.
+  relatedClientBalanceMovementId String?
+  relatedClientBalanceMovement   ClientBalanceMovement? @relation(fields: [relatedClientBalanceMovementId], references: [id])
   createdAt         DateTime         @default(now())
 
   @@index([clientId, createdAt])

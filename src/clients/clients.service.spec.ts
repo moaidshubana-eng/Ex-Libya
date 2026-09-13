@@ -3,7 +3,14 @@ import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { ClientsService } from './clients.service';
+
+function buildWhatsApp() {
+  return {
+    sendClientBalanceUpdate: jest.fn().mockResolvedValue(undefined),
+  } as unknown as WhatsAppService;
+}
 
 const actor: AuthenticatedUser = {
   id: 'user-1',
@@ -57,10 +64,11 @@ function buildPrismaMock(
 }
 
 describe('ClientsService.adjustBalance', () => {
-  it('يزيد رصيد العميل عند تصحيح بالزيادة ويدوّنه في سجل التدقيق', async () => {
+  it('يزيد رصيد العميل عند تصحيح بالزيادة ويدوّنه في سجل التدقيق، ويرسل إشعار واتساب بالرصيد الجديد', async () => {
     const prisma = buildPrismaMock({ clientBalance: { balance: '100.00' } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new ClientsService(prisma, audit);
+    const whatsApp = buildWhatsApp();
+    const service = new ClientsService(prisma, audit, whatsApp);
 
     const result = await service.adjustBalance(
       'client-1',
@@ -77,12 +85,17 @@ describe('ClientsService.adjustBalance', () => {
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'ADJUST_CLIENT_BALANCE' }),
     );
+    expect(whatsApp.sendClientBalanceUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'client-1' }),
+      result,
+      'USD',
+    );
   });
 
   it('يسمح للرصيد أن يصبح سالبًا عند تصحيح بالنقصان يتجاوز الرصيد الحالي', async () => {
     const prisma = buildPrismaMock({ clientBalance: { balance: '30.00' } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new ClientsService(prisma, audit);
+    const service = new ClientsService(prisma, audit, buildWhatsApp());
 
     const result = await service.adjustBalance(
       'client-1',
@@ -101,7 +114,7 @@ describe('ClientsService.adjustBalance', () => {
   it('يرفض التعديل على عميل معطَّل', async () => {
     const prisma = buildPrismaMock({ client: { id: 'client-1', isActive: false } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new ClientsService(prisma, audit);
+    const service = new ClientsService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.adjustBalance(
@@ -116,7 +129,7 @@ describe('ClientsService.adjustBalance', () => {
   it('يرفض التعديل على عميل غير موجود', async () => {
     const prisma = buildPrismaMock({ client: null });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new ClientsService(prisma, audit);
+    const service = new ClientsService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.adjustBalance(
@@ -129,10 +142,10 @@ describe('ClientsService.adjustBalance', () => {
 });
 
 describe('ClientsService.listBalanceMovements', () => {
-  it('يجلب سجل حركات العميل مرتبًا من الأحدث للأقدم', async () => {
+  it('يجلب سجل حركات العميل مرتبًا من الأحدث للأقدم، مع أحدث إشعار واتساب مرتبط بكل حركة', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new ClientsService(prisma, audit);
+    const service = new ClientsService(prisma, audit, buildWhatsApp());
 
     await service.listBalanceMovements('client-1', 'USD');
 
@@ -140,6 +153,9 @@ describe('ClientsService.listBalanceMovements', () => {
       expect.objectContaining({
         where: { clientId: 'client-1', currencyId: 'cur-usd' },
         orderBy: { createdAt: 'desc' },
+        include: expect.objectContaining({
+          whatsappMessages: expect.objectContaining({ take: 1 }),
+        }),
       }),
     );
   });

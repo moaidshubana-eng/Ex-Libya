@@ -3,7 +3,14 @@ import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { TreasuryService } from './treasury.service';
+
+function buildWhatsApp() {
+  return {
+    sendClientBalanceUpdate: jest.fn().mockResolvedValue(undefined),
+  } as unknown as WhatsAppService;
+}
 
 const actor: AuthenticatedUser = {
   id: 'user-1',
@@ -21,7 +28,12 @@ const usdCurrency = {
   decimalPlaces: 2,
 };
 
-const activeClient = { id: 'client-1', fullName: 'محمد الصالح', isActive: true };
+const activeClient = {
+  id: 'client-1',
+  fullName: 'محمد الصالح',
+  phone: '+218911234567',
+  isActive: true,
+};
 
 function buildPrismaMock(
   position: {
@@ -78,7 +90,7 @@ describe('TreasuryService.recordMovement', () => {
       minThreshold: '1000.00',
     });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     const result = await service.recordMovement(
       'branch-1',
@@ -98,7 +110,7 @@ describe('TreasuryService.recordMovement', () => {
       minThreshold: '0',
     });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.recordMovement(
@@ -120,7 +132,7 @@ describe('TreasuryService.recordMovement', () => {
     });
     prisma.tx.treasuryPosition.findUnique.mockResolvedValueOnce(null);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.recordMovement(
@@ -139,7 +151,7 @@ describe('TreasuryService.recordMovement', () => {
       minThreshold: null,
     });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     const result = await service.recordMovement(
       'branch-1',
@@ -151,13 +163,14 @@ describe('TreasuryService.recordMovement', () => {
     expect(result.belowMinThreshold).toBe(false);
   });
 
-  it('يزيد رصيد وديعة العميل تلقائيًا عند إيداع خزينة مرتبط بـ clientId', async () => {
+  it('يزيد رصيد وديعة العميل تلقائيًا عند إيداع خزينة مرتبط بـ clientId، ويرسل إشعار واتساب بالرصيد الجديد', async () => {
     const prisma = buildPrismaMock(
       { id: 'pos-1', balance: '10000.00', maxExposure: null, minThreshold: null },
       { clientBalance: { balance: '200.00' } },
     );
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const whatsApp = buildWhatsApp();
+    const service = new TreasuryService(prisma, audit, whatsApp);
 
     const result = await service.recordMovement(
       'branch-1',
@@ -177,6 +190,11 @@ describe('TreasuryService.recordMovement', () => {
     );
     expect(result.clientBalanceMovement!.balanceAfter.toString()).toBe('700');
     expect(audit.record).toHaveBeenCalledTimes(2);
+    expect(whatsApp.sendClientBalanceUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'client-1' }),
+      result.clientBalanceMovement,
+      'USD',
+    );
   });
 
   it('ينقص رصيد وديعة العميل (وقد يصبح سالبًا) عند سحب خزينة مرتبط بـ clientId', async () => {
@@ -185,7 +203,7 @@ describe('TreasuryService.recordMovement', () => {
       { clientBalance: { balance: '100.00' } },
     );
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     const result = await service.recordMovement(
       'branch-1',
@@ -202,6 +220,26 @@ describe('TreasuryService.recordMovement', () => {
     expect(result.clientBalanceMovement!.balanceAfter.toString()).toBe('-300');
   });
 
+  it('لا يرسل أي إشعار واتساب عند حركة خزينة عادية بلا ربط بعميل', async () => {
+    const prisma = buildPrismaMock({
+      id: 'pos-1',
+      balance: '10000.00',
+      maxExposure: null,
+      minThreshold: null,
+    });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const whatsApp = buildWhatsApp();
+    const service = new TreasuryService(prisma, audit, whatsApp);
+
+    await service.recordMovement(
+      'branch-1',
+      { currencyCode: 'USD', type: 'DEPOSIT' as any, amount: '500.00', reason: 'تغذية عادية' },
+      actor,
+    );
+
+    expect(whatsApp.sendClientBalanceUpdate).not.toHaveBeenCalled();
+  });
+
   it('يرفض ربط clientId بحركة ليست إيداعًا أو سحبًا', async () => {
     const prisma = buildPrismaMock({
       id: 'pos-1',
@@ -210,7 +248,7 @@ describe('TreasuryService.recordMovement', () => {
       minThreshold: null,
     });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.recordMovement(
@@ -233,7 +271,7 @@ describe('TreasuryService.recordMovement', () => {
       { client: null },
     );
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.recordMovement(
@@ -270,7 +308,7 @@ describe('TreasuryService.configurePosition', () => {
   it('يخزّن null صراحةً للحد الأدنى/السقف عند عدم إرسالهما — لا يُبقي القيمة الافتراضية', async () => {
     const prisma = buildPositionPrismaMock(null);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     const result = await service.configurePosition('branch-1', { currencyCode: 'USD' }, actor);
 
@@ -294,7 +332,7 @@ describe('TreasuryService.setBranchActive', () => {
   it('يعطّل فرعًا موجودًا ويدوّن ذلك في سجل التدقيق', async () => {
     const prisma = buildBranchPrismaMock({ id: 'branch-1', isActive: true });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     const result = await service.setBranchActive('branch-1', false, actor);
 
@@ -307,7 +345,7 @@ describe('TreasuryService.setBranchActive', () => {
   it('يرفض تعطيل فرع غير موجود', async () => {
     const prisma = buildBranchPrismaMock(null);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TreasuryService(prisma, audit);
+    const service = new TreasuryService(prisma, audit, buildWhatsApp());
 
     await expect(service.setBranchActive('missing', false, actor)).rejects.toBeInstanceOf(
       NotFoundException,
