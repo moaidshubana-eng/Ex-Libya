@@ -1,12 +1,31 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { DealDirection } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { DealCustomerType, DealDirection } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 import { IsDecimalString } from '../../common/validators/is-decimal-string.decorator';
 
 export class CreateDealDto {
-  @ApiProperty({ description: 'معرّف العميل' })
+  @ApiProperty({ enum: DealCustomerType })
+  @IsEnum(DealCustomerType)
+  customerType!: DealCustomerType;
+
+  @ApiPropertyOptional({
+    description: 'إلزامي فقط عند customerType = INTERNAL — معرّف العميل المسجَّل في النظام',
+  })
+  @IsOptional()
   @IsUUID()
-  clientId!: string;
+  clientId?: string;
+
+  @ApiPropertyOptional({
+    description: 'إلزامي فقط عند customerType = EXTERNAL — اسم الزبون العابر غير المسجَّل',
+  })
+  @IsOptional()
+  @IsString()
+  externalCustomerName?: string;
+
+  @ApiPropertyOptional({ description: 'هاتف الزبون الخارجي — اختياري حتى مع EXTERNAL' })
+  @IsOptional()
+  @IsString()
+  externalCustomerPhone?: string;
 
   @ApiProperty({
     required: false,
@@ -34,8 +53,16 @@ export class CreateDealDto {
 
   @ApiProperty({
     description:
-      'سعر السوق الموازي المرجعي وقت الصفقة (يُدخله الموظف يدويًا) — أساس احتساب هامش الربح/الخسارة الفعلي مقابل سعر بيع/شراء الصفقة (lockedRate، يُقفل تلقائيًا من آخر سعر منشور)',
+      'سعر الصفقة (سعر البيع/الشراء الفعلي المتفق عليه مع الطرف الآخر) — يُدخله الموظف يدويًا بالكامل، لا يُشتَق تلقائيًا من أي سعر صرف منشور',
     example: '7.9000',
+  })
+  @IsDecimalString(6)
+  dealRate!: string;
+
+  @ApiProperty({
+    description:
+      'سعر السوق الموازي المرجعي وقت الصفقة (يُدخله الموظف يدويًا أيضًا) — أساس احتساب هامش الربح/الخسارة الفعلي مقابل سعر الصفقة (dealRate): عند الشراء الربح إن كان سعر السوق أعلى من سعر الصفقة، وعند البيع الربح إن كان سعر الصفقة أعلى من سعر السوق',
+    example: '7.9500',
   })
   @IsDecimalString(6)
   parallelMarketRate!: string;

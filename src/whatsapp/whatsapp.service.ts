@@ -39,7 +39,9 @@ interface DealForConfirmation {
   amount: string | number;
   lockedRate: string | number;
   currency: { code: string };
-  client: { id: string; fullName: string; phone: string };
+  // id غائب لزبون خارجي عابر (لا يملك صفًّا في Client) — يُرسَل التأكيد له
+  // بالاسم والهاتف المُدخَلين يدويًا فقط، دون ربط الرسالة بأي clientId.
+  client: { id?: string; fullName: string; phone: string };
 }
 
 @Injectable()

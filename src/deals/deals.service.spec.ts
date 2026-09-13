@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
-import { DealDirection, DealStatus } from '@prisma/client';
+import { DealCustomerType, DealDirection, DealStatus } from '@prisma/client';
 import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
 import { AuditService } from '../audit/audit.service';
@@ -74,10 +74,12 @@ describe('DealsService.create', () => {
     // مبلغ ضخم يتجاوز أي حد كان معتمدًا سابقًا (100000 دولار للعميل) — لا يُرفض الآن مطلقًا
     const deal = await service.create(
       {
+        customerType: DealCustomerType.INTERNAL,
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
         amount: '500000.00',
+        dealRate: '8.00',
         parallelMarketRate: '7.95',
       },
       teller,
@@ -86,26 +88,31 @@ describe('DealsService.create', () => {
     expect(deal.status).toBe(DealStatus.APPROVED);
   });
 
-  it('يحسب سعر السوق الموازي وهامش الربح/الخسارة ويخزّنهما مع الصفقة عند الإنشاء', async () => {
+  it('يخزّن سعر الصفقة وسعر السوق الموازي المُدخلَين يدويًا، ويحسب هامش الربح/الخسارة منهما', async () => {
     const prisma = buildPrismaMockForCreate();
     const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
-    // بيع 1000 دولار بسعر مقفل 7.90 (آخر سعر منشور) بينما السوق الموازي 7.80 → ربح 100 دينار
+    // بيع 1000 دولار بسعر صفقة يدوي 8.00 بينما السوق الموازي 7.90 → ربح 100 دينار
+    // (آخر سعر منشور 7.90 لا يُستخدم هنا إطلاقًا — للمرجعية فقط عبر sourceRateId)
     const deal = await service.create(
       {
+        customerType: DealCustomerType.INTERNAL,
         clientId: verifiedClient.id,
         currencyCode: 'USD',
         direction: DealDirection.SELL,
         amount: '1000.00',
-        parallelMarketRate: '7.80',
+        dealRate: '8.00',
+        parallelMarketRate: '7.90',
       },
       teller,
     );
 
-    expect(deal.parallelMarketRate).toBe('7.80');
+    expect(deal.lockedRate.toString()).toBe('8');
+    expect(deal.parallelMarketRate).toBe('7.90');
     expect(deal.profitLyd.toFixed(2)).toBe('100.00');
     const callArg = (prisma.transaction.create as jest.Mock).mock.calls[0][0];
-    expect(callArg.data.parallelMarketRate).toBe('7.80');
+    expect(callArg.data.lockedRate.toString()).toBe('8');
+    expect(callArg.data.parallelMarketRate).toBe('7.90');
     expect(callArg.data.profitLyd.toFixed(2)).toBe('100.00');
     expect(callArg.data.status).toBe(DealStatus.APPROVED);
   });
@@ -118,10 +125,12 @@ describe('DealsService.create', () => {
     await expect(
       service.create(
         {
+          customerType: DealCustomerType.INTERNAL,
           clientId: verifiedClient.id,
           currencyCode: 'USD',
           direction: DealDirection.SELL,
           amount: '5000.00',
+          dealRate: '8.00',
           parallelMarketRate: '7.90',
         },
         noBranchUser,
@@ -140,10 +149,99 @@ describe('DealsService.create', () => {
     await expect(
       service.create(
         {
+          customerType: DealCustomerType.INTERNAL,
           clientId: verifiedClient.id,
           currencyCode: 'USD',
           direction: DealDirection.SELL,
           amount: '5000.00',
+          dealRate: '8.00',
+          parallelMarketRate: '7.90',
+        },
+        teller,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('يرفض صفقة عميل داخلي بلا clientId', async () => {
+    const prisma = buildPrismaMockForCreate();
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await expect(
+      service.create(
+        {
+          customerType: DealCustomerType.INTERNAL,
+          currencyCode: 'USD',
+          direction: DealDirection.SELL,
+          amount: '1000.00',
+          dealRate: '8.00',
+          parallelMarketRate: '7.90',
+        },
+        teller,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('ينشئ صفقة لزبون خارجي باسمه فقط، بلا عميل مسجَّل ولا فحص KYC', async () => {
+    const prisma = buildPrismaMockForCreate();
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    const deal = await service.create(
+      {
+        customerType: DealCustomerType.EXTERNAL,
+        externalCustomerName: 'زبون عابر',
+        externalCustomerPhone: '+218900000000',
+        currencyCode: 'USD',
+        direction: DealDirection.SELL,
+        amount: '500.00',
+        dealRate: '8.00',
+        parallelMarketRate: '7.90',
+      },
+      teller,
+    );
+
+    expect(deal.status).toBe(DealStatus.APPROVED);
+    // KYC لعميل داخلي ما كان يُفحَص أصلًا — لم يُستدعَ client.findUnique إطلاقًا هنا
+    expect(prisma.client.findUnique).not.toHaveBeenCalled();
+    const callArg = (prisma.transaction.create as jest.Mock).mock.calls[0][0];
+    expect(callArg.data.customerType).toBe(DealCustomerType.EXTERNAL);
+    expect(callArg.data.clientId).toBeNull();
+    expect(callArg.data.externalCustomerName).toBe('زبون عابر');
+    expect(callArg.data.externalCustomerPhone).toBe('+218900000000');
+  });
+
+  it('يرفض صفقة زبون خارجي بلا externalCustomerName', async () => {
+    const prisma = buildPrismaMockForCreate();
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await expect(
+      service.create(
+        {
+          customerType: DealCustomerType.EXTERNAL,
+          currencyCode: 'USD',
+          direction: DealDirection.SELL,
+          amount: '500.00',
+          dealRate: '8.00',
+          parallelMarketRate: '7.90',
+        },
+        teller,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('يرفض مزج clientId مع زبون خارجي (EXTERNAL)', async () => {
+    const prisma = buildPrismaMockForCreate();
+    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
+
+    await expect(
+      service.create(
+        {
+          customerType: DealCustomerType.EXTERNAL,
+          clientId: verifiedClient.id,
+          externalCustomerName: 'زبون عابر',
+          currencyCode: 'USD',
+          direction: DealDirection.SELL,
+          amount: '500.00',
+          dealRate: '8.00',
           parallelMarketRate: '7.90',
         },
         teller,
@@ -216,17 +314,28 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
       direction?: DealDirection;
       lydCurrencyOverride?: unknown;
       lydBalance?: string;
+      external?: boolean;
+      externalCustomerPhone?: string | null;
     } = {},
   ) {
     const deal = {
       id: 'deal-1',
       status: DealStatus.APPROVED,
       requestedById: teller.id,
-      clientId: 'client-1',
+      customerType: options.external ? DealCustomerType.EXTERNAL : DealCustomerType.INTERNAL,
+      clientId: options.external ? null : 'client-1',
+      client: options.external
+        ? null
+        : { id: 'client-1', fullName: 'شركة الوفاء', phone: '+218911234567' },
+      externalCustomerName: options.external ? 'زبون عابر' : null,
+      externalCustomerPhone: options.external
+        ? 'externalCustomerPhone' in options
+          ? options.externalCustomerPhone
+          : '+218900000000'
+        : null,
       branchId: 'branch-1',
       currencyId: 'cur-usd',
       currency: { id: 'cur-usd', code: 'USD' },
-      client: { id: 'client-1', fullName: 'شركة الوفاء' },
       direction: options.direction ?? DealDirection.SELL,
       amount: '1000.00',
       lockedRate: '8.00',
@@ -388,5 +497,29 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
 
     await expect(service.execute('deal-1', manager)).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ينفّذ صفقة زبون خارجي بنجاح ويرسل تأكيد واتساب باسمه وهاتفه المُدخلَين يدويًا (بلا clientId)', async () => {
+    const prisma = buildPrismaMockForExecute({ external: true });
+    const whatsApp = buildWhatsApp();
+    const service = new DealsService(prisma, buildAudit(), whatsApp);
+
+    await service.execute('deal-1', manager);
+
+    expect(whatsApp.sendDealConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client: { id: undefined, fullName: 'زبون عابر', phone: '+218900000000' },
+      }),
+    );
+  });
+
+  it('لا يرسل أي تأكيد واتساب لزبون خارجي لم يُدخَل له رقم هاتف', async () => {
+    const prisma = buildPrismaMockForExecute({ external: true, externalCustomerPhone: null });
+    const whatsApp = buildWhatsApp();
+    const service = new DealsService(prisma, buildAudit(), whatsApp);
+
+    await service.execute('deal-1', manager);
+
+    expect(whatsApp.sendDealConfirmation).not.toHaveBeenCalled();
   });
 });

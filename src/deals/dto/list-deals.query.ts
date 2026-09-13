@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { DealStatus } from '@prisma/client';
+import { DealCustomerType, DealStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
@@ -8,6 +8,11 @@ export class ListDealsQuery {
   @IsOptional()
   @IsEnum(DealStatus)
   status?: DealStatus;
+
+  @ApiPropertyOptional({ enum: DealCustomerType })
+  @IsOptional()
+  @IsEnum(DealCustomerType)
+  customerType?: DealCustomerType;
 
   @ApiPropertyOptional()
   @IsOptional()

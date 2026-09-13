@@ -295,6 +295,11 @@ enum DealDirection {
   SELL // الشركة تبيع العملة الأجنبية للعميل (تخرج من الخزينة)
 }
 
+enum DealCustomerType {
+  INTERNAL // عميل مسجَّل مسبقًا في النظام (Client) — clientId إلزامي
+  EXTERNAL // زبون عابر غير مسجَّل — بياناته تُدخَل يدويًا لهذه الصفقة فقط
+}
+
 enum DealStatus {
   PENDING_APPROVAL // بانتظار موافقة ضابط ثانٍ (تتجاوز حد الموافقة المزدوجة)
   APPROVED // معتمدة (تلقائيًا إن كانت ضمن الحد، أو بعد موافقة ضابط ثانٍ) وجاهزة للتنفيذ
@@ -307,9 +312,17 @@ enum DealStatus {
 // صفقة تداول: من طلب العميل إلى قفل السعر فالموافقة المزدوجة (عند الحاجة) فالتنفيذ.
 // كل تحوّل حالة يُسجَّل في AuditLog؛ التنفيذ الفعلي يُنشئ TreasuryMovement مرتبطًا بالصفقة.
 model Transaction {
-  id         String   @id @default(uuid())
-  clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  id String @id @default(uuid())
+
+  // تصنيف الطرف المتعامل — على غرار Remittance.customerType بالضبط: عميل
+  // داخلي مسجَّل (clientId إلزامي)، أو زبون خارجي عابر (اسمه يُدخَل يدويًا لهذه
+  // الصفقة فقط دون تسجيله كعميل كامل في النظام).
+  customerType          DealCustomerType @default(INTERNAL)
+  clientId              String?
+  client                Client?          @relation(fields: [clientId], references: [id])
+  externalCustomerName  String?
+  externalCustomerPhone String?
+
   branchId   String
   branch     Branch   @relation(fields: [branchId], references: [id])
   currencyId String
@@ -318,19 +331,22 @@ model Transaction {
   direction DealDirection
 
   amount              Decimal @db.Decimal(18, 2) // كمية العملة الأجنبية محل الصفقة
-  lockedRate          Decimal @db.Decimal(18, 6) // سعر بيع/شراء الصفقة المقفل من ExchangeRate.rate عند إنشائها
+  lockedRate          Decimal @db.Decimal(18, 6) // سعر الصفقة (بيع/شراء) — يُدخله الموظف يدويًا عند الإنشاء، لا يُشتَق تلقائيًا من أي سعر منشور
   lydEquivalent       Decimal @db.Decimal(18, 2) // amount × lockedRate
   amountUsdEquivalent Decimal @db.Decimal(18, 2) // بما يعادله بالدولار — لغرض العرض والتقارير المقارنة عبر العملات فقط، لا لأي فحص حدّ
 
-  // سعر السوق الموازي المرجعي وقت الصفقة (يُدخله الموظف يدويًا) — أساس احتساب هامش
-  // الربح/الخسارة الفعلي؛ يُقفل مع lockedRate ولا يُعاد حسابه لاحقًا. profitLyd محسوبة
-  // ومخزَّنة عند الإنشاء (DealsService.create عبر computeDealProfitLyd)، وتُرحَّل
-  // محاسبيًا لقائمة الدخل تلقائيًا عند التنفيذ الفعلي (DealsService.execute)، لا عند
-  // مجرد الإنشاء — فصفقة أُلغيت أو انتهت مهلتها لا تمسّ القوائم المالية إطلاقًا.
+  // سعر السوق الموازي المرجعي وقت الصفقة (يُدخله الموظف يدويًا، كسعر الصفقة
+  // تمامًا) — أساس احتساب هامش الربح/الخسارة الفعلي: عند الشراء (BUY) الربح إن
+  // كان سعر السوق أعلى من سعر الصفقة، وعند البيع (SELL) الربح إن كان سعر
+  // الصفقة أعلى من سعر السوق (انظر computeDealProfitLyd). يُقفل الاثنان معًا
+  // عند الإنشاء ولا يُعاد حسابهما لاحقًا. profitLyd محسوبة ومخزَّنة عند الإنشاء
+  // (DealsService.create)، وتُرحَّل محاسبيًا لقائمة الدخل تلقائيًا عند التنفيذ
+  // الفعلي (DealsService.execute)، لا عند مجرد الإنشاء — فصفقة أُلغيت أو انتهت
+  // مهلتها لا تمسّ القوائم المالية إطلاقًا.
   parallelMarketRate Decimal @db.Decimal(18, 6)
   profitLyd          Decimal @db.Decimal(18, 2)
 
-  sourceRateId String // سعر الصرف الذي اشتُقّ منه القفل (للتتبّع والتدقيق)
+  sourceRateId String // آخر سعر صرف رسمي منشور وقت الإنشاء — مرجعي/للتدقيق فقط الآن، لا يُستخدم لاشتقاق lockedRate (صار يدويًا بالكامل)
   sourceRate   ExchangeRate @relation("DealSourceRate", fields: [sourceRateId], references: [id])
 
   // كل صفقة جديدة تُنشأ مباشرة بحالة APPROVED (لا فحص حدود عميل ولا موافقة مزدوجة

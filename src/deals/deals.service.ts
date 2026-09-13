@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DealDirection, DealStatus, Prisma } from '@prisma/client';
+import { DealCustomerType, DealDirection, DealStatus, Prisma } from '@prisma/client';
 import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
 import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
@@ -33,6 +33,17 @@ const DEAL_INCLUDE = {
   executedBy: { select: { id: true, fullName: true, role: true } },
 } satisfies Prisma.TransactionInclude;
 
+/** اسم الطرف المتعامل في الصفقة — عميل داخلي مسجَّل أو زبون خارجي عابر. */
+function dealPartyName(deal: {
+  customerType: DealCustomerType;
+  client: { fullName: string } | null;
+  externalCustomerName: string | null;
+}): string {
+  return deal.customerType === DealCustomerType.INTERNAL
+    ? deal.client!.fullName
+    : deal.externalCustomerName!;
+}
+
 @Injectable()
 export class DealsService {
   private readonly lockTtlSeconds = 60;
@@ -43,7 +54,7 @@ export class DealsService {
     private readonly whatsApp: WhatsAppService,
   ) {}
 
-  // ---- إنشاء صفقة (تسعير + قفل سعر + احتساب هامش الربح/الخسارة) ----
+  // ---- إنشاء صفقة (تسعير يدوي بالكامل + احتساب هامش الربح/الخسارة) ----
   // لا فحص حدود عميل ولا موافقة مزدوجة قائمة على حد عام — أُلغيت الخاصيتان
   // صراحةً؛ كل صفقة صحيحة البيانات تُنشأ معتمدة (APPROVED) مباشرة.
 
@@ -53,16 +64,44 @@ export class DealsService {
       throw new BadRequestException('يجب تحديد الفرع — المستخدم الحالي غير مرتبط بفرع ثابت');
     }
 
+    // تصنيف الطرف المتعامل: عميل داخلي يتطلب clientId وحده، أو زبون خارجي
+    // يتطلب اسمًا يدويًا وحده — لا يُقبل مزج الاثنين أو تركهما فارغين، تمامًا
+    // كوحدة الحوالات (Remittance.customerType).
+    if (dto.customerType === DealCustomerType.INTERNAL) {
+      if (!dto.clientId) throw new BadRequestException('صفقة لعميل داخلي تتطلب تحديد clientId');
+      if (dto.externalCustomerName) {
+        throw new BadRequestException('لا يُقبل اسم زبون خارجي مع عميل داخلي (clientId)');
+      }
+    } else {
+      if (!dto.externalCustomerName) {
+        throw new BadRequestException('صفقة لزبون خارجي تتطلب تحديد externalCustomerName');
+      }
+      if (dto.clientId) {
+        throw new BadRequestException('لا يُقبل clientId مع زبون خارجي (customerType = EXTERNAL)');
+      }
+    }
+
     const [client, currency, latestRate] = await Promise.all([
-      this.prisma.client.findUnique({ where: { id: dto.clientId } }),
+      dto.customerType === DealCustomerType.INTERNAL
+        ? this.prisma.client.findUnique({ where: { id: dto.clientId! } })
+        : Promise.resolve(null),
       this.prisma.currency.findUnique({ where: { code: dto.currencyCode.toUpperCase() } }),
+      // آخر سعر رسمي منشور — لا يُستخدم لتحديد سعر الصفقة (صار يدويًا بالكامل)،
+      // فقط للتأكد أن العملة متداولة فعليًا وللربط المرجعي (sourceRateId).
       this.prisma.exchangeRate.findFirst({
         where: { currency: { code: dto.currencyCode.toUpperCase() } },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
 
-    if (!client || !client.isActive) throw new NotFoundException('العميل غير موجود أو غير مفعّل');
+    if (dto.customerType === DealCustomerType.INTERNAL) {
+      if (!client || !client.isActive) throw new NotFoundException('العميل غير موجود أو غير مفعّل');
+      if (client.kycStatus !== 'VERIFIED') {
+        throw new BadRequestException(
+          'لا يمكن تنفيذ صفقة لعميل لم تكتمل مراجعة التحقق (KYC) الخاصة به',
+        );
+      }
+    }
     if (!currency || !currency.isActive) {
       throw new NotFoundException(`العملة ${dto.currencyCode} غير مسجّلة أو غير مفعّلة`);
     }
@@ -72,13 +111,9 @@ export class DealsService {
     if (!latestRate) {
       throw new BadRequestException(`لا يوجد سعر صرف منشور لعملة ${currency.code} بعد`);
     }
-    if (client.kycStatus !== 'VERIFIED') {
-      throw new BadRequestException(
-        'لا يمكن تنفيذ صفقة لعميل لم تكتمل مراجعة التحقق (KYC) الخاصة به',
-      );
-    }
 
-    const lockedRate = toMoney(latestRate.rate);
+    // سعر الصفقة يدوي بالكامل الآن — لا يُشتَق من latestRate.rate إطلاقًا.
+    const lockedRate = toMoney(dto.dealRate);
     const lydEquivalent = toMoney(dto.amount).times(lockedRate);
 
     const usdRate =
@@ -107,7 +142,12 @@ export class DealsService {
 
     const deal = await this.prisma.transaction.create({
       data: {
-        clientId: client.id,
+        customerType: dto.customerType,
+        clientId: dto.customerType === DealCustomerType.INTERNAL ? dto.clientId : null,
+        externalCustomerName:
+          dto.customerType === DealCustomerType.EXTERNAL ? dto.externalCustomerName : null,
+        externalCustomerPhone:
+          dto.customerType === DealCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
         branchId,
         currencyId: currency.id,
         direction: dto.direction,
@@ -131,7 +171,10 @@ export class DealsService {
       action: 'CREATE_DEAL',
       actorId: actor.id,
       after: {
+        customerType: deal.customerType,
         clientId: deal.clientId,
+        externalCustomerName: deal.externalCustomerName,
+        externalCustomerPhone: deal.externalCustomerPhone,
         direction: deal.direction,
         currency: currency.code,
         amount: deal.amount,
@@ -151,6 +194,7 @@ export class DealsService {
   async findAll(query: ListDealsQuery) {
     const where: Prisma.TransactionWhereInput = {
       ...(query.status && { status: query.status }),
+      ...(query.customerType && { customerType: query.customerType }),
       ...(query.clientId && { clientId: query.clientId }),
       ...(query.branchId && { branchId: query.branchId }),
     };
@@ -289,7 +333,8 @@ export class DealsService {
       }
 
       const dealDirection = deal.direction as DealDirection;
-      const reason = `تنفيذ صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName}`;
+      const partyName = dealPartyName(deal);
+      const reason = `تنفيذ صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${partyName}`;
 
       // طرف العملة الأجنبية: الكمية المتداولة نفسها (deal.amount).
       const fxResult = await applyMovement(tx, {
@@ -329,7 +374,7 @@ export class DealsService {
       if (!profitLyd.isZero()) {
         const isGain = profitLyd.isPositive();
         await postJournalEntry(tx, {
-          description: `هامش صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${deal.client.fullName} (${deal.currency.code})`,
+          description: `هامش صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${partyName} (${deal.currency.code})`,
           sourceType: 'Transaction',
           sourceId: deal.id,
           postedById: actor.id,
@@ -375,14 +420,23 @@ export class DealsService {
     });
 
     const executedDeal = await this.findOne(id);
-    await this.whatsApp.sendDealConfirmation({
-      id: executedDeal.id,
-      direction: executedDeal.direction as DealDirection,
-      amount: executedDeal.amount.toString(),
-      lockedRate: executedDeal.lockedRate.toString(),
-      currency: { code: executedDeal.currency.code },
-      client: executedDeal.client,
-    });
+    // تأكيد واتساب — لعميل داخلي عبر رقمه المسجَّل، أو لزبون خارجي إن أدخل
+    // الموظف هاتفه اختياريًا عند الإنشاء؛ بلا رقم متاح، لا شيء يُرسَل (لا خطأ).
+    const confirmationPhone = executedDeal.client?.phone ?? executedDeal.externalCustomerPhone;
+    if (confirmationPhone) {
+      await this.whatsApp.sendDealConfirmation({
+        id: executedDeal.id,
+        direction: executedDeal.direction as DealDirection,
+        amount: executedDeal.amount.toString(),
+        lockedRate: executedDeal.lockedRate.toString(),
+        currency: { code: executedDeal.currency.code },
+        client: {
+          id: executedDeal.client?.id,
+          fullName: dealPartyName(executedDeal),
+          phone: confirmationPhone,
+        },
+      });
+    }
 
     return {
       ...executedDeal,
