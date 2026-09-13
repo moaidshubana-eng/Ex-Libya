@@ -14,6 +14,7 @@ import { FxRatesModule } from './fx-rates/fx-rates.module';
 import { RemittancesModule } from './remittances/remittances.module';
 import { ReportsModule } from './reports/reports.module';
 import { TreasuryModule } from './treasury/treasury.module';
+import { UsersModule } from './users/users.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { AppController } from './app.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -28,6 +29,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     AccountingModule,
     AuditModule,
     AuthModule,
+    UsersModule,
     CurrenciesModule,
     ClientsModule,
     TreasuryModule,

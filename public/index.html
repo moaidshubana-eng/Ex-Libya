@@ -772,6 +772,67 @@
         </details>
 
         <details class="card settings-block">
+          <summary>المستخدمون والصلاحيات</summary>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label>الاسم الكامل</label><input type="text" id="u-name" placeholder="محمد أحمد" /></div>
+            <div class="field"><label>البريد الإلكتروني</label><input type="email" id="u-email" placeholder="user@exlibya.ly" /></div>
+            <div class="field"><label>كلمة المرور المبدئية</label><input type="text" id="u-password" placeholder="8 أحرف على الأقل" /></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>الدور الوظيفي</label><select id="u-role">
+              <option value="TELLER">صرّاف (TELLER)</option>
+              <option value="TREASURY_MANAGER">مدير خزينة (TREASURY_MANAGER)</option>
+              <option value="COMPLIANCE_OFFICER">ضابط امتثال (COMPLIANCE_OFFICER)</option>
+              <option value="CUSTOMER_SERVICE">خدمة عملاء (CUSTOMER_SERVICE)</option>
+              <option value="ADMIN">مدير نظام (ADMIN)</option>
+            </select></div>
+            <div class="field"><label>الفرع (اختياري)</label><select id="u-branch"><option value="">— بلا فرع ثابت —</option></select></div>
+          </div>
+          <button class="btn-primary btn-sm" id="create-user-btn" onclick="createUser()">إنشاء مستخدم</button>
+          <p class="form-note">أبلغ المستخدم بكلمة المرور المبدئية عبر قناة آمنة خارج النظام — لا يوجد بريد تلقائي يرسلها بعد.</p>
+          <hr class="divider">
+          <div class="filter-bar">
+            <select id="users-role-filter">
+              <option value="">كل الأدوار</option>
+              <option value="ADMIN">مدير نظام</option>
+              <option value="TREASURY_MANAGER">مدير خزينة</option>
+              <option value="TELLER">صرّاف</option>
+              <option value="COMPLIANCE_OFFICER">ضابط امتثال</option>
+              <option value="CUSTOMER_SERVICE">خدمة عملاء</option>
+            </select>
+            <select id="users-status-filter"><option value="">كل الحالات</option><option value="true">فعّال فقط</option><option value="false">معطَّل فقط</option></select>
+            <input type="text" id="users-search" placeholder="بحث بالاسم أو البريد" style="max-width:220px" />
+            <button class="btn-ghost btn-sm" onclick="usersPage=1;loadUsers()">فلترة</button>
+          </div>
+          <div id="users-content" class="state-msg">جارِ التحميل...</div>
+          <div class="pager" id="users-pager"></div>
+
+          <div class="card" id="user-detail-card" style="display:none;margin-top:14px">
+            <div class="card-head"><h3 id="user-detail-title">تفاصيل المستخدم</h3><button class="btn-ghost btn-sm" onclick="closeUserDetail()">إغلاق</button></div>
+            <div id="user-detail-body"></div>
+            <hr class="divider">
+            <div class="form-grid">
+              <div class="field"><label>الدور الجديد</label><select id="ud-role">
+                <option value="TELLER">صرّاف (TELLER)</option>
+                <option value="TREASURY_MANAGER">مدير خزينة (TREASURY_MANAGER)</option>
+                <option value="COMPLIANCE_OFFICER">ضابط امتثال (COMPLIANCE_OFFICER)</option>
+                <option value="CUSTOMER_SERVICE">خدمة عملاء (CUSTOMER_SERVICE)</option>
+                <option value="ADMIN">مدير نظام (ADMIN)</option>
+              </select></div>
+              <div class="field"><label>الفرع الجديد (اختياري)</label><select id="ud-branch"><option value="">— بلا فرع ثابت —</option></select></div>
+              <div class="field"><label>سبب التعديل</label><input type="text" id="ud-role-reason" placeholder="مثال: ترقية بعد فترة التجربة" /></div>
+            </div>
+            <button class="btn-ghost btn-sm" id="update-user-role-btn" onclick="updateUserRole()">تحديث الدور والفرع</button>
+            <hr class="divider">
+            <div class="form-grid">
+              <div class="field"><label>كلمة مرور جديدة</label><input type="text" id="ud-new-password" placeholder="8 أحرف على الأقل" /></div>
+              <div class="field"><label>سبب إعادة التعيين</label><input type="text" id="ud-password-reason" placeholder="مثال: نسي المستخدم كلمة مروره" /></div>
+            </div>
+            <button class="btn-ghost btn-sm" id="reset-user-password-btn" onclick="resetUserPassword()">إعادة تعيين كلمة المرور</button>
+          </div>
+        </details>
+
+        <details class="card settings-block">
           <summary>العملات</summary>
           <div class="form-grid" style="margin-top:12px">
             <div class="field"><label>الرمز (ISO)</label><input type="text" id="cur-code" placeholder="SAR" /></div>
@@ -806,7 +867,8 @@
 const API = window.location.origin; // الواجهة تُخدَّم من نفس الخادم — لا حاجة لرابط ثابت
 let accessToken = null, currentUser = null, pendingMfaChallenge = null;
 let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [];
-let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1, journalPage = 1;
+let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1, journalPage = 1, usersPage = 1;
+let selectedUserId = null;
 let accountsCache = [];
 let currencyOptsWithLydHtml = '', branchOptsHtml = '';
 let selectedClientId = null;
@@ -923,6 +985,7 @@ async function onLoggedIn(token, user){
     const bOpts = branchesCache.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
     branchOptsHtml = bOpts;
     ['mv-branch','log-branch','pos-branch'].forEach(id => { document.getElementById(id).innerHTML = bOpts; });
+    ['u-branch','ud-branch'].forEach(id => { document.getElementById(id).innerHTML = '<option value="">— بلا فرع ثابت —</option>' + bOpts; });
     document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
     document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
     document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
@@ -942,7 +1005,7 @@ async function onLoggedIn(token, user){
   document.getElementById('is-from').value = monthStart.toISOString().slice(0, 10);
   document.getElementById('is-to').value = now.toISOString().slice(0, 10);
 
-  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary(); loadAccountingAll();
+  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary(); loadAccountingAll(); loadUsers();
   if (!window._tickerStarted) { window._tickerStarted = true; setInterval(renderDealsTable, 1000); }
 }
 
@@ -1462,6 +1525,7 @@ async function loadBranches(){
     branchesCache = activeBranches;
     const bOpts = activeBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
     ['mv-branch','log-branch','pos-branch'].forEach(id => { document.getElementById(id).innerHTML = bOpts; });
+    ['u-branch','ud-branch'].forEach(id => { document.getElementById(id).innerHTML = '<option value="">— بلا فرع ثابت —</option>' + bOpts; });
     document.getElementById('ex-branch').innerHTML = '<option value="">— مصروف مركزي —</option>' + bOpts;
     document.getElementById('rp-branch').innerHTML = '<option value="">كل الفروع</option>' + bOpts;
     document.getElementById('deal-branch').innerHTML = '<option value="">— الفرع الافتراضي لحسابك —</option>' + bOpts;
@@ -1536,6 +1600,123 @@ async function configurePosition(){
     await apiCall('/treasury/branches/' + branchId + '/positions', { method: 'POST', body: JSON.stringify(body) });
     showToast('حُفظ إعداد خط العملة بنجاح');
     loadTreasuryAll();
+  })().catch(err => showToast(err.message, true));
+}
+
+// ---------------- المستخدمون والصلاحيات (ADMIN فقط) ----------------
+
+const USER_ROLE_LABELS = {
+  ADMIN: 'مدير نظام', TREASURY_MANAGER: 'مدير خزينة', TELLER: 'صرّاف',
+  COMPLIANCE_OFFICER: 'ضابط امتثال', CUSTOMER_SERVICE: 'خدمة عملاء',
+};
+
+async function createUser(){
+  const fullName = document.getElementById('u-name').value.trim();
+  const email = document.getElementById('u-email').value.trim();
+  const password = document.getElementById('u-password').value;
+  const role = document.getElementById('u-role').value;
+  const branchId = document.getElementById('u-branch').value;
+  if (!fullName || !email || !password) { showToast('عبّئ الاسم والبريد وكلمة المرور أولًا', true); return; }
+  await runBusy('create-user-btn', async () => {
+    const body = { fullName, email, password, role };
+    if (branchId) body.branchId = branchId;
+    await apiCall('/users', { method: 'POST', body: JSON.stringify(body) });
+    showToast('أُنشئ المستخدم بنجاح');
+    ['u-name','u-email','u-password'].forEach(id => document.getElementById(id).value = '');
+    usersPage = 1; loadUsers();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadUsers(){
+  const el = document.getElementById('users-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const role = document.getElementById('users-role-filter').value;
+    const isActive = document.getElementById('users-status-filter').value;
+    const search = document.getElementById('users-search').value.trim();
+    const params = new URLSearchParams({ page: usersPage, pageSize: 10 });
+    if (role) params.set('role', role);
+    if (isActive) params.set('isActive', isActive);
+    if (search) params.set('search', search);
+    const result = await apiCall('/users?' + params.toString());
+    renderUsersTable(result.items);
+    pagerHtml('users-pager', usersPage, 10, result.total, 'p => { usersPage = p; loadUsers(); }');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+function renderUsersTable(items){
+  const el = document.getElementById('users-content');
+  if (!items.length) { el.textContent = 'لا يوجد مستخدمون مطابقون.'; return; }
+  let html = '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>الفرع</th><th>الحالة</th><th>المصادقة الثنائية</th><th></th></tr></thead><tbody>';
+  items.forEach(u => {
+    const statusPill = u.isActive ? '<span class="pill ok">فعّال</span>' : '<span class="pill bad">معطَّل</span>';
+    const mfaPill = u.mfaEnabled ? '<span class="pill ok">مفعّلة</span>' : '<span class="pill" style="color:var(--ink-faint)">غير مفعّلة</span>';
+    const toggleBtn = u.isActive
+      ? `<button class="btn-danger btn-sm" onclick="toggleUserActive('${u.id}', false, this)">تعطيل</button>`
+      : `<button class="btn-ghost btn-sm" onclick="toggleUserActive('${u.id}', true, this)">تفعيل</button>`;
+    html += `<tr><td><b>${u.fullName}</b></td><td class="num">${u.email}</td><td>${USER_ROLE_LABELS[u.role] || u.role}</td><td>${u.branch ? u.branch.name : '—'}</td><td>${statusPill}</td><td>${mfaPill}</td><td><button class="btn-ghost btn-sm" onclick="openUserDetail('${u.id}')">تفاصيل</button> ${toggleBtn}</td></tr>`;
+  });
+  el.innerHTML = html + '</tbody></table></div>';
+}
+
+async function toggleUserActive(id, isActive, btn){
+  btn.disabled = true;
+  try{
+    await apiCall('/users/' + id + '/status', { method: 'PATCH', body: JSON.stringify({ isActive }) });
+    showToast(isActive ? 'أُعيد تفعيل الحساب' : 'عُطِّل الحساب — لن يستطيع صاحبه تسجيل الدخول');
+    loadUsers();
+    if (selectedUserId === id) closeUserDetail();
+  }catch(err){ showToast(err.message, true); btn.disabled = false; }
+}
+
+async function openUserDetail(id){
+  try{
+    const u = await apiCall('/users/' + id);
+    selectedUserId = id;
+    document.getElementById('user-detail-title').textContent = 'تفاصيل: ' + u.fullName;
+    document.getElementById('user-detail-body').innerHTML = `
+      <p style="font-size:13px;color:var(--ink-soft)">
+        البريد: <b class="num">${u.email}</b> · الدور الحالي: <b>${USER_ROLE_LABELS[u.role] || u.role}</b> ·
+        الفرع: ${u.branch ? u.branch.name : 'بلا فرع ثابت'} · أُنشئ: ${fmtDate(u.createdAt)}
+      </p>`;
+    document.getElementById('ud-role').value = u.role;
+    document.getElementById('ud-branch').value = u.branchId || '';
+    document.getElementById('ud-role-reason').value = '';
+    document.getElementById('ud-new-password').value = '';
+    document.getElementById('ud-password-reason').value = '';
+    document.getElementById('user-detail-card').style.display = '';
+    document.getElementById('user-detail-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }catch(err){ showToast(err.message, true); }
+}
+
+function closeUserDetail(){ selectedUserId = null; document.getElementById('user-detail-card').style.display = 'none'; }
+
+async function updateUserRole(){
+  if (!selectedUserId) return;
+  const role = document.getElementById('ud-role').value;
+  const branchId = document.getElementById('ud-branch').value;
+  const reason = document.getElementById('ud-role-reason').value.trim();
+  if (!reason) { showToast('اكتب سبب التعديل أولًا', true); return; }
+  await runBusy('update-user-role-btn', async () => {
+    const body = { role, reason };
+    if (branchId) body.branchId = branchId;
+    await apiCall('/users/' + selectedUserId + '/role', { method: 'PATCH', body: JSON.stringify(body) });
+    showToast('حُدِّث دور المستخدم بنجاح');
+    loadUsers(); openUserDetail(selectedUserId);
+  })().catch(err => showToast(err.message, true));
+}
+
+async function resetUserPassword(){
+  if (!selectedUserId) return;
+  const newPassword = document.getElementById('ud-new-password').value;
+  const reason = document.getElementById('ud-password-reason').value.trim();
+  if (!newPassword) { showToast('أدخل كلمة مرور جديدة أولًا', true); return; }
+  if (!reason) { showToast('اكتب سبب إعادة التعيين أولًا', true); return; }
+  await runBusy('reset-user-password-btn', async () => {
+    await apiCall('/users/' + selectedUserId + '/reset-password', { method: 'PATCH', body: JSON.stringify({ newPassword, reason }) });
+    showToast('أُعيد تعيين كلمة المرور — أبلغ المستخدم بها عبر قناة آمنة');
+    document.getElementById('ud-new-password').value = '';
+    document.getElementById('ud-password-reason').value = '';
   })().catch(err => showToast(err.message, true));
 }
 
