@@ -30,8 +30,8 @@ export class ClientsService {
           nationalIdOrReg: dto.nationalIdOrReg,
           phone: dto.phone,
           address: dto.address,
-          dailyLimitUsd: dto.dailyLimitUsd,
-          creditLimitUsd: dto.creditLimitUsd,
+          // لا حدود عند التسجيل — تُترك null حتى تُضبَط لاحقًا يدويًا إن احتيج لها
+          // (ClientsService.updateLimits)؛ لا فحص حدّي يعتمد عليها أصلًا الآن.
           whatsappOptIn: dto.whatsappOptIn ?? false,
         },
       });

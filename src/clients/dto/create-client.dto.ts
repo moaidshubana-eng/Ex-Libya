@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsOptional, IsString, Matches, MinLength } from 'class-validator';
-import { IsDecimalString } from '../../common/validators/is-decimal-string.decorator';
 
 export class CreateClientDto {
   @ApiProperty({ example: 'شركة الوفاء للاستيراد والتصدير' })
@@ -26,17 +25,6 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   address?: string;
-
-  @ApiProperty({ description: 'الحد اليومي بما يعادله بالدولار الأمريكي', example: '50000.00' })
-  @IsDecimalString(2)
-  dailyLimitUsd!: string;
-
-  @ApiProperty({
-    description: 'السقف الائتماني بما يعادله بالدولار الأمريكي',
-    example: '150000.00',
-  })
-  @IsDecimalString(2)
-  creditLimitUsd!: string;
 
   @ApiProperty({ required: false, default: false })
   @IsOptional()

@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>المراسل</title>
 <link rel="icon" href="/logo.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400..700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
   :root{
     --paper:#f5f1e6; --paper-raised:#ffffff; --paper-sunken:#eee8d8;
@@ -23,9 +21,8 @@
     --shadow:0 1px 2px rgba(24,36,32,.05), 0 10px 24px -12px rgba(24,36,32,.22);
     --shadow-lift:0 4px 10px rgba(24,36,32,.08), 0 18px 36px -14px rgba(24,36,32,.28);
     --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
-    --font-display:'Reem Kufi','Segoe UI',Tahoma,sans-serif;
-    --font-body:'IBM Plex Sans Arabic','Segoe UI',Tahoma,Arial,sans-serif;
-    --font-mono:'IBM Plex Mono','Consolas',monospace;
+    /* خط واحد فقط للنظام كله — الخط الافتراضي لواجهة نظام التشغيل نفسه، بلا أي خط مخصَّص أو مزخرف */
+    --font-base:system-ui,-apple-system,'Segoe UI',Tahoma,Arial,sans-serif;
   }
   @media (prefers-color-scheme: dark){
     :root{
@@ -46,9 +43,9 @@
   }
   *{ box-sizing:border-box; }
   html,body{ margin:0; direction:rtl; }
-  body{ background:var(--paper); color:var(--ink); font-family:var(--font-body); font-size:14.5px; line-height:1.65; -webkit-font-smoothing:antialiased; }
-  h1,h2,h3,h4{ font-family:var(--font-display); font-weight:600; margin:0; color:var(--ink); line-height:1.35; }
-  .num{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; letter-spacing:.01em; }
+  body{ background:var(--paper); color:var(--ink); font-family:var(--font-base); font-size:14.5px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,h4{ font-family:var(--font-base); font-weight:600; margin:0; color:var(--ink); line-height:1.35; }
+  .num{ font-family:var(--font-base); font-variant-numeric:tabular-nums; letter-spacing:.01em; }
   button{ font-family:inherit; cursor:pointer; border:none; border-radius:var(--radius-sm); font-size:13.5px; transition:transform .12s ease, box-shadow .12s ease, background-color .15s ease, border-color .15s ease, opacity .15s ease; }
   button:active:not(:disabled){ transform:translateY(1px); }
   button:focus-visible, input:focus-visible, select:focus-visible{ outline:2.5px solid var(--gold); outline-offset:1px; }
@@ -142,12 +139,12 @@
   .treasury-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:15px; }
   .branch-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-lg); padding:17px 19px; box-shadow:var(--shadow); }
   .branch-card h4{ font-size:14px; color:var(--ink); display:flex; align-items:center; gap:7px; margin-bottom:14px; }
-  .branch-card h4 .code{ font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.03em; color:var(--ink-faint); background:var(--paper-sunken); padding:2px 7px; border-radius:6px; }
+  .branch-card h4 .code{ font-size:10.5px; font-weight:600; letter-spacing:.03em; color:var(--ink-faint); background:var(--paper-sunken); padding:2px 7px; border-radius:6px; }
   .balance-tile{ margin-bottom:16px; }
   .balance-tile:last-child{ margin-bottom:0; }
   .bt-top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px; }
   .bt-top .cur{ font-size:12.5px; font-weight:700; color:var(--ink-soft); }
-  .bt-top .amt{ font-family:var(--font-mono); font-size:19.5px; font-weight:700; color:var(--accent-strong); font-variant-numeric:tabular-nums; }
+  .bt-top .amt{ font-size:19.5px; font-weight:700; color:var(--accent-strong); font-variant-numeric:tabular-nums; }
   .bt-top .amt.warn{ color:var(--warning); }
   .bt-top .amt.bad{ color:var(--critical); }
   .bt-gauge{ position:relative; height:9px; background:var(--paper-sunken); border-radius:5px; overflow:visible; margin-bottom:6px; }
@@ -174,7 +171,7 @@
   .pill.bad, .pill.REJECTED, .pill.EXPIRED, .pill.CANCELLED, .pill.FAILED{ background:var(--critical-soft); color:var(--critical); }
   .pill.info, .pill.RECEIVED{ background:var(--info-soft); color:var(--info); }
 
-  .lock-timer{ font-family:var(--font-mono); font-size:11.5px; }
+  .lock-timer{ font-size:11.5px; }
   .lock-timer.warn2{ color:var(--warning); font-weight:700; }
   .lock-timer.expired{ color:var(--critical); }
 
@@ -368,8 +365,6 @@
             <div class="field"><label>النوع</label><select id="nc-type"><option value="individual">فرد</option><option value="company">شركة</option></select></div>
             <div class="field"><label>الرقم الوطني/السجل</label><input type="text" id="nc-reg" placeholder="119850000000" /></div>
             <div class="field"><label>الهاتف (دولي)</label><input type="text" id="nc-phone" placeholder="+218910000000" /></div>
-            <div class="field"><label>الحد اليومي ($)</label><input type="text" id="nc-daily" placeholder="10000.00" /></div>
-            <div class="field"><label>السقف الائتماني ($)</label><input type="text" id="nc-credit" placeholder="25000.00" /></div>
           </div>
           <button class="btn-primary" id="create-client-btn" onclick="createClient()">تسجيل العميل</button>
         </div>
@@ -389,8 +384,8 @@
           <div id="client-detail-body"></div>
           <hr class="divider">
           <div class="form-grid">
-            <div class="field"><label>حد يومي جديد ($)</label><input type="text" id="cd-daily" /></div>
-            <div class="field"><label>سقف ائتماني جديد ($)</label><input type="text" id="cd-credit" /></div>
+            <div class="field"><label>حد يومي جديد ($)</label><input type="text" id="cd-daily" placeholder="غير محدَّد" /></div>
+            <div class="field"><label>سقف ائتماني جديد ($)</label><input type="text" id="cd-credit" placeholder="غير محدَّد" /></div>
             <div class="field"><label>سبب التعديل</label><input type="text" id="cd-reason" placeholder="مثال: مراجعة سنوية" /></div>
           </div>
           <button class="btn-ghost btn-sm" id="update-limits-btn" onclick="updateClientLimits()">تحديث الحدود</button>
@@ -1035,7 +1030,7 @@ async function loadClients(){
     if (result.items.length === 0) { el.textContent = 'لا يوجد عملاء مطابقون.'; document.getElementById('clients-pager').innerHTML = ''; return; }
     let html = '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>KYC</th><th>المخاطر</th><th>الحد اليومي</th><th>السقف الائتماني</th><th></th></tr></thead><tbody>';
     result.items.forEach(c => {
-      html += `<tr><td><b>${c.fullName}</b></td><td class="num">${c.phone}</td><td><span class="pill ${c.kycStatus === 'VERIFIED' ? 'ok' : c.kycStatus === 'REJECTED' ? 'bad' : 'warn'}">${c.kycStatus}</span></td><td>${c.riskTier}</td><td class="num">${c.dailyLimitUsd}</td><td class="num">${c.creditLimitUsd}</td><td><button class="btn-ghost btn-sm" onclick="openClientDetail('${c.id}')">تفاصيل</button></td></tr>`;
+      html += `<tr><td><b>${c.fullName}</b></td><td class="num">${c.phone}</td><td><span class="pill ${c.kycStatus === 'VERIFIED' ? 'ok' : c.kycStatus === 'REJECTED' ? 'bad' : 'warn'}">${c.kycStatus}</span></td><td>${c.riskTier}</td><td class="num">${c.dailyLimitUsd ?? '—'}</td><td class="num">${c.creditLimitUsd ?? '—'}</td><td><button class="btn-ghost btn-sm" onclick="openClientDetail('${c.id}')">تفاصيل</button></td></tr>`;
     });
     el.innerHTML = html + '</tbody></table></div>';
     pagerHtml('clients-pager', clientsPage, 10, result.total, 'p => { clientsPage = p; loadClients(); }');
@@ -1047,13 +1042,11 @@ async function createClient(){
   const clientType = document.getElementById('nc-type').value;
   const nationalIdOrReg = document.getElementById('nc-reg').value.trim();
   const phone = document.getElementById('nc-phone').value.trim();
-  const dailyLimitUsd = document.getElementById('nc-daily').value.trim();
-  const creditLimitUsd = document.getElementById('nc-credit').value.trim();
-  if (!fullName || !nationalIdOrReg || !phone || !dailyLimitUsd || !creditLimitUsd) { showToast('عبّئ كل الحقول أولًا', true); return; }
+  if (!fullName || !nationalIdOrReg || !phone) { showToast('عبّئ كل الحقول أولًا', true); return; }
   await runBusy('create-client-btn', async () => {
-    await apiCall('/clients', { method: 'POST', body: JSON.stringify({ fullName, clientType, nationalIdOrReg, phone, dailyLimitUsd, creditLimitUsd }) });
+    await apiCall('/clients', { method: 'POST', body: JSON.stringify({ fullName, clientType, nationalIdOrReg, phone }) });
     showToast('تم تسجيل العميل بنجاح');
-    ['nc-name','nc-reg','nc-phone','nc-daily','nc-credit'].forEach(id => document.getElementById(id).value = '');
+    ['nc-name','nc-reg','nc-phone'].forEach(id => document.getElementById(id).value = '');
     loadClients(); loadOverview();
   })().catch(err => showToast(err.message, true));
 }
@@ -1077,8 +1070,8 @@ async function openClientDetail(id){
         الهاتف: <b class="num">${c.phone}</b> · النوع: ${c.clientType === 'company' ? 'شركة' : 'فرد'} · الرقم: <span class="num">${c.nationalIdOrReg}</span>
       </p>
       <p style="font-size:14px;margin-top:6px">رصيد الوديعة لدى الشركة: ${balancesHtml}</p>`;
-    document.getElementById('cd-daily').value = c.dailyLimitUsd;
-    document.getElementById('cd-credit').value = c.creditLimitUsd;
+    document.getElementById('cd-daily').value = c.dailyLimitUsd ?? '';
+    document.getElementById('cd-credit').value = c.creditLimitUsd ?? '';
     document.getElementById('cd-kyc').value = c.kycStatus;
     document.getElementById('cd-risk').value = c.riskTier;
     document.getElementById('client-balance-movements-content').innerHTML = 'اضغط "عرض السجل"';

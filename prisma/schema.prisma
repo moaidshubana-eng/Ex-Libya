@@ -127,9 +127,12 @@ model Client {
   kycStatus       KycStatus @default(PENDING)
   riskTier        RiskTier  @default(MEDIUM)
 
-  // الحدود مُعبَّر عنها بما يعادلها بالدولار الأمريكي لتبسيط المقارنة عبر العملات
-  dailyLimitUsd  Decimal @db.Decimal(18, 2)
-  creditLimitUsd Decimal @db.Decimal(18, 2)
+  // الحدود مُعبَّر عنها بما يعادلها بالدولار الأمريكي لتبسيط المقارنة عبر العملات —
+  // اختيارية: لم تعد تُطلَب عند تسجيل العميل (لا فحص حدّي على الصفقات أصلًا بعد
+  // إلغائه صراحةً)، وتبقى null حتى يضبطها مسؤول لاحقًا يدويًا عبر تحديث الحدود
+  // (ClientsService.updateLimits) إن أراد الاحتفاظ برقم مرجعي فقط.
+  dailyLimitUsd  Decimal? @db.Decimal(18, 2)
+  creditLimitUsd Decimal? @db.Decimal(18, 2)
 
   whatsappOptIn Boolean  @default(false) // موافقة صريحة على تحديثات واتساب الجماعية
   isActive      Boolean  @default(true)
