@@ -505,6 +505,41 @@
           </div>
           <div id="movements-log-content" class="state-msg">اختر فرعًا واضغط "عرض السجل"</div>
         </div>
+
+        <div class="page-head" style="margin-top:28px">
+          <h2 style="font-size:18px">المصارف</h2>
+          <p>حسابات بنكية مستقلة مركزيًا — بنفس آلية خزينة الفروع تمامًا (مقصورة على ADMIN/TREASURY_MANAGER)</p>
+        </div>
+        <div class="card"><h3>مراكز المصارف الحالية</h3><div id="bank-treasury-content" class="state-msg">جارِ التحميل...</div></div>
+        <div class="card">
+          <div class="card-head"><h3>تسجيل حركة مصرف</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>الحساب المصرفي</label><select id="bkmv-bank"></select></div>
+            <div class="field"><label>العملة</label><select id="bkmv-currency"></select></div>
+            <div class="field"><label>نوع الحركة</label>
+              <select id="bkmv-type">
+                <option value="DEPOSIT">إيداع (تحويل وارد خارجي)</option>
+                <option value="WITHDRAWAL">سحب (تحويل صادر خارجي)</option>
+                <option value="TRANSFER_IN">تحويل وارد من خزينة فرع</option>
+                <option value="TRANSFER_OUT">تحويل صادر إلى خزينة فرع</option>
+                <option value="ADJUSTMENT_INCREASE">تسوية جرد (زيادة)</option>
+                <option value="ADJUSTMENT_DECREASE">تسوية جرد (نقصان)</option>
+              </select>
+            </div>
+            <div class="field"><label>المبلغ</label><input type="text" id="bkmv-amount" placeholder="10000.00" /></div>
+            <div class="field"><label>السبب</label><input type="text" id="bkmv-reason" placeholder="مثال: تحويل من خزينة فرع طرابلس" /></div>
+          </div>
+          <p class="form-note">تحويل خزينة فرع ↔ حساب مصرفي يُسجَّل كحركتين مستقلتين (واحدة على الفرع وواحدة على المصرف) — لا ربط آلي بينهما، فقط بنص السبب يدويًا.</p>
+          <button class="btn-primary" id="record-bank-movement-btn" onclick="recordBankMovement()">تسجيل الحركة</button>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>سجل حركات المصرف</h3></div>
+          <div class="filter-bar">
+            <select id="bkmv-log-bank"></select>
+            <button class="btn-ghost btn-sm" onclick="loadBankMovementsLog()">عرض السجل</button>
+          </div>
+          <div id="bank-movements-log-content" class="state-msg">اختر حسابًا مصرفيًا واضغط "عرض السجل"</div>
+        </div>
       </div>
 
       <!-- ---- المصاريف ---- -->
@@ -772,6 +807,29 @@
         </details>
 
         <details class="card settings-block">
+          <summary>المصارف</summary>
+          <p class="form-note" style="margin-top:12px">حسابات بنكية للشركة مستقلة مركزيًا — غير مرتبطة بأي فرع، تُدار بنفس آلية خزينة الفروع تمامًا (مركز رصيد لكل عملة وسجل حركات تراكمي).</p>
+          <div class="form-grid">
+            <div class="field"><label>رمز الحساب</label><input type="text" id="bk-code" placeholder="ALJ-USD" /></div>
+            <div class="field"><label>اسم المصرف والحساب</label><input type="text" id="bk-name" placeholder="مصرف الجمهورية — الحساب الرئيسي" /></div>
+            <div class="field"><label>رقم الحساب (اختياري)</label><input type="text" id="bk-account-number" placeholder="0123456789" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="create-bank-btn" onclick="createBank()">إضافة حساب مصرفي</button>
+          <hr class="divider">
+          <div id="banks-content" class="state-msg">جارِ التحميل...</div>
+          <hr class="divider">
+          <h4 style="margin:0 0 10px;font-size:13.5px">تفعيل / تحديث خط عملة لحساب مصرفي</h4>
+          <div class="form-grid">
+            <div class="field"><label>الحساب المصرفي</label><select id="bkpos-bank"></select></div>
+            <div class="field"><label>العملة</label><select id="bkpos-currency"></select></div>
+            <div class="field"><label>سقف التعرّض الأقصى (اختياري)</label><input type="text" id="bkpos-max" placeholder="بلا سقف" /></div>
+            <div class="field"><label>الحد الأدنى التحذيري (اختياري)</label><input type="text" id="bkpos-min" placeholder="بلا حد أدنى" /></div>
+          </div>
+          <button class="btn-ghost btn-sm" id="configure-bank-position-btn" onclick="configureBankPosition()">حفظ الإعداد</button>
+          <p class="form-note">لا يمسّ الرصيد الحالي — استخدم "تسجيل حركة مصرف" في تبويب الخزينة لتمويله.</p>
+        </details>
+
+        <details class="card settings-block">
           <summary>المستخدمون والصلاحيات</summary>
           <div class="form-grid" style="margin-top:12px">
             <div class="field"><label>الاسم الكامل</label><input type="text" id="u-name" placeholder="محمد أحمد" /></div>
@@ -866,7 +924,7 @@
 <script>
 const API = window.location.origin; // الواجهة تُخدَّم من نفس الخادم — لا حاجة لرابط ثابت
 let accessToken = null, currentUser = null, pendingMfaChallenge = null;
-let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [];
+let clientsCache = [], dealsCache = [], currenciesCache = [], branchesCache = [], banksCache = [];
 let clientsPage = 1, dealsPage = 1, auditPage = 1, expensesPage = 1, remittancesPage = 1, journalPage = 1, usersPage = 1;
 let selectedUserId = null;
 let accountsCache = [];
@@ -976,7 +1034,7 @@ async function onLoggedIn(token, user){
     // الدينار عملة خزينة/مصروف صالحة تمامًا (كاش، إيجار، رواتب...) — يُضاف يدويًا لهذي القوائم
     const optsWithLyd = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
     currencyOptsWithLydHtml = optsWithLyd;
-    ['mv-currency','pos-currency','ex-currency','cba-currency','rm-currency'].forEach(id => {
+    ['mv-currency','pos-currency','ex-currency','cba-currency','rm-currency','bkpos-currency','bkmv-currency'].forEach(id => {
       document.getElementById(id).innerHTML = optsWithLyd;
     });
     document.getElementById('cbm-currency').innerHTML = '<option value="">كل العملات</option>' + optsWithLyd;
@@ -1005,7 +1063,7 @@ async function onLoggedIn(token, user){
   document.getElementById('is-from').value = monthStart.toISOString().slice(0, 10);
   document.getElementById('is-to').value = now.toISOString().slice(0, 10);
 
-  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary(); loadAccountingAll(); loadUsers();
+  loadOverview(); loadRates(); loadClients(); loadDeals(); loadTreasuryAll(); loadWhatsapp(); loadAudit(); loadBranches(); loadCurrencies(); loadExpenses(); loadReports(); loadRemittances(); loadRemittancesSummary(); loadAccountingAll(); loadUsers(); loadBanks(); loadBankTreasuryAll();
   if (!window._tickerStarted) { window._tickerStarted = true; setInterval(renderDealsTable, 1000); }
 }
 
@@ -1467,6 +1525,158 @@ async function loadMovementsLog(){
     if (movements.length === 0) { el.textContent = 'لا توجد حركات مسجّلة لهذا الفرع بعد.'; return; }
     let html = '<div class="table-wrap"><table><thead><tr><th>النوع</th><th>العملة</th><th>المبلغ</th><th>الرصيد بعدها</th><th>السبب</th><th>المنفّذ</th><th>الوقت</th></tr></thead><tbody>';
     movements.forEach(m => { html += `<tr><td>${m.type}</td><td>${m.currency.code}</td><td class="num">${m.amount}</td><td class="num">${m.balanceAfter}</td><td class="wrap">${m.reason}</td><td>${m.performedBy.fullName}</td><td>${fmtDate(m.createdAt)}</td></tr>`; });
+    el.innerHTML = html + '</tbody></table></div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+// ---------------- المصارف ----------------
+
+const BANK_MOVEMENT_TYPE_LABELS = {
+  DEPOSIT: 'إيداع', WITHDRAWAL: 'سحب', TRANSFER_IN: 'تحويل وارد', TRANSFER_OUT: 'تحويل صادر',
+  ADJUSTMENT_INCREASE: 'تسوية جرد (زيادة)', ADJUSTMENT_DECREASE: 'تسوية جرد (نقصان)',
+};
+
+async function loadBanks(){
+  const el = document.getElementById('banks-content');
+  try{
+    // الحسابات الفعّالة فقط لكل قوائم الاختيار التشغيلية — والقائمة الكاملة (فعّالة + معطَّلة) لجدول الإعدادات
+    const [activeBanks, allBanks] = await Promise.all([
+      apiCall('/treasury/banks'),
+      apiCall('/treasury/banks?includeInactive=true'),
+    ]);
+    banksCache = activeBanks;
+    const bkOpts = activeBanks.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    ['bkpos-bank','bkmv-bank','bkmv-log-bank'].forEach(id => { document.getElementById(id).innerHTML = bkOpts; });
+
+    let html = '<div class="table-wrap"><table><thead><tr><th>الرمز</th><th>الاسم</th><th>رقم الحساب</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    allBanks.forEach(b => {
+      const statusPill = b.isActive ? '<span class="pill ok">فعّال</span>' : '<span class="pill bad">معطَّل</span>';
+      const actionBtn = b.isActive
+        ? `<button class="btn-danger btn-sm" onclick="toggleBankActive('${b.id}', false, this)">تعطيل</button>`
+        : `<button class="btn-ghost btn-sm" onclick="toggleBankActive('${b.id}', true, this)">تفعيل</button>`;
+      html += `<tr><td class="num">${b.code}</td><td>${b.name}</td><td class="num">${b.accountNumber || '—'}</td><td>${statusPill}</td><td>${actionBtn}</td></tr>`;
+    });
+    el.innerHTML = (allBanks.length ? html + '</tbody></table></div>' : 'لا توجد حسابات مصرفية مسجّلة بعد.');
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function toggleBankActive(id, isActive, btn){
+  btn.disabled = true;
+  try{
+    await apiCall('/treasury/banks/' + id + '/status', { method: 'PATCH', body: JSON.stringify({ isActive }) });
+    showToast(isActive ? 'أُعيد تفعيل الحساب المصرفي' : 'عُطِّل الحساب المصرفي — اختفى من كل قوائم الاختيار');
+    loadBanks();
+  }catch(err){ showToast(err.message, true); btn.disabled = false; }
+}
+
+async function createBank(){
+  const code = document.getElementById('bk-code').value.trim();
+  const name = document.getElementById('bk-name').value.trim();
+  const accountNumber = document.getElementById('bk-account-number').value.trim();
+  if (!code || !name) { showToast('عبّئ رمز الحساب واسم المصرف', true); return; }
+  await runBusy('create-bank-btn', async () => {
+    const body = { code, name };
+    if (accountNumber) body.accountNumber = accountNumber;
+    await apiCall('/treasury/banks', { method: 'POST', body: JSON.stringify(body) });
+    showToast('أُضيف الحساب المصرفي بنجاح');
+    document.getElementById('bk-code').value = ''; document.getElementById('bk-name').value = ''; document.getElementById('bk-account-number').value = '';
+    loadBanks();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function configureBankPosition(){
+  const bankId = document.getElementById('bkpos-bank').value;
+  const currencyCode = document.getElementById('bkpos-currency').value;
+  const maxExposure = document.getElementById('bkpos-max').value.trim();
+  const minThreshold = document.getElementById('bkpos-min').value.trim();
+  if (!bankId) { showToast('اختر حسابًا مصرفيًا', true); return; }
+  await runBusy('configure-bank-position-btn', async () => {
+    const body = { currencyCode };
+    if (maxExposure) body.maxExposure = maxExposure;
+    if (minThreshold) body.minThreshold = minThreshold;
+    await apiCall('/treasury/banks/' + bankId + '/positions', { method: 'POST', body: JSON.stringify(body) });
+    showToast('حُفظ إعداد خط العملة بنجاح');
+    loadBankTreasuryAll();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadBankTreasuryAll(){
+  const el = document.getElementById('bank-treasury-content');
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const positions = await apiCall('/treasury/banks/positions');
+    if (positions.length === 0) { el.textContent = 'لا توجد مراكز مصارف بعد — فعّل خط عملة من تبويب الإعدادات.'; return; }
+
+    // تجميع المراكز حسب الحساب المصرفي لعرض بطاقة واحدة لكل حساب
+    const byBank = new Map();
+    positions.forEach(p => {
+      if (!byBank.has(p.bank.id)) byBank.set(p.bank.id, { bank: p.bank, items: [] });
+      byBank.get(p.bank.id).items.push(p);
+    });
+
+    let html = '<div class="treasury-grid">';
+    byBank.forEach(({ bank, items }) => {
+      html += `<div class="branch-card"><h4>${bank.name} <span class="code">${bank.code}</span></h4>`;
+      items.forEach(p => {
+        const balance = parseFloat(p.balance);
+        const max = p.maxExposure !== null ? parseFloat(p.maxExposure) : null;
+        const min = p.minThreshold !== null ? parseFloat(p.minThreshold) : null;
+        let tone = '', pill = '<span class="pill ok">طبيعي</span>';
+        if (p.aboveMaxExposure) { tone = 'bad'; pill = '<span class="pill bad">تجاوز السقف</span>'; }
+        else if (p.belowMinThreshold) { tone = 'warn'; pill = '<span class="pill warn">دون الحد الأدنى</span>'; }
+
+        let gaugeHtml = '';
+        if (max !== null && max > 0) {
+          const pct = Math.min(100, balance / max * 100);
+          const minPct = min !== null ? Math.min(100, min / max * 100) : null;
+          gaugeHtml = `<div class="bt-gauge">
+            <div class="fill ${tone}" style="width:${pct}%"></div>
+            ${minPct !== null ? `<div class="min-marker" style="inset-inline-start:${minPct}%"></div>` : ''}
+          </div>`;
+        }
+        const metaParts = [];
+        metaParts.push(min !== null ? `الحد الأدنى ${fmtNum(min)}` : 'بلا حد أدنى');
+        metaParts.push(max !== null ? `السقف ${fmtNum(max)}` : 'بلا سقف تعرّض');
+
+        html += `
+          <div class="balance-tile">
+            <div class="bt-top"><span class="cur">${p.currency.name} <span style="color:var(--ink-faint)">(${p.currency.code})</span></span><span class="amt ${tone}">${fmtNum(balance)}</span></div>
+            ${gaugeHtml}
+            <div class="bt-meta"><span>${metaParts.join(' · ')}</span>${pill}</div>
+          </div>`;
+      });
+      html += '</div>';
+    });
+    el.innerHTML = html + '</div>';
+  }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
+}
+
+async function recordBankMovement(){
+  const bankId = document.getElementById('bkmv-bank').value;
+  const currencyCode = document.getElementById('bkmv-currency').value;
+  const type = document.getElementById('bkmv-type').value;
+  const amount = document.getElementById('bkmv-amount').value.trim();
+  const reason = document.getElementById('bkmv-reason').value.trim();
+  if (!bankId || !amount || !reason) { showToast('عبّئ الحساب المصرفي والمبلغ والسبب', true); return; }
+  const body = { currencyCode, type, amount, reason };
+  await runBusy('record-bank-movement-btn', async () => {
+    await apiCall('/treasury/banks/' + bankId + '/movements', { method: 'POST', body: JSON.stringify(body) });
+    showToast('سُجّلت حركة المصرف بنجاح');
+    document.getElementById('bkmv-amount').value = ''; document.getElementById('bkmv-reason').value = '';
+    loadBankTreasuryAll(); loadOverview();
+  })().catch(err => showToast(err.message, true));
+}
+
+async function loadBankMovementsLog(){
+  const bankId = document.getElementById('bkmv-log-bank').value;
+  const el = document.getElementById('bank-movements-log-content');
+  if (!bankId) { showToast('اختر حسابًا مصرفيًا أولًا', true); return; }
+  el.textContent = 'جارِ التحميل...';
+  try{
+    const movements = await apiCall('/treasury/banks/' + bankId + '/movements?limit=30');
+    if (movements.length === 0) { el.textContent = 'لا توجد حركات مسجّلة لهذا الحساب بعد.'; return; }
+    let html = '<div class="table-wrap"><table><thead><tr><th>النوع</th><th>العملة</th><th>المبلغ</th><th>الرصيد بعدها</th><th>السبب</th><th>المنفّذ</th><th>الوقت</th></tr></thead><tbody>';
+    movements.forEach(m => { html += `<tr><td>${BANK_MOVEMENT_TYPE_LABELS[m.type] || m.type}</td><td>${m.currency.code}</td><td class="num">${m.amount}</td><td class="num">${m.balanceAfter}</td><td class="wrap">${m.reason}</td><td>${m.performedBy.fullName}</td><td>${fmtDate(m.createdAt)}</td></tr>`; });
     el.innerHTML = html + '</tbody></table></div>';
   }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
 }

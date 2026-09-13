@@ -43,6 +43,7 @@ model User {
   mfaRecoveryCodeHashes String[] @default([]) // كل رمز استرداد يُستهلك مرة واحدة فقط (يُحذف من المصفوفة بعد الاستخدام)
 
   treasuryMovements               TreasuryMovement[]      @relation("MovementActor")
+  bankMovements                    BankMovement[]          @relation("BankMovementActor")
   publishedRates                  ExchangeRate[]          @relation("RateActor")
   auditLogs                       AuditLog[]              @relation("AuditActor")
   requestedDeals                  Transaction[]           @relation("DealRequestedBy")
@@ -90,6 +91,8 @@ model Currency {
 
   positions        TreasuryPosition[]
   movements        TreasuryMovement[]
+  bankPositions    BankPosition[]
+  bankMovements    BankMovement[]
   rates            ExchangeRate[]
   balances         ClientBalance[]
   balanceMovements ClientBalanceMovement[]
@@ -254,6 +257,68 @@ model TreasuryMovement {
 
   @@index([branchId, currencyId, createdAt])
   @@map("treasury_movements")
+}
+
+// ------------------------------------------------------------------
+// المصارف: حسابات بنكية للشركة، مستقلة مركزيًا (غير مرتبطة بفرع بعينه) —
+// بنفس آلية خزينة الفروع تمامًا (مركز رصيد لكل عملة + دفتر حركات تراكمي)،
+// كيان مواز لا فرق جوهري به عن Branch/TreasuryPosition/TreasuryMovement
+// سوى أنه لا يمثّل موقعًا فعليًا للنقد بل حسابًا مصرفيًا. التحويل بين خزينة
+// فرع وحساب مصرفي يُسجَّل كحركتين مستقلتين تمامًا (TRANSFER_OUT على الفرع
+// ثم TRANSFER_IN على المصرف، أو العكس) — لا ربط بنيوي بينهما في قاعدة
+// البيانات، فقط بنص السبب يدويًا؛ تمامًا كالتحويل بين فرعين حاليًا.
+// ------------------------------------------------------------------
+
+model Bank {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  name          String // اسم المصرف والحساب معًا، مثال: "مصرف الجمهورية — الحساب الرئيسي"
+  accountNumber String? // رقم الحساب المصرفي — اختياري، مرجعي فقط
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  positions BankPosition[]
+  movements BankMovement[]
+
+  @@map("banks")
+}
+
+model BankPosition {
+  id           String   @id @default(uuid())
+  bankId       String
+  bank         Bank     @relation(fields: [bankId], references: [id])
+  currencyId   String
+  currency     Currency @relation(fields: [currencyId], references: [id])
+  balance      Decimal  @default(0) @db.Decimal(18, 2)
+  minThreshold Decimal? @db.Decimal(18, 2) // حد أدنى تحذيري — اختياري، بلا حد أدنى إن تُرك فارغًا
+  maxExposure  Decimal? @db.Decimal(18, 2) // سقف التعرّض المسموح به — اختياري، بلا سقف إن تُرك فارغًا
+  updatedAt    DateTime @updatedAt
+
+  @@unique([bankId, currencyId])
+  @@map("bank_positions")
+}
+
+// دفتر حركات المصرف — سجل تراكمي فقط (Append-only)، بلا تعديل أو حذف من
+// طبقة التطبيق، تمامًا كـ TreasuryMovement. النوع مقيَّد بمجموعة فرعية من
+// MovementType على مستوى DTO (لا القاعدة): DEPOSIT/WITHDRAWAL/TRANSFER_IN/
+// TRANSFER_OUT/ADJUSTMENT_INCREASE/ADJUSTMENT_DECREASE فقط — TRADE_BUY/SELL
+// وتسويتهما خاصة بصفقات الصرف على خزينة فرع، لا معنى لها على حساب مصرفي.
+model BankMovement {
+  id            String       @id @default(uuid())
+  bankId        String
+  bank          Bank         @relation(fields: [bankId], references: [id])
+  currencyId    String
+  currency      Currency     @relation(fields: [currencyId], references: [id])
+  type          MovementType
+  amount        Decimal      @db.Decimal(18, 2) // دومًا قيمة موجبة؛ الاتجاه يحدده type
+  balanceAfter  Decimal      @db.Decimal(18, 2)
+  reason        String
+  performedById String
+  performedBy   User         @relation("BankMovementActor", fields: [performedById], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([bankId, currencyId, createdAt])
+  @@map("bank_movements")
 }
 
 // ------------------------------------------------------------------

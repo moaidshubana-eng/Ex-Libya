@@ -18,7 +18,8 @@ export interface AccountSeed {
 export const ACCOUNT_CODES = {
   TILL_CASH: '1010', // النقدية في خزائن الفروع
   BANK_CASH: '1015', // النقدية في الحساب المصرفي الرئيسي
-  INTER_BRANCH_CLEARING: '1030', // تسوية تحويلات بين الفروع (حساب عبور)
+  INTER_BRANCH_CLEARING: '1030', // تسوية تحويلات داخلية بين مراكز الخزينة (فرع↔فرع أو فرع↔مصرف) — حساب عبور
+  EXTERNAL_FUNDS_CLEARING: '1035', // تسوية أموال خارجية على حساب مصرفي مباشرة (إيداع/سحب لا يمر بخزينة فرع)
   REMITTANCE_RECEIVABLE: '1020', // ذمم هامش الحوالات المستحقة
   FX_TRADING_MARGIN_RECEIVABLE: '1025', // ذمم هامش صفقات الصرف المستحقة (فرق سعر البيع عن السوق الموازي)
   FIXED_ASSETS_FURNITURE: '1500', // أصول ثابتة — أثاث ومعدات مكتبية
@@ -75,7 +76,14 @@ export const CHART_OF_ACCOUNTS: AccountSeed[] = [
   },
   {
     code: ACCOUNT_CODES.INTER_BRANCH_CLEARING,
-    name: 'تسوية تحويلات بين الفروع (عهدة عبور)',
+    name: 'تسوية تحويلات داخلية بين مراكز الخزينة (عهدة عبور)',
+    type: 'ASSET',
+    class: 'CURRENT_ASSET',
+    normalBalance: 'DEBIT',
+  },
+  {
+    code: ACCOUNT_CODES.EXTERNAL_FUNDS_CLEARING,
+    name: 'تسوية أموال خارجية على حساب مصرفي',
     type: 'ASSET',
     class: 'CURRENT_ASSET',
     normalBalance: 'DEBIT',
