@@ -1,16 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { RemittanceCustomerType, RemittanceDirection, RemittanceProvider } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID, Length, MinLength } from 'class-validator';
+import { RemittanceCustomerType, RemittanceProvider } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { IsDecimalString } from '../../common/validators/is-decimal-string.decorator';
 
 export class CreateRemittanceDto {
   @ApiProperty({ enum: RemittanceProvider })
   @IsEnum(RemittanceProvider)
   provider!: RemittanceProvider;
-
-  @ApiProperty({ enum: RemittanceDirection })
-  @IsEnum(RemittanceDirection)
-  direction!: RemittanceDirection;
 
   @ApiProperty({ enum: RemittanceCustomerType })
   @IsEnum(RemittanceCustomerType)
@@ -36,7 +32,7 @@ export class CreateRemittanceDto {
   externalCustomerPhone?: string;
 
   @ApiProperty({
-    description: 'اسم الطرف الآخر: المستفيد النهائي (لو إرسال) أو المرسِل الأصلي (لو استلام)',
+    description: 'اسم الطرف الآخر — المستفيد النهائي في ليبيا',
     example: 'محمد علي الفيتوري',
   })
   @IsString()
@@ -57,27 +53,34 @@ export class CreateRemittanceDto {
   countryCode?: string;
 
   @ApiProperty({
-    description: 'القيمة الأساسية للحوالة (ما يُرسَل/يُستلَم فعليًا)',
+    description: 'القيمة الأساسية للحوالة (ما يُسلَّم فعليًا للمستفيد في ليبيا) — دومًا بالدولار',
     example: '500.00',
   })
   @IsDecimalString(2)
   principalAmount!: string;
 
-  @ApiProperty({ example: 'USD' })
-  @IsString()
-  @Length(3, 3, { message: 'رمز العملة يجب أن يكون 3 أحرف وفق ISO 4217' })
-  currencyCode!: string;
-
   @ApiProperty({
-    description: 'تكلفة الحوالة على الشركة (عمولة الشبكة أو ما يعادلها)',
-    example: '15.00',
+    description: 'سعر الاستلام في تركيا — دومًا بالدولار',
+    example: '1950.00',
   })
   @IsDecimalString(2)
-  cost!: string;
+  turkeyReceiptAmount!: string;
 
-  @ApiProperty({ description: 'قيمة بيع الحوالة للعميل (ما تحصّله الشركة منه)', example: '25.00' })
+  @ApiProperty({
+    description: 'سعر التسليم في ليبيا — دومًا بالدولار',
+    example: '1940.00',
+  })
   @IsDecimalString(2)
-  saleValue!: string;
+  libyaDeliveryAmount!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'بدل تركيا — هامش إضافي يدوي اختياري بالدينار الليبي فقط، منفصل تمامًا عن الربح الأساسي بالدولار (turkeyReceiptAmount - libyaDeliveryAmount)',
+    example: '50.00',
+  })
+  @IsOptional()
+  @IsDecimalString(2)
+  turkeyAllowanceLyd?: string;
 
   @ApiPropertyOptional({ description: 'الفرع الذي نُفِّذت فيه الحوالة' })
   @IsOptional()

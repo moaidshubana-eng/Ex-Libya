@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { RemittanceCustomerType, RemittanceDirection, RemittanceProvider } from '@prisma/client';
+import { RemittanceCustomerType, RemittanceProvider, RemittanceStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsISO8601, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsEnum, IsISO8601, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 export class ListRemittancesQuery {
   @ApiPropertyOptional({ enum: RemittanceProvider })
@@ -9,10 +9,10 @@ export class ListRemittancesQuery {
   @IsEnum(RemittanceProvider)
   provider?: RemittanceProvider;
 
-  @ApiPropertyOptional({ enum: RemittanceDirection })
+  @ApiPropertyOptional({ enum: RemittanceStatus })
   @IsOptional()
-  @IsEnum(RemittanceDirection)
-  direction?: RemittanceDirection;
+  @IsEnum(RemittanceStatus)
+  status?: RemittanceStatus;
 
   @ApiPropertyOptional({ enum: RemittanceCustomerType })
   @IsOptional()
@@ -38,15 +38,6 @@ export class ListRemittancesQuery {
   @IsOptional()
   @IsISO8601()
   to?: string;
-
-  @ApiPropertyOptional({
-    default: false,
-    description: 'تضمين الحوالات الملغاة (voided) في النتائج',
-  })
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  includeVoided = false;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

@@ -4,9 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RemittanceCustomerType } from '@prisma/client';
+import { Prisma, RemittanceCustomerType, RemittanceStatus } from '@prisma/client';
 import { ACCOUNT_CODES } from '../accounting/chart-of-accounts';
-import { flipDebitCredit, postJournalEntry } from '../accounting/post-journal-entry';
+import { postJournalEntry } from '../accounting/post-journal-entry';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { toMoney } from '../common/money';
@@ -14,23 +14,29 @@ import { ReportPeriodQuery } from '../reports/dto/report-period.query';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRemittanceDto } from './dto/create-remittance.dto';
 import { ListRemittancesQuery } from './dto/list-remittances.query';
-import { VoidRemittanceDto } from './dto/void-remittance.dto';
+import { RejectRemittanceDto } from './dto/reject-remittance.dto';
 
 /**
- * سطور القيد المحاسبي لهامش حوالة: ذمم الهامش المستحقة تتحرك بصافي الربح
- * (مدينة إن كان موجبًا، دائنة إن كان خسارة)، مقابل قيمة البيع كاملة كإيراد
- * وقيمة التكلفة كاملة كمصروف — يعرض الإيراد والتكلفة منفصلين في قائمة الدخل
- * بدل صافي واحد فقط، ويظل متوازنًا حسابيًا في كل الحالات (انظر post-journal-entry.ts).
+ * سطور القيد المحاسبي لهامش حوالة — يُبنى فقط عند السحب الفعلي (WITHDRAWN)،
+ * لا عند مجرد التسجيل (PENDING). الهامش الأساسي بالدولار: ذمم الهامش تتحرك
+ * بصافي الربح (مدينة إن كان موجبًا، دائنة إن كان خسارة)، مقابل سعر الاستلام
+ * في تركيا كإيراد كامل وسعر التسليم في ليبيا كتكلفة كاملة — يعرض الإيراد
+ * والتكلفة منفصلين في قائمة الدخل بدل صافي واحد فقط، ويظل متوازنًا حسابيًا
+ * في كل الحالات (انظر post-journal-entry.ts). بدل تركيا (إن وُجد) سطران
+ * إضافيان بالدينار الليبي ضمن القيد نفسه — عملة مستقلة تمامًا، تُوازَن على
+ * حدة (postJournalEntry يتحقق من توازن كل عملة بمعزل عن الأخرى).
  */
 function remittanceLedgerLines(params: {
   profit: Prisma.Decimal;
-  cost: Prisma.Decimal.Value;
-  saleValue: Prisma.Decimal.Value;
+  turkeyReceiptAmount: Prisma.Decimal.Value;
+  libyaDeliveryAmount: Prisma.Decimal.Value;
   currencyId: string;
+  turkeyAllowanceLyd?: Prisma.Decimal.Value | null;
+  lydCurrencyId?: string;
   branchId?: string | null;
 }) {
   const profitIsGain = !params.profit.isNegative();
-  return [
+  const lines = [
     {
       accountCode: ACCOUNT_CODES.REMITTANCE_RECEIVABLE,
       ...(profitIsGain ? { debit: params.profit } : { credit: params.profit.abs() }),
@@ -39,17 +45,37 @@ function remittanceLedgerLines(params: {
     },
     {
       accountCode: ACCOUNT_CODES.REMITTANCE_MARGIN_REVENUE,
-      credit: params.saleValue,
+      credit: params.turkeyReceiptAmount,
       currencyId: params.currencyId,
       branchId: params.branchId,
     },
     {
       accountCode: ACCOUNT_CODES.REMITTANCE_NETWORK_COST,
-      debit: params.cost,
+      debit: params.libyaDeliveryAmount,
       currencyId: params.currencyId,
       branchId: params.branchId,
     },
   ];
+
+  const allowance = params.turkeyAllowanceLyd ? toMoney(params.turkeyAllowanceLyd) : null;
+  if (allowance && !allowance.isZero() && params.lydCurrencyId) {
+    lines.push(
+      {
+        accountCode: ACCOUNT_CODES.REMITTANCE_RECEIVABLE,
+        debit: allowance,
+        currencyId: params.lydCurrencyId,
+        branchId: params.branchId,
+      },
+      {
+        accountCode: ACCOUNT_CODES.REMITTANCE_MARGIN_REVENUE,
+        credit: allowance,
+        currencyId: params.lydCurrencyId,
+        branchId: params.branchId,
+      },
+    );
+  }
+
+  return lines;
 }
 
 const REMITTANCE_INCLUDE = {
@@ -57,12 +83,14 @@ const REMITTANCE_INCLUDE = {
   currency: { select: { id: true, code: true, name: true } },
   branch: { select: { id: true, code: true, name: true } },
   recordedBy: { select: { id: true, fullName: true, role: true } },
-  voidedBy: { select: { id: true, fullName: true, role: true } },
+  statusChangedBy: { select: { id: true, fullName: true, role: true } },
 } satisfies Prisma.RemittanceInclude;
 
-// وحدة حوالات وسترن يونيون وموني جرام — الشركة وكيل تحويل أموال لهاتين الشبكتين.
-// مستقلة تمامًا عن حسابات وديعة العملاء وحركات خزينة الفروع؛ الربح لكل حوالة
-// (saleValue - cost) يُحسب ويُخزَّن لحظة التسجيل، ولا يتغيّر إلا بإلغاء الحوالة.
+// وحدة حوالات تركيا↔ليبيا (عبر شبكة وسترن يونيون/موني جرام كوكيل) — تدفق
+// ثابت واحد: استلام في تركيا ثم تسليم في ليبيا. مستقلة تمامًا عن حسابات
+// وديعة العملاء وحركات خزينة الفروع؛ الربح (turkeyReceiptAmount -
+// libyaDeliveryAmount) يُحسب ويُخزَّن لحظة التسجيل (PENDING)، لكن لا يُرحَّل
+// محاسبيًا إلا عند السحب الفعلي (WITHDRAWN) — انظر تعليق schema.prisma.
 @Injectable()
 export class RemittancesService {
   constructor(
@@ -70,12 +98,10 @@ export class RemittancesService {
     private readonly audit: AuditService,
   ) {}
 
-  private async getCurrencyOrThrow(currencyCode: string) {
-    const currency = await this.prisma.currency.findUnique({
-      where: { code: currencyCode.toUpperCase() },
-    });
+  private async getUsdCurrencyOrThrow() {
+    const currency = await this.prisma.currency.findUnique({ where: { code: 'USD' } });
     if (!currency || !currency.isActive) {
-      throw new NotFoundException(`العملة ${currencyCode} غير مسجّلة أو غير مفعّلة`);
+      throw new BadRequestException('عملة الدولار الأمريكي غير مسجّلة أو غير مفعّلة في النظام');
     }
     return currency;
   }
@@ -107,49 +133,32 @@ export class RemittancesService {
       if (!branch) throw new NotFoundException('الفرع غير موجود');
     }
 
-    const currency = await this.getCurrencyOrThrow(dto.currencyCode);
-    const profit = toMoney(dto.saleValue).minus(toMoney(dto.cost));
+    const currency = await this.getUsdCurrencyOrThrow();
+    const profit = toMoney(dto.turkeyReceiptAmount).minus(toMoney(dto.libyaDeliveryAmount));
 
-    const remittance = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.remittance.create({
-        data: {
-          provider: dto.provider,
-          direction: dto.direction,
-          customerType: dto.customerType,
-          clientId: dto.customerType === RemittanceCustomerType.INTERNAL ? dto.clientId : null,
-          externalCustomerName:
-            dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerName : null,
-          externalCustomerPhone:
-            dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
-          counterpartyName: dto.counterpartyName,
-          referenceNumber: dto.referenceNumber,
-          countryCode: dto.countryCode,
-          principalAmount: dto.principalAmount,
-          currencyId: currency.id,
-          cost: dto.cost,
-          saleValue: dto.saleValue,
-          profit,
-          branchId: dto.branchId,
-          recordedById: actor.id,
-        },
-        include: REMITTANCE_INCLUDE,
-      });
-
-      await postJournalEntry(tx, {
-        description: `هامش حوالة ${dto.referenceNumber}`,
-        sourceType: 'Remittance',
-        sourceId: created.id,
-        postedById: actor.id,
-        lines: remittanceLedgerLines({
-          profit,
-          cost: dto.cost,
-          saleValue: dto.saleValue,
-          currencyId: currency.id,
-          branchId: dto.branchId,
-        }),
-      });
-
-      return created;
+    const remittance = await this.prisma.remittance.create({
+      data: {
+        provider: dto.provider,
+        customerType: dto.customerType,
+        clientId: dto.customerType === RemittanceCustomerType.INTERNAL ? dto.clientId : null,
+        externalCustomerName:
+          dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerName : null,
+        externalCustomerPhone:
+          dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
+        counterpartyName: dto.counterpartyName,
+        referenceNumber: dto.referenceNumber,
+        countryCode: dto.countryCode,
+        principalAmount: dto.principalAmount,
+        currencyId: currency.id,
+        turkeyReceiptAmount: dto.turkeyReceiptAmount,
+        libyaDeliveryAmount: dto.libyaDeliveryAmount,
+        profit,
+        turkeyAllowanceLyd: dto.turkeyAllowanceLyd ?? null,
+        branchId: dto.branchId,
+        status: RemittanceStatus.PENDING,
+        recordedById: actor.id,
+      },
+      include: REMITTANCE_INCLUDE,
     });
 
     await this.audit.record({
@@ -159,14 +168,14 @@ export class RemittancesService {
       actorId: actor.id,
       after: {
         provider: remittance.provider,
-        direction: remittance.direction,
         customerType: remittance.customerType,
         referenceNumber: remittance.referenceNumber,
         principalAmount: remittance.principalAmount.toString(),
-        currency: currency.code,
-        cost: remittance.cost.toString(),
-        saleValue: remittance.saleValue.toString(),
+        turkeyReceiptAmount: remittance.turkeyReceiptAmount.toString(),
+        libyaDeliveryAmount: remittance.libyaDeliveryAmount.toString(),
         profit: remittance.profit.toString(),
+        turkeyAllowanceLyd: remittance.turkeyAllowanceLyd?.toString() ?? null,
+        status: remittance.status,
       },
     });
 
@@ -176,11 +185,10 @@ export class RemittancesService {
   async findAll(query: ListRemittancesQuery) {
     const where: Prisma.RemittanceWhereInput = {
       ...(query.provider && { provider: query.provider }),
-      ...(query.direction && { direction: query.direction }),
+      ...(query.status && { status: query.status }),
       ...(query.customerType && { customerType: query.customerType }),
       ...(query.branchId && { branchId: query.branchId }),
       ...(query.clientId && { clientId: query.clientId }),
-      ...(!query.includeVoided && { isVoided: false }),
       ...((query.from || query.to) && {
         createdAt: {
           ...(query.from && { gte: new Date(query.from) }),
@@ -212,53 +220,98 @@ export class RemittancesService {
     return remittance;
   }
 
-  /** لا حذف فعلي — يُعلَّم الحوالة كملغاة مع سبب موثّق، فيبقى أثرها في السجل والتقارير. */
-  async void(id: string, dto: VoidRemittanceDto, actor: AuthenticatedUser) {
+  /**
+   * تسجيل السحب الفعلي (تم السحب) — الانتقال الوحيد الذي يُرحِّل هامش الحوالة
+   * محاسبيًا؛ لا يجوز إلا من PENDING (قيد التعديل)، ولا يجوز التراجع عنه لاحقًا.
+   */
+  async withdraw(id: string, actor: AuthenticatedUser) {
     const remittance = await this.findOne(id);
-    if (remittance.isVoided) throw new ConflictException('هذه الحوالة ملغاة بالفعل');
+    if (remittance.status !== RemittanceStatus.PENDING) {
+      throw new ConflictException('لا يمكن تسجيل السحب إلا لحوالة قيد التعديل (PENDING)');
+    }
+
+    const lydCurrency = await this.prisma.currency.findUnique({ where: { code: 'LYD' } });
+    if (remittance.turkeyAllowanceLyd && !lydCurrency) {
+      throw new BadRequestException('عملة الدينار الليبي غير مسجَّلة — تعذّر ترحيل بدل تركيا');
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.remittance.update({
-        where: { id },
+      const claimed = await tx.remittance.updateMany({
+        where: { id, status: RemittanceStatus.PENDING },
         data: {
-          isVoided: true,
-          voidReason: dto.reason,
-          voidedById: actor.id,
-          voidedAt: new Date(),
+          status: RemittanceStatus.WITHDRAWN,
+          statusChangedById: actor.id,
+          statusChangedAt: new Date(),
         },
-        include: REMITTANCE_INCLUDE,
       });
+      if (claimed.count === 0) {
+        throw new ConflictException('تغيّرت حالة الحوالة قبل تسجيل السحب — يرجى إعادة المحاولة');
+      }
 
-      // عكس محاسبي مباشر بمبادلة كل سطر مرحَّل عند التسجيل — بلا حاجة لجلب القيد الأصلي.
       await postJournalEntry(tx, {
-        description: `إلغاء هامش حوالة ${remittance.referenceNumber} — ${dto.reason}`,
+        description: `هامش حوالة ${remittance.referenceNumber} — تم السحب`,
         sourceType: 'Remittance',
         sourceId: remittance.id,
         postedById: actor.id,
-        lines: flipDebitCredit(
-          remittanceLedgerLines({
-            profit: toMoney(remittance.profit),
-            cost: remittance.cost,
-            saleValue: remittance.saleValue,
-            currencyId: remittance.currencyId,
-            branchId: remittance.branchId,
-          }),
-        ),
+        lines: remittanceLedgerLines({
+          profit: toMoney(remittance.profit),
+          turkeyReceiptAmount: remittance.turkeyReceiptAmount,
+          libyaDeliveryAmount: remittance.libyaDeliveryAmount,
+          currencyId: remittance.currencyId,
+          turkeyAllowanceLyd: remittance.turkeyAllowanceLyd,
+          lydCurrencyId: lydCurrency?.id,
+          branchId: remittance.branchId,
+        }),
       });
 
-      return result;
+      return tx.remittance.findUniqueOrThrow({ where: { id }, include: REMITTANCE_INCLUDE });
     });
 
     await this.audit.record({
       entityType: 'Remittance',
       entityId: id,
-      action: 'VOID_REMITTANCE',
+      action: 'WITHDRAW_REMITTANCE',
       actorId: actor.id,
-      before: { isVoided: false },
-      after: { isVoided: true, reason: dto.reason },
+      before: { status: RemittanceStatus.PENDING },
+      after: { status: RemittanceStatus.WITHDRAWN },
     });
 
     return updated;
+  }
+
+  /**
+   * رفض الحوالة — لا يجوز إلا من PENDING (قيد التعديل)؛ بلا أي ترحيل محاسبي
+   * (لم يُرحَّل شيء عند التسجيل أصلًا، فلا حاجة لأي عكس).
+   */
+  async reject(id: string, dto: RejectRemittanceDto, actor: AuthenticatedUser) {
+    const remittance = await this.findOne(id);
+    if (remittance.status !== RemittanceStatus.PENDING) {
+      throw new ConflictException('لا يمكن رفض حوالة ليست قيد التعديل (PENDING)');
+    }
+
+    const updated = await this.prisma.remittance.updateMany({
+      where: { id, status: RemittanceStatus.PENDING },
+      data: {
+        status: RemittanceStatus.REJECTED,
+        statusReason: dto.reason,
+        statusChangedById: actor.id,
+        statusChangedAt: new Date(),
+      },
+    });
+    if (updated.count === 0) {
+      throw new ConflictException('تغيّرت حالة الحوالة قبل تسجيل الرفض — يرجى إعادة المحاولة');
+    }
+
+    await this.audit.record({
+      entityType: 'Remittance',
+      entityId: id,
+      action: 'REJECT_REMITTANCE',
+      actorId: actor.id,
+      before: { status: RemittanceStatus.PENDING },
+      after: { status: RemittanceStatus.REJECTED, reason: dto.reason },
+    });
+
+    return this.findOne(id);
   }
 
   private resolvePeriod(query: ReportPeriodQuery) {
@@ -267,41 +320,49 @@ export class RemittancesService {
     return { from, to };
   }
 
-  /** ملخص أداء وحدة الحوالات لفترة: التكلفة، قيمة البيع، الربح الصافي، والعدد — مجمَّعة حسب الشبكة والاتجاه. */
+  /**
+   * ملخص أداء وحدة الحوالات لفترة — الحوالات المسحوبة (WITHDRAWN) فقط تُحتسَب
+   * (الهامش المحقَّق فعلًا)؛ مجمَّعة حسب الشبكة فقط (لا اتجاه ولا عملة بعد
+   * الآن — كلها بالدولار). بدل تركيا (بالدينار) مجموع منفصل تمامًا.
+   */
   async getSummary(query: ReportPeriodQuery) {
     const { from, to } = this.resolvePeriod(query);
     const branchFilter = query.branchId ? { branchId: query.branchId } : {};
-    const currencies = await this.prisma.currency.findMany({ select: { id: true, code: true } });
-    const currencyCode = new Map(currencies.map((c) => [c.id, c.code]));
 
     const rows = await this.prisma.remittance.groupBy({
-      by: ['provider', 'direction', 'currencyId'],
-      where: { isVoided: false, createdAt: { gte: from, lte: to }, ...branchFilter },
-      _sum: { cost: true, saleValue: true, profit: true, principalAmount: true },
+      by: ['provider'],
+      where: {
+        status: RemittanceStatus.WITHDRAWN,
+        createdAt: { gte: from, lte: to },
+        ...branchFilter,
+      },
+      _sum: {
+        turkeyReceiptAmount: true,
+        libyaDeliveryAmount: true,
+        profit: true,
+        principalAmount: true,
+        turkeyAllowanceLyd: true,
+      },
       _count: { _all: true },
     });
 
     const items = rows.map((row) => ({
       provider: row.provider,
-      direction: row.direction,
-      currency: currencyCode.get(row.currencyId) ?? row.currencyId,
       count: row._count._all,
       totalPrincipal: toMoney(row._sum.principalAmount ?? 0).toFixed(2),
-      totalCost: toMoney(row._sum.cost ?? 0).toFixed(2),
-      totalSaleValue: toMoney(row._sum.saleValue ?? 0).toFixed(2),
-      totalProfit: toMoney(row._sum.profit ?? 0).toFixed(2),
+      totalTurkeyReceiptAmount: toMoney(row._sum.turkeyReceiptAmount ?? 0).toFixed(2),
+      totalLibyaDeliveryAmount: toMoney(row._sum.libyaDeliveryAmount ?? 0).toFixed(2),
+      totalProfitUsd: toMoney(row._sum.profit ?? 0).toFixed(2),
+      totalTurkeyAllowanceLyd: toMoney(row._sum.turkeyAllowanceLyd ?? 0).toFixed(2),
     }));
 
-    // إجماليات عامة عبر كل العملات مجمَّعة معًا (لغرض مؤشر أداء سريع فقط — الأرقام
-    // الدقيقة حسب العملة موجودة في items أعلاه، فلا تُخلَط عملات مختلفة في تقرير مالي حقيقي).
     const totals = items.reduce(
       (acc, item) => ({
         count: acc.count + item.count,
-        totalCost: acc.totalCost.plus(item.totalCost),
-        totalSaleValue: acc.totalSaleValue.plus(item.totalSaleValue),
-        totalProfit: acc.totalProfit.plus(item.totalProfit),
+        totalProfitUsd: acc.totalProfitUsd.plus(item.totalProfitUsd),
+        totalTurkeyAllowanceLyd: acc.totalTurkeyAllowanceLyd.plus(item.totalTurkeyAllowanceLyd),
       }),
-      { count: 0, totalCost: toMoney(0), totalSaleValue: toMoney(0), totalProfit: toMoney(0) },
+      { count: 0, totalProfitUsd: toMoney(0), totalTurkeyAllowanceLyd: toMoney(0) },
     );
 
     return {
@@ -309,9 +370,8 @@ export class RemittancesService {
       items,
       totals: {
         count: totals.count,
-        totalCost: totals.totalCost.toFixed(2),
-        totalSaleValue: totals.totalSaleValue.toFixed(2),
-        totalProfit: totals.totalProfit.toFixed(2),
+        totalProfitUsd: totals.totalProfitUsd.toFixed(2),
+        totalTurkeyAllowanceLyd: totals.totalTurkeyAllowanceLyd.toFixed(2),
       },
     };
   }

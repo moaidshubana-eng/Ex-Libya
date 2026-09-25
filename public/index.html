@@ -172,7 +172,7 @@
 
   .pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 10px 3px 9px; border-radius:999px; font-size:10.5px; font-weight:700; white-space:nowrap; }
   .pill::before{ content:''; width:5px; height:5px; border-radius:50%; background:currentColor; flex-shrink:0; }
-  .pill.ok, .pill.EXECUTED, .pill.APPROVED, .pill.VERIFIED, .pill.SENT{ background:var(--success-soft); color:var(--success); }
+  .pill.ok, .pill.EXECUTED, .pill.APPROVED, .pill.VERIFIED, .pill.SENT, .pill.WITHDRAWN{ background:var(--success-soft); color:var(--success); }
   .pill.warn, .pill.PENDING_APPROVAL, .pill.PENDING{ background:var(--warning-soft); color:var(--warning); }
   .pill.bad, .pill.REJECTED, .pill.EXPIRED, .pill.CANCELLED, .pill.FAILED{ background:var(--critical-soft); color:var(--critical); }
   .pill.info, .pill.RECEIVED{ background:var(--info-soft); color:var(--info); }
@@ -604,7 +604,7 @@
 
       <!-- ---- الحوالات ---- -->
       <div class="panel" id="panel-remittances">
-        <div class="page-head"><h2>الحوالات (وسترن يونيون / موني جرام)</h2><button class="btn-ghost btn-sm" onclick="remittancesPage=1;loadRemittances()">تحديث</button></div>
+        <div class="page-head"><h2>الحوالات (تركيا↔ليبيا)</h2><button class="btn-ghost btn-sm" onclick="remittancesPage=1;loadRemittances()">تحديث</button></div>
         <div class="card">
           <div class="card-head"><h3>تسجيل حوالة جديدة</h3></div>
           <div class="form-grid">
@@ -612,12 +612,6 @@
               <select id="rm-provider">
                 <option value="WESTERN_UNION">وسترن يونيون</option>
                 <option value="MONEYGRAM">موني جرام</option>
-              </select>
-            </div>
-            <div class="field"><label>الاتجاه</label>
-              <select id="rm-direction">
-                <option value="SEND">إرسال (العميل يرسل)</option>
-                <option value="RECEIVE">استلام (العميل يستلم)</option>
               </select>
             </div>
             <div class="field"><label>تصنيف العميل</label>
@@ -628,32 +622,39 @@
             </div>
           </div>
           <div class="form-grid" id="rm-internal-fields">
-            <div class="field"><label>العميل</label><select id="rm-client"></select></div>
+            <div class="field"><label>اسم الغرفة</label><select id="rm-client"></select></div>
           </div>
           <div class="form-grid" id="rm-external-fields" style="display:none">
             <div class="field"><label>اسم الزبون الخارجي</label><input type="text" id="rm-ext-name" placeholder="اسم الزبون العابر" /></div>
             <div class="field"><label>هاتف الزبون (اختياري)</label><input type="text" id="rm-ext-phone" placeholder="+218910000000" /></div>
           </div>
           <div class="form-grid">
-            <div class="field"><label>اسم الطرف الآخر</label><input type="text" id="rm-counterparty" placeholder="المستفيد النهائي أو المرسِل الأصلي" /></div>
+            <div class="field"><label>اسم الطرف الآخر</label><input type="text" id="rm-counterparty" placeholder="المستفيد النهائي في ليبيا" /></div>
             <div class="field"><label>الرقم المرجعي (MTCN)</label><input type="text" id="rm-reference" placeholder="مثال: 9214563870" /></div>
             <div class="field"><label>بلد الطرف الآخر (اختياري)</label><input type="text" id="rm-country" placeholder="مثال: EG" /></div>
           </div>
           <div class="form-grid">
-            <div class="field"><label>القيمة الأساسية للحوالة</label><input type="text" id="rm-principal" placeholder="500.00" oninput="updateRemittanceProfitPreview()" /></div>
-            <div class="field"><label>العملة</label><select id="rm-currency" onchange="updateRemittanceProfitPreview()"></select></div>
+            <div class="field"><label>القيمة الأساسية للحوالة (دولار)</label><input type="text" id="rm-principal" placeholder="500.00" /></div>
             <div class="field"><label>الفرع (اختياري)</label><select id="rm-branch"><option value="">— بلا فرع محدَّد —</option></select></div>
           </div>
           <div class="form-grid">
-            <div class="field"><label>تكلفة الحوالة على الشركة</label><input type="text" id="rm-cost" placeholder="15.00" oninput="updateRemittanceProfitPreview()" /></div>
-            <div class="field"><label>قيمة بيع الحوالة للعميل</label><input type="text" id="rm-sale" placeholder="25.00" oninput="updateRemittanceProfitPreview()" /></div>
-            <div class="field"><label>الربح الصافي المتوقَّع</label><input type="text" id="rm-profit-preview" disabled placeholder="0.00" /></div>
+            <div class="field"><label>سعر الأستلام في تركيا (دولار)</label><input type="text" id="rm-receipt" placeholder="1950.00" oninput="updateRemittanceProfitPreview()" /></div>
+            <div class="field"><label>سعر التسليم في ليبيا (دولار)</label><input type="text" id="rm-delivery" placeholder="1940.00" oninput="updateRemittanceProfitPreview()" /></div>
+            <div class="field"><label>الربح الصافي المتوقَّع (دولار)</label><input type="text" id="rm-profit-preview" disabled placeholder="0.00" /></div>
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:8px;margin:-4px 0 13px">
+            <input type="checkbox" id="rm-allowance-toggle" onchange="onRemittanceAllowanceToggle()" style="width:auto" />
+            <label for="rm-allowance-toggle" style="margin:0;cursor:pointer;font-weight:500;color:var(--ink)">بدل تركيا — هامش إضافي يدوي بالدينار الليبي (منفصل عن الربح بالدولار)</label>
+          </div>
+          <div class="form-grid" id="rm-allowance-fields" style="display:none">
+            <div class="field"><label>بدل تركيا (دينار ليبي)</label><input type="text" id="rm-allowance" placeholder="50.00" /></div>
           </div>
           <button class="btn-primary" id="create-remittance-btn" onclick="createRemittance()">تسجيل الحوالة</button>
+          <p class="form-note">تُسجَّل الحوالة بحالة "قيد التعديل" أولًا — بلا أي ترحيل محاسبي حتى يُسجَّل "تم السحب" لها من قائمة الحوالات أدناه.</p>
         </div>
 
         <div class="card">
-          <div class="card-head"><h3>ملخص أداء الحوالات</h3><span class="sub">التكلفة وقيمة البيع والربح الصافي مجمَّعة حسب الشبكة والاتجاه</span></div>
+          <div class="card-head"><h3>ملخص أداء الحوالات</h3><span class="sub">الحوالات المسحوبة (تم السحب) فقط، مجمَّعة حسب الشبكة — الربح بالدولار وبدل تركيا بالدينار منفصلان</span></div>
           <div class="filter-bar">
             <div class="field" style="margin:0"><label>من تاريخ</label><input type="date" id="rms-from" /></div>
             <div class="field" style="margin:0"><label>إلى تاريخ</label><input type="date" id="rms-to" /></div>
@@ -668,7 +669,12 @@
           <div class="card-head"><h3>قائمة الحوالات</h3></div>
           <div class="filter-bar">
             <select id="rm-filter-provider"><option value="">كل الشبكات</option><option value="WESTERN_UNION">وسترن يونيون</option><option value="MONEYGRAM">موني جرام</option></select>
-            <select id="rm-filter-direction"><option value="">كل الاتجاهات</option><option value="SEND">إرسال</option><option value="RECEIVE">استلام</option></select>
+            <select id="rm-filter-status">
+              <option value="">كل الحالات</option>
+              <option value="PENDING">قيد التعديل</option>
+              <option value="WITHDRAWN">تم السحب</option>
+              <option value="REJECTED">تم الرفض</option>
+            </select>
             <select id="rm-filter-customer-type"><option value="">كل العملاء</option><option value="INTERNAL">داخلي</option><option value="EXTERNAL">خارجي</option></select>
             <button class="btn-ghost btn-sm" onclick="remittancesPage=1;loadRemittances()">فلترة</button>
           </div>
@@ -1043,7 +1049,7 @@ async function onLoggedIn(token, user){
     // الدينار عملة خزينة/مصروف صالحة تمامًا (كاش، إيجار، رواتب...) — يُضاف يدويًا لهذي القوائم
     const optsWithLyd = `<option value="LYD">LYD — دينار ليبي</option>` + opts;
     currencyOptsWithLydHtml = optsWithLyd;
-    ['mv-currency','pos-currency','ex-currency','cba-currency','rm-currency','bkpos-currency','bkmv-currency'].forEach(id => {
+    ['mv-currency','pos-currency','ex-currency','cba-currency','bkpos-currency','bkmv-currency'].forEach(id => {
       document.getElementById(id).innerHTML = optsWithLyd;
     });
     document.getElementById('cbm-currency').innerHTML = '<option value="">كل العملات</option>' + optsWithLyd;
@@ -2041,11 +2047,10 @@ function voidExpensePrompt(id, btn){
     .catch(err => { showToast(err.message, true); btn.disabled = false; });
 }
 
-// ---------------- الحوالات (وسترن يونيون / موني جرام) ----------------
+// ---------------- الحوالات (تركيا↔ليبيا) ----------------
 
 const RM_PROVIDER_LABELS = { WESTERN_UNION: 'وسترن يونيون', MONEYGRAM: 'موني جرام' };
-const RM_DIRECTION_LABELS = { SEND: 'إرسال', RECEIVE: 'استلام' };
-const RM_CUSTOMER_TYPE_LABELS = { INTERNAL: 'داخلي', EXTERNAL: 'خارجي' };
+const RM_STATUS_LABELS = { PENDING: 'قيد التعديل', WITHDRAWN: 'تم السحب', REJECTED: 'تم الرفض' };
 
 function onRemittanceCustomerTypeChange(){
   const isInternal = document.getElementById('rm-customer-type').value === 'INTERNAL';
@@ -2053,19 +2058,24 @@ function onRemittanceCustomerTypeChange(){
   document.getElementById('rm-external-fields').style.display = isInternal ? 'none' : '';
 }
 
+function onRemittanceAllowanceToggle(){
+  const enabled = document.getElementById('rm-allowance-toggle').checked;
+  document.getElementById('rm-allowance-fields').style.display = enabled ? '' : 'none';
+  if (!enabled) document.getElementById('rm-allowance').value = '';
+}
+
+/** معاينة حيّة للربح الأساسي بالدولار = سعر الاستلام في تركيا - سعر التسليم في ليبيا. */
 function updateRemittanceProfitPreview(){
-  const cost = parseFloat(document.getElementById('rm-cost').value) || 0;
-  const sale = parseFloat(document.getElementById('rm-sale').value) || 0;
-  const currencyCode = document.getElementById('rm-currency').value;
-  const profit = sale - cost;
+  const receipt = parseFloat(document.getElementById('rm-receipt').value) || 0;
+  const delivery = parseFloat(document.getElementById('rm-delivery').value) || 0;
+  const profit = receipt - delivery;
   const field = document.getElementById('rm-profit-preview');
-  field.value = fmtNum(profit) + (currencyCode ? ' ' + currencyCode : '');
+  field.value = fmtNum(profit) + ' USD';
   field.style.color = profit < 0 ? 'var(--critical)' : 'var(--success)';
 }
 
 async function createRemittance(){
   const provider = document.getElementById('rm-provider').value;
-  const direction = document.getElementById('rm-direction').value;
   const customerType = document.getElementById('rm-customer-type').value;
   const clientId = document.getElementById('rm-client').value;
   const externalCustomerName = document.getElementById('rm-ext-name').value.trim();
@@ -2074,32 +2084,37 @@ async function createRemittance(){
   const referenceNumber = document.getElementById('rm-reference').value.trim();
   const countryCode = document.getElementById('rm-country').value.trim();
   const principalAmount = document.getElementById('rm-principal').value.trim();
-  const currencyCode = document.getElementById('rm-currency').value;
   const branchId = document.getElementById('rm-branch').value;
-  const cost = document.getElementById('rm-cost').value.trim();
-  const saleValue = document.getElementById('rm-sale').value.trim();
+  const turkeyReceiptAmount = document.getElementById('rm-receipt').value.trim();
+  const libyaDeliveryAmount = document.getElementById('rm-delivery').value.trim();
+  const allowanceEnabled = document.getElementById('rm-allowance-toggle').checked;
+  const turkeyAllowanceLyd = document.getElementById('rm-allowance').value.trim();
 
-  if (!counterpartyName || !referenceNumber || !principalAmount || !cost || !saleValue) {
-    showToast('عبّئ اسم الطرف الآخر والرقم المرجعي والقيمة الأساسية والتكلفة وقيمة البيع', true);
+  if (!counterpartyName || !referenceNumber || !principalAmount || !turkeyReceiptAmount || !libyaDeliveryAmount) {
+    showToast('عبّئ اسم الطرف الآخر والرقم المرجعي والقيمة الأساسية وسعري الاستلام والتسليم', true);
     return;
   }
-  if (customerType === 'INTERNAL' && !clientId) { showToast('اختر عميلًا داخليًا أولًا', true); return; }
+  if (customerType === 'INTERNAL' && !clientId) { showToast('اختر اسم الغرفة أولًا', true); return; }
   if (customerType === 'EXTERNAL' && !externalCustomerName) { showToast('أدخل اسم الزبون الخارجي', true); return; }
+  if (allowanceEnabled && !turkeyAllowanceLyd) { showToast('أدخل قيمة بدل تركيا أو ألغِ تفعيله', true); return; }
 
   const body = {
-    provider, direction, customerType, counterpartyName, referenceNumber,
-    principalAmount, currencyCode, cost, saleValue,
+    provider, customerType, counterpartyName, referenceNumber,
+    principalAmount, turkeyReceiptAmount, libyaDeliveryAmount,
   };
   if (customerType === 'INTERNAL') { body.clientId = clientId; }
   else { body.externalCustomerName = externalCustomerName; if (externalCustomerPhone) body.externalCustomerPhone = externalCustomerPhone; }
   if (countryCode) body.countryCode = countryCode;
   if (branchId) body.branchId = branchId;
+  if (allowanceEnabled) body.turkeyAllowanceLyd = turkeyAllowanceLyd;
 
   await runBusy('create-remittance-btn', async () => {
     await apiCall('/remittances', { method: 'POST', body: JSON.stringify(body) });
-    showToast('سُجّلت الحوالة بنجاح');
-    ['rm-counterparty','rm-reference','rm-country','rm-principal','rm-cost','rm-sale','rm-ext-name','rm-ext-phone'].forEach(id => document.getElementById(id).value = '');
+    showToast('سُجّلت الحوالة بنجاح — بحالة "قيد التعديل"');
+    ['rm-counterparty','rm-reference','rm-country','rm-principal','rm-receipt','rm-delivery','rm-ext-name','rm-ext-phone','rm-allowance'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('rm-profit-preview').value = '';
+    document.getElementById('rm-allowance-toggle').checked = false;
+    document.getElementById('rm-allowance-fields').style.display = 'none';
     remittancesPage = 1; loadRemittances(); loadRemittancesSummary();
   })().catch(err => showToast(err.message, true));
 }
@@ -2109,32 +2124,42 @@ async function loadRemittances(){
   el.textContent = 'جارِ التحميل...';
   try{
     const provider = document.getElementById('rm-filter-provider').value;
-    const direction = document.getElementById('rm-filter-direction').value;
+    const status = document.getElementById('rm-filter-status').value;
     const customerType = document.getElementById('rm-filter-customer-type').value;
     const params = new URLSearchParams({ page: remittancesPage, pageSize: 10 });
     if (provider) params.set('provider', provider);
-    if (direction) params.set('direction', direction);
+    if (status) params.set('status', status);
     if (customerType) params.set('customerType', customerType);
     const result = await apiCall('/remittances?' + params.toString());
     if (result.items.length === 0) { el.textContent = 'لا توجد حوالات مطابقة.'; document.getElementById('remittances-pager').innerHTML = ''; return; }
-    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الاتجاه</th><th>العميل</th><th>الطرف الآخر</th><th>الرقم المرجعي</th><th>القيمة الأساسية</th><th>التكلفة</th><th>قيمة البيع</th><th>الربح</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الغرفة/الزبون</th><th>الطرف الآخر</th><th>الرقم المرجعي</th><th>القيمة الأساسية</th><th>استلام تركيا</th><th>تسليم ليبيا</th><th>الربح (USD)</th><th>بدل تركيا (LYD)</th><th>الحالة</th><th></th></tr></thead><tbody>';
     result.items.forEach(r => {
       const customer = r.customerType === 'INTERNAL' ? (r.client ? r.client.fullName : '—') : `${r.externalCustomerName || '—'} <span class="pill">خارجي</span>`;
       const profitColor = parseFloat(r.profit) < 0 ? 'var(--critical)' : 'var(--success)';
-      const actions = r.isVoided ? '—' : `<button class="btn-danger btn-sm" onclick="voidRemittancePrompt('${r.id}', this)">إلغاء</button>`;
-      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${RM_DIRECTION_LABELS[r.direction] || r.direction}</td><td>${customer}</td><td>${r.counterpartyName}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.principalAmount)} ${r.currency.code}</td><td class="num">${fmtNum(r.cost)}</td><td class="num">${fmtNum(r.saleValue)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td>${r.isVoided ? '<span class="pill bad">ملغاة</span>' : '<span class="pill ok">فعّالة</span>'}</td><td>${actions}</td></tr>`;
+      const actions = r.status === 'PENDING'
+        ? `<button class="btn-primary btn-sm" onclick="withdrawRemittance('${r.id}', this)">تم السحب</button> <button class="btn-danger btn-sm" onclick="rejectRemittancePrompt('${r.id}', this)">رفض</button>`
+        : '—';
+      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${customer}</td><td>${r.counterpartyName}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.principalAmount)}</td><td class="num">${fmtNum(r.turkeyReceiptAmount)}</td><td class="num">${fmtNum(r.libyaDeliveryAmount)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td class="num">${r.turkeyAllowanceLyd ? fmtNum(r.turkeyAllowanceLyd) : '—'}</td><td><span class="pill ${r.status}">${RM_STATUS_LABELS[r.status] || r.status}</span></td><td>${actions}</td></tr>`;
     });
     el.innerHTML = html + '</tbody></table></div>';
     pagerHtml('remittances-pager', remittancesPage, 10, result.total, 'p => { remittancesPage = p; loadRemittances(); }');
   }catch(err){ el.innerHTML = `<span style="color:var(--critical)">${err.message}</span>`; }
 }
 
-function voidRemittancePrompt(id, btn){
-  const reason = prompt('سبب إلغاء الحوالة:');
+function withdrawRemittance(id, btn){
+  if (!confirm('تأكيد تسجيل سحب هذه الحوالة؟ سيُرحَّل هامشها محاسبيًا فورًا — لا يمكن التراجع عن هذا لاحقًا.')) return;
+  btn.disabled = true;
+  apiCall('/remittances/' + id + '/withdraw', { method: 'POST' })
+    .then(() => { showToast('سُجِّل سحب الحوالة ورُحِّل هامشها محاسبيًا'); loadRemittances(); loadRemittancesSummary(); })
+    .catch(err => { showToast(err.message, true); btn.disabled = false; });
+}
+
+function rejectRemittancePrompt(id, btn){
+  const reason = prompt('سبب رفض الحوالة:');
   if (!reason) return;
   btn.disabled = true;
-  apiCall('/remittances/' + id + '/void', { method: 'POST', body: JSON.stringify({ reason }) })
-    .then(() => { showToast('أُلغيت الحوالة'); loadRemittances(); loadRemittancesSummary(); })
+  apiCall('/remittances/' + id + '/reject', { method: 'POST', body: JSON.stringify({ reason }) })
+    .then(() => { showToast('رُفضت الحوالة'); loadRemittances(); loadRemittancesSummary(); })
     .catch(err => { showToast(err.message, true); btn.disabled = false; });
 }
 
@@ -2152,20 +2177,19 @@ async function loadRemittancesSummary(){
   kpisEl.innerHTML = '<div class="kpi"><div class="l">جارِ التحميل...</div></div>';
   try{
     const summary = await apiCall('/remittances/summary?' + params.toString());
-    const profitColor = parseFloat(summary.totals.totalProfit) < 0 ? 'var(--critical)' : 'var(--success)';
+    const profitColor = parseFloat(summary.totals.totalProfitUsd) < 0 ? 'var(--critical)' : 'var(--success)';
     kpisEl.innerHTML = `
-      <div class="kpi"><div class="l">عدد الحوالات</div><div class="v num">${summary.totals.count}</div></div>
-      <div class="kpi"><div class="l">إجمالي التكلفة</div><div class="v num">${fmtNum(summary.totals.totalCost)}</div></div>
-      <div class="kpi"><div class="l">إجمالي قيمة البيع</div><div class="v num">${fmtNum(summary.totals.totalSaleValue)}</div></div>
-      <div class="kpi"><div class="l">الربح الصافي</div><div class="v num" style="color:${profitColor}">${fmtNum(summary.totals.totalProfit)}</div></div>
+      <div class="kpi"><div class="l">عدد الحوالات المسحوبة</div><div class="v num">${summary.totals.count}</div></div>
+      <div class="kpi"><div class="l">الربح الصافي (دولار)</div><div class="v num" style="color:${profitColor}">${fmtNum(summary.totals.totalProfitUsd)}</div></div>
+      <div class="kpi"><div class="l">إجمالي بدل تركيا (دينار)</div><div class="v num">${fmtNum(summary.totals.totalTurkeyAllowanceLyd)}</div></div>
     `;
     if (summary.items.length === 0) {
-      tableEl.innerHTML = '<div class="state-msg">لا توجد حوالات فعّالة لهذه الفترة.</div>';
+      tableEl.innerHTML = '<div class="state-msg">لا توجد حوالات مسحوبة لهذه الفترة.</div>';
     } else {
-      let html = '<div class="table-wrap"><table><thead><tr><th>الشبكة</th><th>الاتجاه</th><th>العملة</th><th>العدد</th><th>القيمة الأساسية</th><th>التكلفة</th><th>قيمة البيع</th><th>الربح الصافي</th></tr></thead><tbody>';
+      let html = '<div class="table-wrap"><table><thead><tr><th>الشبكة</th><th>العدد</th><th>القيمة الأساسية</th><th>إجمالي استلام تركيا</th><th>إجمالي تسليم ليبيا</th><th>الربح الصافي (دولار)</th><th>بدل تركيا (دينار)</th></tr></thead><tbody>';
       summary.items.forEach(i => {
-        const c = parseFloat(i.totalProfit) < 0 ? 'var(--critical)' : 'var(--success)';
-        html += `<tr><td>${RM_PROVIDER_LABELS[i.provider] || i.provider}</td><td>${RM_DIRECTION_LABELS[i.direction] || i.direction}</td><td>${i.currency}</td><td class="num">${i.count}</td><td class="num">${fmtNum(i.totalPrincipal)}</td><td class="num">${fmtNum(i.totalCost)}</td><td class="num">${fmtNum(i.totalSaleValue)}</td><td class="num" style="color:${c}">${fmtNum(i.totalProfit)}</td></tr>`;
+        const c = parseFloat(i.totalProfitUsd) < 0 ? 'var(--critical)' : 'var(--success)';
+        html += `<tr><td>${RM_PROVIDER_LABELS[i.provider] || i.provider}</td><td class="num">${i.count}</td><td class="num">${fmtNum(i.totalPrincipal)}</td><td class="num">${fmtNum(i.totalTurkeyReceiptAmount)}</td><td class="num">${fmtNum(i.totalLibyaDeliveryAmount)}</td><td class="num" style="color:${c}">${fmtNum(i.totalProfitUsd)}</td><td class="num">${fmtNum(i.totalTurkeyAllowanceLyd)}</td></tr>`;
       });
       tableEl.innerHTML = html + '</tbody></table></div>';
     }

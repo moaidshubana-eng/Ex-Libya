@@ -43,7 +43,7 @@ model User {
   mfaRecoveryCodeHashes String[] @default([]) // كل رمز استرداد يُستهلك مرة واحدة فقط (يُحذف من المصفوفة بعد الاستخدام)
 
   treasuryMovements               TreasuryMovement[]      @relation("MovementActor")
-  bankMovements                    BankMovement[]          @relation("BankMovementActor")
+  bankMovements                   BankMovement[]          @relation("BankMovementActor")
   publishedRates                  ExchangeRate[]          @relation("RateActor")
   auditLogs                       AuditLog[]              @relation("AuditActor")
   requestedDeals                  Transaction[]           @relation("DealRequestedBy")
@@ -53,7 +53,7 @@ model User {
   voidedExpenses                  Expense[]               @relation("ExpenseVoidedBy")
   clientBalanceMovementsPerformed ClientBalanceMovement[] @relation("ClientBalanceMovementActor")
   recordedRemittances             Remittance[]            @relation("RemittanceRecordedBy")
-  voidedRemittances               Remittance[]            @relation("RemittanceVoidedBy")
+  remittanceStatusChanges         Remittance[]            @relation("RemittanceStatusActor")
   postedJournalEntries            JournalEntry[]
 
   @@map("users")
@@ -485,25 +485,25 @@ enum MessageStatus {
 }
 
 model WhatsAppMessage {
-  id                String           @id @default(uuid())
-  direction         MessageDirection
-  kind              MessageKind
-  intent            MessageIntent? // للرسائل الواردة فقط
-  waPhoneNumber     String // رقم واتساب بالصيغة الدولية
-  clientId          String?
-  client            Client?          @relation(fields: [clientId], references: [id])
-  templateName      String?
-  body              String // النص الفعلي المُرسَل أو المُستقبَل — للتدقيق والعرض
-  status            MessageStatus
-  errorMessage      String?
-  providerMessageId String? // معرّف الرسالة من Meta، إن توفّر
-  relatedDealId     String?
-  relatedDeal       Transaction?     @relation(fields: [relatedDealId], references: [id])
+  id                             String                 @id @default(uuid())
+  direction                      MessageDirection
+  kind                           MessageKind
+  intent                         MessageIntent? // للرسائل الواردة فقط
+  waPhoneNumber                  String // رقم واتساب بالصيغة الدولية
+  clientId                       String?
+  client                         Client?                @relation(fields: [clientId], references: [id])
+  templateName                   String?
+  body                           String // النص الفعلي المُرسَل أو المُستقبَل — للتدقيق والعرض
+  status                         MessageStatus
+  errorMessage                   String?
+  providerMessageId              String? // معرّف الرسالة من Meta، إن توفّر
+  relatedDealId                  String?
+  relatedDeal                    Transaction?           @relation(fields: [relatedDealId], references: [id])
   // إشعار رصيد تلقائي مرتبط بحركة على رصيد وديعة عميل (إيداع/سحب/تصحيح) —
   // انظر WhatsAppService.sendClientBalanceUpdate.
   relatedClientBalanceMovementId String?
   relatedClientBalanceMovement   ClientBalanceMovement? @relation(fields: [relatedClientBalanceMovementId], references: [id])
-  createdAt         DateTime         @default(now())
+  createdAt                      DateTime               @default(now())
 
   @@index([clientId, createdAt])
   @@index([waPhoneNumber, createdAt])
@@ -585,10 +585,16 @@ model Expense {
 }
 
 // ------------------------------------------------------------------
-// حوالات وسترن يونيون وموني جرام — الشركة وكيل تحويل أموال لهاتين الشبكتين.
-// وحدة مستقلة تمامًا عن حسابات وديعة العملاء (ClientBalance) وحركات خزينة
-// الفروع (TreasuryMovement)؛ الربح لكل حوالة (profit = saleValue - cost)
-// يُحسب ويُخزَّن لحظة التسجيل ولا يتغيّر إلا بإلغاء الحوالة كاملة (isVoided).
+// حوالات تركيا↔ليبيا (عبر شبكة وسترن يونيون/موني جرام كوكيل) — تدفق ثابت
+// واحد بالشركة: استلام في تركيا ثم تسليم في ليبيا؛ لا اتجاه يُختار يدويًا
+// بعد الآن. الربح الأساسي بالدولار = turkeyReceiptAmount - libyaDeliveryAmount
+// (محسوب تلقائيًا)، مع بدل تركيا اختياري يدوي منفصل بالدينار الليبي
+// (turkeyAllowanceLyd). وحدة مستقلة تمامًا عن حسابات وديعة العملاء
+// (ClientBalance) وحركات خزينة الفروع (TreasuryMovement). لا حذف فعلي لأي
+// حوالة — دورة حياة status ثلاثية (PENDING → WITHDRAWN أو REJECTED) تحل
+// محل isVoided القديم؛ الهامش يُحسب ويُخزَّن عند التسجيل (PENDING) لكن لا
+// يُرحَّل محاسبيًا إلا عند السحب الفعلي (WITHDRAWN) — تمامًا كصفقات الصرف
+// (DealsService: profitLyd يُحسب عند الإنشاء، يُرحَّل عند التنفيذ فقط).
 // ------------------------------------------------------------------
 
 enum RemittanceProvider {
@@ -596,6 +602,9 @@ enum RemittanceProvider {
   MONEYGRAM // موني جرام
 }
 
+// أُبقي هذا التعداد للحوالات التاريخية السابقة على إلغاء خانة الاتجاه فقط —
+// Remittance.direction صار عمودًا اختياريًا لا يُطلَب ولا يُعرَض لأي حوالة
+// جديدة (كل حوالة تتبع نفس التدفق الثابت: استلام في تركيا ← تسليم في ليبيا).
 enum RemittanceDirection {
   SEND // حوالة صادرة — العميل يرسل مبلغًا عبر الشركة كوكيل
   RECEIVE // حوالة واردة — العميل يستلم مبلغًا مرسلًا إليه عبر الشركة
@@ -606,12 +615,18 @@ enum RemittanceCustomerType {
   EXTERNAL // زبون عابر غير مسجَّل — بياناته تُدخَل يدويًا لهذه الحوالة فقط
 }
 
-// سجل تراكمي — لا حذف فعلي لأي حوالة؛ تصحيح خطأ التسجيل يكون بإلغائها
-// (isVoided) مع سبب موثّق، فيبقى أثرها ظاهرًا في السجل والتدقيق والتقارير.
+enum RemittanceStatus {
+  PENDING // قيد التعديل — سُجّلت للتو، لم تُسحَب أو تُرفض بعد؛ لا أثر محاسبي بعد
+  WITHDRAWN // تم السحب — استلمها المستفيد فعليًا؛ عندها فقط يُرحَّل الهامش محاسبيًا
+  REJECTED // تم الرفض — نهاية ملغاة، بلا أي ترحيل محاسبي إطلاقًا
+}
+
+// سجل تراكمي — لا حذف فعلي لأي حوالة؛ تصحيح خطأ التسجيل يكون برفضها
+// (status = REJECTED) مع سبب موثّق، فيبقى أثرها ظاهرًا في السجل والتدقيق.
 model Remittance {
   id           String                 @id @default(uuid())
   provider     RemittanceProvider
-  direction    RemittanceDirection
+  direction    RemittanceDirection? // تاريخي فقط — انظر تعليق التعداد أعلاه
   customerType RemittanceCustomerType
 
   // عميل داخلي مسجَّل (customerType = INTERNAL) — وإلا بيانات زبون خارجي تُدخَل يدويًا
@@ -620,27 +635,29 @@ model Remittance {
   externalCustomerName  String?
   externalCustomerPhone String?
 
-  // الطرف الآخر في الحوالة: المستفيد النهائي (لو SEND) أو المرسِل الأصلي (لو RECEIVE)
+  // الطرف الآخر في الحوالة: المستفيد النهائي في ليبيا
   counterpartyName String
   referenceNumber  String // MTCN لوسترن يونيون / الرقم المرجعي لموني جرام
   countryCode      String? // بلد الطرف الآخر — اختياري
 
-  principalAmount Decimal  @db.Decimal(18, 2) // القيمة الأساسية للحوالة (ما يُرسَل/يُستلَم فعليًا)
-  currencyId      String
+  principalAmount Decimal  @db.Decimal(18, 2) // القيمة الأساسية للحوالة (ما يُسلَّم فعليًا للمستفيد) — دومًا بالدولار
+  currencyId      String // دومًا معرّف عملة USD — لا يُختار يدويًا (الحوالة كلها بالدولار فقط)
   currency        Currency @relation(fields: [currencyId], references: [id])
 
-  cost      Decimal @db.Decimal(18, 2) // تكلفة الحوالة على الشركة (عمولة الشبكة أو ما يعادلها)
-  saleValue Decimal @db.Decimal(18, 2) // قيمة بيع الحوالة للعميل (ما تحصّله الشركة)
-  profit    Decimal @db.Decimal(18, 2) // = saleValue - cost، محسوبة تلقائيًا عند التسجيل
+  // اقتصاديات الحوالة الفعلية للشركة — كلاهما بالدولار دومًا (نفس عملة principalAmount):
+  turkeyReceiptAmount Decimal  @db.Decimal(18, 2) // سعر الاستلام في تركيا (ما يصل الشركة فعليًا هناك)
+  libyaDeliveryAmount Decimal  @db.Decimal(18, 2) // سعر التسليم في ليبيا (ما تدفعه الشركة فعليًا هنا)
+  profit              Decimal  @db.Decimal(18, 2) // = turkeyReceiptAmount - libyaDeliveryAmount بالدولار، تلقائي عند التسجيل
+  turkeyAllowanceLyd  Decimal? @db.Decimal(18, 2) // "بدل تركيا" — هامش إضافي يدوي اختياري بالدينار الليبي فقط، منفصل تمامًا عن profit (عملة مختلفة)
 
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id])
 
-  isVoided   Boolean   @default(false)
-  voidReason String?
-  voidedById String?
-  voidedBy   User?     @relation("RemittanceVoidedBy", fields: [voidedById], references: [id])
-  voidedAt   DateTime?
+  status            RemittanceStatus @default(PENDING)
+  statusReason      String? // سبب الرفض تحديدًا — إلزامي عمليًا عند REJECTED (تتحقق منه الخدمة، لا القاعدة)
+  statusChangedById String?
+  statusChangedBy   User?            @relation("RemittanceStatusActor", fields: [statusChangedById], references: [id])
+  statusChangedAt   DateTime?
 
   recordedById String
   recordedBy   User   @relation("RemittanceRecordedBy", fields: [recordedById], references: [id])
@@ -648,7 +665,7 @@ model Remittance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([provider, direction, createdAt])
+  @@index([provider, status, createdAt])
   @@index([branchId, createdAt])
   @@map("remittances")
 }
