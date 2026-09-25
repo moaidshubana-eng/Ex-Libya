@@ -34,9 +34,15 @@ const usdCurrency = {
 const REAL_ACCOUNTS = CHART_OF_ACCOUNTS.map((a) => ({ id: 'acc-' + a.code, ...a }));
 
 function buildPrismaMock() {
+  const ledger = buildLedgerMockDelegates();
   const tx = {
     currency: { findUnique: jest.fn().mockResolvedValue(lydCurrency) },
-    ...buildLedgerMockDelegates(),
+    ...ledger,
+    journalEntry: {
+      ...ledger.journalEntry,
+      deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
+    },
+    journalLine: { deleteMany: jest.fn().mockResolvedValue({ count: 7 }) },
   };
 
   return {
@@ -217,5 +223,29 @@ describe('AccountingService.getIncomeStatement', () => {
     expect(statement.netIncomeBeforeTaxLydEquivalent).toBe('700.00');
     expect(statement.incomeTax.totalLydEquivalent).toBe('70.00');
     expect(statement.netIncomeAfterTaxLydEquivalent).toBe('630.00');
+  });
+});
+
+describe('AccountingService.resetLedger', () => {
+  it('يحذف كل قيود اليومية وسطورها ويدوّن السبب والعدد في سجل التدقيق', async () => {
+    const prisma = buildPrismaMock();
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new AccountingService(prisma, audit);
+
+    const result = await service.resetLedger(
+      { reason: 'تصفير بيانات الاختبار قبل الانطلاق الفعلي' },
+      actor,
+    );
+
+    expect(result).toEqual({ deletedEntries: 3, deletedLines: 7 });
+    expect(prisma.tx.journalLine.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.tx.journalEntry.deleteMany).toHaveBeenCalledWith({});
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'RESET_LEDGER',
+        before: { deletedEntries: 3, deletedLines: 7 },
+        after: { reason: 'تصفير بيانات الاختبار قبل الانطلاق الفعلي' },
+      }),
+    );
   });
 });

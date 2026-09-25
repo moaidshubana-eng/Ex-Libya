@@ -18,18 +18,16 @@ import { RejectRemittanceDto } from './dto/reject-remittance.dto';
 
 /**
  * سطور القيد المحاسبي لهامش حوالة — يُبنى فقط عند السحب الفعلي (WITHDRAWN)،
- * لا عند مجرد التسجيل (PENDING). الهامش الأساسي بالدولار: ذمم الهامش تتحرك
- * بصافي الربح (مدينة إن كان موجبًا، دائنة إن كان خسارة)، مقابل سعر الاستلام
- * في تركيا كإيراد كامل وسعر التسليم في ليبيا كتكلفة كاملة — يعرض الإيراد
- * والتكلفة منفصلين في قائمة الدخل بدل صافي واحد فقط، ويظل متوازنًا حسابيًا
- * في كل الحالات (انظر post-journal-entry.ts). بدل تركيا (إن وُجد) سطران
- * إضافيان بالدينار الليبي ضمن القيد نفسه — عملة مستقلة تمامًا، تُوازَن على
- * حدة (postJournalEntry يتحقق من توازن كل عملة بمعزل عن الأخرى).
+ * لا عند مجرد التسجيل (PENDING). يُرحَّل صافي الربح فقط (لا قيمة الحوالة
+ * كاملة) — على غرار DealsService.execute بالضبط: ذمم الهامش تتحرك بصافي
+ * الربح (مدينة إن كان موجبًا، دائنة إن كان خسارة)، مقابل إيراد الهامش بنفس
+ * القيمة على الجانب الآخر — قيد بسطرين فقط، لا تفصيل إيراد/تكلفة إجماليَين.
+ * بدل تركيا (إن وُجد) سطران إضافيان بالدينار الليبي ضمن القيد نفسه — عملة
+ * مستقلة تمامًا، تُوازَن على حدة (postJournalEntry يتحقق من توازن كل عملة
+ * بمعزل عن الأخرى).
  */
 function remittanceLedgerLines(params: {
   profit: Prisma.Decimal;
-  turkeyReceiptAmount: Prisma.Decimal.Value;
-  libyaDeliveryAmount: Prisma.Decimal.Value;
   currencyId: string;
   turkeyAllowanceLyd?: Prisma.Decimal.Value | null;
   lydCurrencyId?: string;
@@ -45,13 +43,7 @@ function remittanceLedgerLines(params: {
     },
     {
       accountCode: ACCOUNT_CODES.REMITTANCE_MARGIN_REVENUE,
-      credit: params.turkeyReceiptAmount,
-      currencyId: params.currencyId,
-      branchId: params.branchId,
-    },
-    {
-      accountCode: ACCOUNT_CODES.REMITTANCE_NETWORK_COST,
-      debit: params.libyaDeliveryAmount,
+      ...(profitIsGain ? { credit: params.profit } : { debit: params.profit.abs() }),
       currencyId: params.currencyId,
       branchId: params.branchId,
     },
@@ -106,49 +98,50 @@ export class RemittancesService {
     return currency;
   }
 
-  async create(dto: CreateRemittanceDto, actor: AuthenticatedUser) {
-    // تصنيف العميل: عميل داخلي يتطلب clientId وحده، وزبون خارجي يتطلب اسمًا يدويًا
-    // وحده — لا يُقبل مزج الاثنين أو تركهما فارغين، لضمان وضوح من هو الطرف المتعامل.
-    if (dto.customerType === RemittanceCustomerType.INTERNAL) {
-      if (!dto.clientId) {
-        throw new BadRequestException('عميل داخلي يتطلب تحديد clientId');
+  /**
+   * يعثر على عميل بهاتفه أو يسجّله تلقائيًا كعميل جديد إن لم يكن مسجَّلًا —
+   * كل حوالة الآن مرتبطة بعميل حقيقي، لدعم أكثر من حوالة لنفس الزبون في يوم
+   * واحد (قيد التعديل + سابقة مسحوبة مثلًا) دون إعادة إدخال بياناته يدويًا في
+   * كل مرة. عميل عُثر عليه ومسجَّل مسبقًا (ولو عبر وحدة العملاء مباشرة) يُعاد
+   * استخدامه كما هو — لا يُعدَّل اسمه المحفوظ بالاسم المُدخَل هنا.
+   */
+  private async findOrRegisterClient(customerName: string, customerPhone: string) {
+    const existing = await this.prisma.client.findUnique({ where: { phone: customerPhone } });
+    if (existing) {
+      if (!existing.isActive) {
+        throw new BadRequestException('العميل معطَّل — لا يمكن تسجيل حوالة له');
       }
-      if (dto.externalCustomerName) {
-        throw new BadRequestException('لا يُقبل اسم زبون خارجي مع عميل داخلي (clientId)');
-      }
-      const client = await this.prisma.client.findUnique({ where: { id: dto.clientId } });
-      if (!client) throw new NotFoundException('العميل غير موجود');
-      if (!client.isActive) throw new BadRequestException('العميل معطَّل — لا يمكن تسجيل حوالة له');
-    } else {
-      if (!dto.externalCustomerName) {
-        throw new BadRequestException('زبون خارجي يتطلب تحديد externalCustomerName');
-      }
-      if (dto.clientId) {
-        throw new BadRequestException('لا يُقبل clientId مع زبون خارجي (customerType = EXTERNAL)');
-      }
+      return existing;
     }
 
+    // معرّف مؤقّت (لا رقم وطني/سجل تجاري فعليًا لزبون سُجِّل تلقائيًا عبر
+    // الحوالات فقط) — nationalIdOrReg يبقى فريدًا وإلزاميًا في نموذج العميل.
+    const syntheticNationalId = `RM-${customerPhone.replace(/\D/g, '')}`;
+    return this.prisma.client.create({
+      data: {
+        fullName: customerName,
+        phone: customerPhone,
+        nationalIdOrReg: syntheticNationalId,
+      },
+    });
+  }
+
+  async create(dto: CreateRemittanceDto, actor: AuthenticatedUser) {
     if (dto.branchId) {
       const branch = await this.prisma.branch.findUnique({ where: { id: dto.branchId } });
       if (!branch) throw new NotFoundException('الفرع غير موجود');
     }
 
+    const client = await this.findOrRegisterClient(dto.customerName, dto.customerPhone);
     const currency = await this.getUsdCurrencyOrThrow();
     const profit = toMoney(dto.turkeyReceiptAmount).minus(toMoney(dto.libyaDeliveryAmount));
 
     const remittance = await this.prisma.remittance.create({
       data: {
         provider: dto.provider,
-        customerType: dto.customerType,
-        clientId: dto.customerType === RemittanceCustomerType.INTERNAL ? dto.clientId : null,
-        externalCustomerName:
-          dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerName : null,
-        externalCustomerPhone:
-          dto.customerType === RemittanceCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
-        counterpartyName: dto.counterpartyName,
+        customerType: RemittanceCustomerType.INTERNAL,
+        clientId: client.id,
         referenceNumber: dto.referenceNumber,
-        countryCode: dto.countryCode,
-        principalAmount: dto.principalAmount,
         currencyId: currency.id,
         turkeyReceiptAmount: dto.turkeyReceiptAmount,
         libyaDeliveryAmount: dto.libyaDeliveryAmount,
@@ -168,9 +161,8 @@ export class RemittancesService {
       actorId: actor.id,
       after: {
         provider: remittance.provider,
-        customerType: remittance.customerType,
+        clientId: remittance.clientId,
         referenceNumber: remittance.referenceNumber,
-        principalAmount: remittance.principalAmount.toString(),
         turkeyReceiptAmount: remittance.turkeyReceiptAmount.toString(),
         libyaDeliveryAmount: remittance.libyaDeliveryAmount.toString(),
         profit: remittance.profit.toString(),
@@ -186,7 +178,6 @@ export class RemittancesService {
     const where: Prisma.RemittanceWhereInput = {
       ...(query.provider && { provider: query.provider }),
       ...(query.status && { status: query.status }),
-      ...(query.customerType && { customerType: query.customerType }),
       ...(query.branchId && { branchId: query.branchId }),
       ...(query.clientId && { clientId: query.clientId }),
       ...((query.from || query.to) && {
@@ -255,8 +246,6 @@ export class RemittancesService {
         postedById: actor.id,
         lines: remittanceLedgerLines({
           profit: toMoney(remittance.profit),
-          turkeyReceiptAmount: remittance.turkeyReceiptAmount,
-          libyaDeliveryAmount: remittance.libyaDeliveryAmount,
           currencyId: remittance.currencyId,
           turkeyAllowanceLyd: remittance.turkeyAllowanceLyd,
           lydCurrencyId: lydCurrency?.id,
@@ -340,7 +329,6 @@ export class RemittancesService {
         turkeyReceiptAmount: true,
         libyaDeliveryAmount: true,
         profit: true,
-        principalAmount: true,
         turkeyAllowanceLyd: true,
       },
       _count: { _all: true },
@@ -349,7 +337,6 @@ export class RemittancesService {
     const items = rows.map((row) => ({
       provider: row.provider,
       count: row._count._all,
-      totalPrincipal: toMoney(row._sum.principalAmount ?? 0).toFixed(2),
       totalTurkeyReceiptAmount: toMoney(row._sum.turkeyReceiptAmount ?? 0).toFixed(2),
       totalLibyaDeliveryAmount: toMoney(row._sum.libyaDeliveryAmount ?? 0).toFixed(2),
       totalProfitUsd: toMoney(row._sum.profit ?? 0).toFixed(2),

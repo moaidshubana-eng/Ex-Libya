@@ -629,18 +629,23 @@ model Remittance {
   direction    RemittanceDirection? // تاريخي فقط — انظر تعليق التعداد أعلاه
   customerType RemittanceCustomerType
 
-  // عميل داخلي مسجَّل (customerType = INTERNAL) — وإلا بيانات زبون خارجي تُدخَل يدويًا
+  // كل حوالة جديدة مرتبطة بعميل حقيقي (Client) — عُثر عليه بهاتفه أو سُجِّل
+  // تلقائيًا عند الإنشاء (RemittancesService.create) لدعم أكثر من حوالة لنفس
+  // الزبون في يوم واحد (قيد التعديل + سابقة مسحوبة مثلًا). customerType يبقى
+  // INTERNAL دومًا لأي حوالة جديدة؛ externalCustomerName/externalCustomerPhone
+  // أُبقيا نسخة تاريخية فقط لحوالات زبائن خارجيين سابقة على هذا التغيير.
   clientId              String?
   client                Client? @relation(fields: [clientId], references: [id])
   externalCustomerName  String?
   externalCustomerPhone String?
 
-  // الطرف الآخر في الحوالة: المستفيد النهائي في ليبيا
-  counterpartyName String
+  // الطرف الآخر/القيمة الأساسية — أُلغي إدخالهما صراحةً؛ أُبقيا اختياريَّين في
+  // المخطط لحفظ بيانات الحوالات التاريخية فقط.
+  counterpartyName String?
   referenceNumber  String // MTCN لوسترن يونيون / الرقم المرجعي لموني جرام
-  countryCode      String? // بلد الطرف الآخر — اختياري
+  countryCode      String? // بلد الطرف الآخر — تاريخي فقط، أُلغي إدخاله أيضًا
 
-  principalAmount Decimal  @db.Decimal(18, 2) // القيمة الأساسية للحوالة (ما يُسلَّم فعليًا للمستفيد) — دومًا بالدولار
+  principalAmount Decimal? @db.Decimal(18, 2) // تاريخي فقط — أُلغي إدخاله صراحةً
   currencyId      String // دومًا معرّف عملة USD — لا يُختار يدويًا (الحوالة كلها بالدولار فقط)
   currency        Currency @relation(fields: [currencyId], references: [id])
 

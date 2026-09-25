@@ -26,7 +26,7 @@ export class RemittancesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'قائمة الحوالات مع فلترة بالشبكة/الحالة/تصنيف العميل/الفرع/الفترة' })
+  @ApiOperation({ summary: 'قائمة الحوالات مع فلترة بالشبكة/الحالة/العميل/الفرع/الفترة' })
   findAll(@Query() query: ListRemittancesQuery) {
     return this.remittancesService.findAll(query);
   }

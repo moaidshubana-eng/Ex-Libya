@@ -22,11 +22,16 @@ const usdCurrency = {
 };
 const lydCurrency = { id: 'cur-lyd', code: 'LYD', name: 'دينار ليبي', isActive: true };
 
-const activeClient = { id: 'client-1', fullName: 'محمد الصالح', isActive: true };
+const existingClient = {
+  id: 'client-1',
+  fullName: 'محمد الصالح',
+  phone: '+218911234567',
+  isActive: true,
+};
 
 function buildPrismaMock(
   options: {
-    client?: unknown;
+    existingClient?: unknown;
     branch?: unknown;
     createdOverrides?: Record<string, unknown>;
   } = {},
@@ -36,9 +41,7 @@ function buildPrismaMock(
     provider: 'WESTERN_UNION',
     customerType: 'INTERNAL',
     clientId: 'client-1',
-    counterpartyName: 'مستفيد ما',
     referenceNumber: 'MTCN123',
-    principalAmount: '1940.00',
     currencyId: 'cur-usd',
     turkeyReceiptAmount: '1950.00',
     libyaDeliveryAmount: '1940.00',
@@ -59,7 +62,14 @@ function buildPrismaMock(
 
   return {
     client: {
-      findUnique: jest.fn().mockResolvedValue('client' in options ? options.client : activeClient),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue('existingClient' in options ? options.existingClient : existingClient),
+      create: jest
+        .fn()
+        .mockImplementation(({ data }: any) =>
+          Promise.resolve({ id: 'client-new', isActive: true, ...data }),
+        ),
     },
     branch: {
       findUnique: jest
@@ -91,7 +101,7 @@ function buildPrismaMock(
 }
 
 describe('RemittancesService.create', () => {
-  it('يسجّل حوالة لعميل داخلي ويحسب الربح تلقائيًا (استلام تركيا - تسليم ليبيا)، بحالة PENDING', async () => {
+  it('يعيد استخدام عميل مسجَّل مسبقًا بهاتفه، ويحسب الربح تلقائيًا، بحالة PENDING', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
     const service = new RemittancesService(prisma, audit);
@@ -99,11 +109,9 @@ describe('RemittancesService.create', () => {
     const result = await service.create(
       {
         provider: 'WESTERN_UNION' as any,
-        customerType: 'INTERNAL' as any,
-        clientId: 'client-1',
-        counterpartyName: 'مستفيد ما',
+        customerName: 'محمد الصالح',
+        customerPhone: '+218911234567',
         referenceNumber: 'MTCN123',
-        principalAmount: '1940.00',
         turkeyReceiptAmount: '1950.00',
         libyaDeliveryAmount: '1940.00',
       },
@@ -111,11 +119,64 @@ describe('RemittancesService.create', () => {
     );
 
     expect(result.id).toBe('rem-1');
+    expect(prisma.client.create).not.toHaveBeenCalled(); // عميل موجود مسبقًا — لا تسجيل جديد
     const callArg = (prisma.remittance.create as jest.Mock).mock.calls[0][0];
+    expect(callArg.data.clientId).toBe('client-1');
     expect(callArg.data.profit.toString()).toBe('10');
     expect(callArg.data.status).toBe('PENDING');
-    expect(callArg.data.currencyId).toBe('cur-usd'); // العملة دومًا USD — لا تُختار يدويًا
+    expect(callArg.data.currencyId).toBe('cur-usd'); // العملة دومًا USD
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('يسجّل عميلًا جديدًا تلقائيًا إن لم يكن هاتفه مسجَّلًا مسبقًا', async () => {
+    const prisma = buildPrismaMock({ existingClient: null });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new RemittancesService(prisma, audit);
+
+    await service.create(
+      {
+        provider: 'MONEYGRAM' as any,
+        customerName: 'زبون جديد',
+        customerPhone: '+218900000000',
+        referenceNumber: 'MG-999',
+        turkeyReceiptAmount: '210.00',
+        libyaDeliveryAmount: '200.00',
+      },
+      actor,
+    );
+
+    expect(prisma.client.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fullName: 'زبون جديد',
+          phone: '+218900000000',
+          nationalIdOrReg: 'RM-218900000000',
+        }),
+      }),
+    );
+    const callArg = (prisma.remittance.create as jest.Mock).mock.calls[0][0];
+    expect(callArg.data.clientId).toBe('client-new');
+  });
+
+  it('يرفض تسجيل حوالة لعميل معطَّل (وُجد بهاتفه لكنه غير نشط)', async () => {
+    const prisma = buildPrismaMock({ existingClient: { ...existingClient, isActive: false } });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new RemittancesService(prisma, audit);
+
+    await expect(
+      service.create(
+        {
+          provider: 'WESTERN_UNION' as any,
+          customerName: 'محمد الصالح',
+          customerPhone: '+218911234567',
+          referenceNumber: 'MTCN123',
+          turkeyReceiptAmount: '1950.00',
+          libyaDeliveryAmount: '1940.00',
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('يقبل بدل تركيا اختياريًا بالدينار الليبي، منفصلًا عن الربح بالدولار', async () => {
@@ -126,11 +187,9 @@ describe('RemittancesService.create', () => {
     await service.create(
       {
         provider: 'WESTERN_UNION' as any,
-        customerType: 'INTERNAL' as any,
-        clientId: 'client-1',
-        counterpartyName: 'مستفيد ما',
+        customerName: 'محمد الصالح',
+        customerPhone: '+218911234567',
         referenceNumber: 'MTCN123',
-        principalAmount: '1940.00',
         turkeyReceiptAmount: '1950.00',
         libyaDeliveryAmount: '1940.00',
         turkeyAllowanceLyd: '50.00',
@@ -143,35 +202,8 @@ describe('RemittancesService.create', () => {
     expect(callArg.data.profit.toString()).toBe('10'); // لا يتأثر بدل تركيا بالربح بالدولار إطلاقًا
   });
 
-  it('يسجّل حوالة لزبون خارجي بلا clientId', async () => {
-    const prisma = buildPrismaMock();
-    const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
-
-    await service.create(
-      {
-        provider: 'MONEYGRAM' as any,
-        customerType: 'EXTERNAL' as any,
-        externalCustomerName: 'زبون عابر',
-        counterpartyName: 'مرسِل من الخارج',
-        referenceNumber: 'MG-999',
-        principalAmount: '200.00',
-        turkeyReceiptAmount: '210.00',
-        libyaDeliveryAmount: '200.00',
-      },
-      actor,
-    );
-
-    expect(prisma.client.findUnique).not.toHaveBeenCalled();
-    expect(prisma.remittance.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ clientId: null, externalCustomerName: 'زبون عابر' }),
-      }),
-    );
-  });
-
-  it('يرفض عميلًا داخليًا بلا clientId', async () => {
-    const prisma = buildPrismaMock();
+  it('يرفض فرعًا غير موجود', async () => {
+    const prisma = buildPrismaMock({ branch: null });
     const audit = { record: jest.fn() } as unknown as AuditService;
     const service = new RemittancesService(prisma, audit);
 
@@ -179,79 +211,12 @@ describe('RemittancesService.create', () => {
       service.create(
         {
           provider: 'WESTERN_UNION' as any,
-          customerType: 'INTERNAL' as any,
-          counterpartyName: 'مستفيد ما',
+          customerName: 'محمد الصالح',
+          customerPhone: '+218911234567',
           referenceNumber: 'MTCN123',
-          principalAmount: '1940.00',
           turkeyReceiptAmount: '1950.00',
           libyaDeliveryAmount: '1940.00',
-        },
-        actor,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(audit.record).not.toHaveBeenCalled();
-  });
-
-  it('يرفض زبونًا خارجيًا بلا اسم', async () => {
-    const prisma = buildPrismaMock();
-    const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
-
-    await expect(
-      service.create(
-        {
-          provider: 'WESTERN_UNION' as any,
-          customerType: 'EXTERNAL' as any,
-          counterpartyName: 'مستفيد ما',
-          referenceNumber: 'MTCN123',
-          principalAmount: '1940.00',
-          turkeyReceiptAmount: '1950.00',
-          libyaDeliveryAmount: '1940.00',
-        },
-        actor,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('يرفض مزج clientId مع externalCustomerName معًا', async () => {
-    const prisma = buildPrismaMock();
-    const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
-
-    await expect(
-      service.create(
-        {
-          provider: 'WESTERN_UNION' as any,
-          customerType: 'INTERNAL' as any,
-          clientId: 'client-1',
-          externalCustomerName: 'اسم غير متوقَّع',
-          counterpartyName: 'مستفيد ما',
-          referenceNumber: 'MTCN123',
-          principalAmount: '1940.00',
-          turkeyReceiptAmount: '1950.00',
-          libyaDeliveryAmount: '1940.00',
-        },
-        actor,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('يرفض عميلًا داخليًا غير موجود', async () => {
-    const prisma = buildPrismaMock({ client: null });
-    const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
-
-    await expect(
-      service.create(
-        {
-          provider: 'WESTERN_UNION' as any,
-          customerType: 'INTERNAL' as any,
-          clientId: 'missing',
-          counterpartyName: 'مستفيد ما',
-          referenceNumber: 'MTCN123',
-          principalAmount: '1940.00',
-          turkeyReceiptAmount: '1950.00',
-          libyaDeliveryAmount: '1940.00',
+          branchId: 'missing-branch',
         },
         actor,
       ),
@@ -266,11 +231,9 @@ describe('RemittancesService.create', () => {
     await service.create(
       {
         provider: 'WESTERN_UNION' as any,
-        customerType: 'INTERNAL' as any,
-        clientId: 'client-1',
-        counterpartyName: 'مستفيد ما',
+        customerName: 'محمد الصالح',
+        customerPhone: '+218911234567',
         referenceNumber: 'MTCN123',
-        principalAmount: '1940.00',
         turkeyReceiptAmount: '1930.00',
         libyaDeliveryAmount: '1940.00',
       },
@@ -283,7 +246,7 @@ describe('RemittancesService.create', () => {
 });
 
 describe('RemittancesService.withdraw', () => {
-  it('يرحّل هامش الحوالة محاسبيًا وينقلها إلى WITHDRAWN', async () => {
+  it('يرحّل صافي الربح فقط (سطران، لا تفصيل إيراد/تكلفة إجماليَين) وينقلها إلى WITHDRAWN', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
     const service = new RemittancesService(prisma, audit);
@@ -293,7 +256,9 @@ describe('RemittancesService.withdraw', () => {
     expect(result.status).toBe('WITHDRAWN');
     expect(prisma.tx.journalEntry.create).toHaveBeenCalledTimes(1);
     const lines = (prisma.tx.journalEntry.create as jest.Mock).mock.calls[0][0].data.lines.create;
-    expect(lines).toHaveLength(3); // بلا بدل تركيا هنا — 3 أسطر فقط
+    expect(lines).toHaveLength(2); // صافي الربح فقط — بلا بدل تركيا هنا
+    expect(lines[0].debit.toString()).toBe('10');
+    expect(lines[1].credit.toString()).toBe('10');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'WITHDRAW_REMITTANCE' }),
     );
@@ -307,7 +272,7 @@ describe('RemittancesService.withdraw', () => {
     await service.withdraw('rem-1', actor);
 
     const lines = (prisma.tx.journalEntry.create as jest.Mock).mock.calls[0][0].data.lines.create;
-    expect(lines).toHaveLength(5); // 3 أساسية بالدولار + سطران ببدل تركيا بالدينار
+    expect(lines).toHaveLength(4); // سطرا الربح بالدولار + سطرا بدل تركيا بالدينار
     const lydLines = lines.filter((l: any) => l.currencyId === 'cur-lyd');
     expect(lydLines).toHaveLength(2);
   });

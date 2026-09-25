@@ -614,27 +614,14 @@
                 <option value="MONEYGRAM">موني جرام</option>
               </select>
             </div>
-            <div class="field"><label>تصنيف العميل</label>
-              <select id="rm-customer-type" onchange="onRemittanceCustomerTypeChange()">
-                <option value="INTERNAL">عميل داخلي (مسجَّل في النظام)</option>
-                <option value="EXTERNAL">زبون خارجي (عابر)</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-grid" id="rm-internal-fields">
-            <div class="field"><label>اسم الغرفة</label><select id="rm-client"></select></div>
-          </div>
-          <div class="form-grid" id="rm-external-fields" style="display:none">
-            <div class="field"><label>اسم الزبون الخارجي</label><input type="text" id="rm-ext-name" placeholder="اسم الزبون العابر" /></div>
-            <div class="field"><label>هاتف الزبون (اختياري)</label><input type="text" id="rm-ext-phone" placeholder="+218910000000" /></div>
-          </div>
-          <div class="form-grid">
-            <div class="field"><label>اسم الطرف الآخر</label><input type="text" id="rm-counterparty" placeholder="المستفيد النهائي في ليبيا" /></div>
             <div class="field"><label>الرقم المرجعي (MTCN)</label><input type="text" id="rm-reference" placeholder="مثال: 9214563870" /></div>
-            <div class="field"><label>بلد الطرف الآخر (اختياري)</label><input type="text" id="rm-country" placeholder="مثال: EG" /></div>
           </div>
           <div class="form-grid">
-            <div class="field"><label>القيمة الأساسية للحوالة (دولار)</label><input type="text" id="rm-principal" placeholder="500.00" /></div>
+            <div class="field"><label>اسم الزبون</label><input type="text" id="rm-customer-name" placeholder="اسم الزبون" /></div>
+            <div class="field"><label>هاتف الزبون</label><input type="text" id="rm-customer-phone" placeholder="+218910000000" /></div>
+          </div>
+          <p class="form-note">يُستخدم الهاتف للعثور على الزبون تلقائيًا إن كان مسجَّلًا مسبقًا (له حوالة سابقة) — وإلا يُسجَّل تلقائيًا بهذا الاسم والهاتف كعميل جديد.</p>
+          <div class="form-grid">
             <div class="field"><label>الفرع (اختياري)</label><select id="rm-branch"><option value="">— بلا فرع محدَّد —</option></select></div>
           </div>
           <div class="form-grid">
@@ -675,7 +662,6 @@
               <option value="WITHDRAWN">تم السحب</option>
               <option value="REJECTED">تم الرفض</option>
             </select>
-            <select id="rm-filter-customer-type"><option value="">كل العملاء</option><option value="INTERNAL">داخلي</option><option value="EXTERNAL">خارجي</option></select>
             <button class="btn-ghost btn-sm" onclick="remittancesPage=1;loadRemittances()">فلترة</button>
           </div>
           <div id="remittances-content" class="state-msg">جارِ التحميل...</div>
@@ -774,6 +760,13 @@
         <div class="card no-print" id="accounts-card">
           <div class="card-head"><h3>شجرة الحسابات</h3></div>
           <div id="accounts-content" class="state-msg">جارِ التحميل...</div>
+        </div>
+
+        <div class="card no-print" style="border-inline-start:3px solid var(--critical)">
+          <div class="card-head"><h3 style="color:var(--critical)">تصفير دفتر اليومية</h3></div>
+          <p class="form-note">حذف فعلي لكل قيود اليومية — تعود أرقام قائمتَي الدخل والمركز المالي إلى صفر. <b>لا يمكن التراجع عن هذا</b>. الصفقات والحوالات والمصاريف وحركات الخزينة/المصارف تبقى في سجلاتها كما هي؛ فقط أثرها المحاسبي المُرحَّل يُحذَف. يتطلب صلاحية ADMIN.</p>
+          <div class="field"><label>سبب التصفير</label><input type="text" id="reset-ledger-reason" placeholder="مثال: تصفير بيانات الاختبار قبل الانطلاق الفعلي" /></div>
+          <button class="btn-danger" id="reset-ledger-btn" onclick="resetLedger()">تصفير دفتر اليومية بالكامل</button>
         </div>
       </div>
 
@@ -1178,7 +1171,6 @@ async function loadClients(){
     // الكاش المحدود بصفحة واحدة — تبحث مباشرة عبر الخادم بكل العملاء (انظر
     // onDealClientSearchInput)، فلا حاجة لتحديثها هنا.
     document.getElementById('mv-client').innerHTML = '<option value="">— حركة خزينة عادية بلا ربط بعميل —</option>' + clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
-    document.getElementById('rm-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
     if (result.items.length === 0) { el.textContent = 'لا يوجد عملاء مطابقون.'; document.getElementById('clients-pager').innerHTML = ''; return; }
     let html = '<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>KYC</th><th>المخاطر</th><th>الحد اليومي</th><th>السقف الائتماني</th><th></th></tr></thead><tbody>';
     result.items.forEach(c => {
@@ -2052,12 +2044,6 @@ function voidExpensePrompt(id, btn){
 const RM_PROVIDER_LABELS = { WESTERN_UNION: 'وسترن يونيون', MONEYGRAM: 'موني جرام' };
 const RM_STATUS_LABELS = { PENDING: 'قيد التعديل', WITHDRAWN: 'تم السحب', REJECTED: 'تم الرفض' };
 
-function onRemittanceCustomerTypeChange(){
-  const isInternal = document.getElementById('rm-customer-type').value === 'INTERNAL';
-  document.getElementById('rm-internal-fields').style.display = isInternal ? '' : 'none';
-  document.getElementById('rm-external-fields').style.display = isInternal ? 'none' : '';
-}
-
 function onRemittanceAllowanceToggle(){
   const enabled = document.getElementById('rm-allowance-toggle').checked;
   document.getElementById('rm-allowance-fields').style.display = enabled ? '' : 'none';
@@ -2076,42 +2062,29 @@ function updateRemittanceProfitPreview(){
 
 async function createRemittance(){
   const provider = document.getElementById('rm-provider').value;
-  const customerType = document.getElementById('rm-customer-type').value;
-  const clientId = document.getElementById('rm-client').value;
-  const externalCustomerName = document.getElementById('rm-ext-name').value.trim();
-  const externalCustomerPhone = document.getElementById('rm-ext-phone').value.trim();
-  const counterpartyName = document.getElementById('rm-counterparty').value.trim();
+  const customerName = document.getElementById('rm-customer-name').value.trim();
+  const customerPhone = document.getElementById('rm-customer-phone').value.trim();
   const referenceNumber = document.getElementById('rm-reference').value.trim();
-  const countryCode = document.getElementById('rm-country').value.trim();
-  const principalAmount = document.getElementById('rm-principal').value.trim();
   const branchId = document.getElementById('rm-branch').value;
   const turkeyReceiptAmount = document.getElementById('rm-receipt').value.trim();
   const libyaDeliveryAmount = document.getElementById('rm-delivery').value.trim();
   const allowanceEnabled = document.getElementById('rm-allowance-toggle').checked;
   const turkeyAllowanceLyd = document.getElementById('rm-allowance').value.trim();
 
-  if (!counterpartyName || !referenceNumber || !principalAmount || !turkeyReceiptAmount || !libyaDeliveryAmount) {
-    showToast('عبّئ اسم الطرف الآخر والرقم المرجعي والقيمة الأساسية وسعري الاستلام والتسليم', true);
+  if (!customerName || !customerPhone || !referenceNumber || !turkeyReceiptAmount || !libyaDeliveryAmount) {
+    showToast('عبّئ اسم الزبون وهاتفه والرقم المرجعي وسعري الاستلام والتسليم', true);
     return;
   }
-  if (customerType === 'INTERNAL' && !clientId) { showToast('اختر اسم الغرفة أولًا', true); return; }
-  if (customerType === 'EXTERNAL' && !externalCustomerName) { showToast('أدخل اسم الزبون الخارجي', true); return; }
   if (allowanceEnabled && !turkeyAllowanceLyd) { showToast('أدخل قيمة بدل تركيا أو ألغِ تفعيله', true); return; }
 
-  const body = {
-    provider, customerType, counterpartyName, referenceNumber,
-    principalAmount, turkeyReceiptAmount, libyaDeliveryAmount,
-  };
-  if (customerType === 'INTERNAL') { body.clientId = clientId; }
-  else { body.externalCustomerName = externalCustomerName; if (externalCustomerPhone) body.externalCustomerPhone = externalCustomerPhone; }
-  if (countryCode) body.countryCode = countryCode;
+  const body = { provider, customerName, customerPhone, referenceNumber, turkeyReceiptAmount, libyaDeliveryAmount };
   if (branchId) body.branchId = branchId;
   if (allowanceEnabled) body.turkeyAllowanceLyd = turkeyAllowanceLyd;
 
   await runBusy('create-remittance-btn', async () => {
     await apiCall('/remittances', { method: 'POST', body: JSON.stringify(body) });
     showToast('سُجّلت الحوالة بنجاح — بحالة "قيد التعديل"');
-    ['rm-counterparty','rm-reference','rm-country','rm-principal','rm-receipt','rm-delivery','rm-ext-name','rm-ext-phone','rm-allowance'].forEach(id => document.getElementById(id).value = '');
+    ['rm-customer-name','rm-customer-phone','rm-reference','rm-receipt','rm-delivery','rm-allowance'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('rm-profit-preview').value = '';
     document.getElementById('rm-allowance-toggle').checked = false;
     document.getElementById('rm-allowance-fields').style.display = 'none';
@@ -2125,21 +2098,19 @@ async function loadRemittances(){
   try{
     const provider = document.getElementById('rm-filter-provider').value;
     const status = document.getElementById('rm-filter-status').value;
-    const customerType = document.getElementById('rm-filter-customer-type').value;
     const params = new URLSearchParams({ page: remittancesPage, pageSize: 10 });
     if (provider) params.set('provider', provider);
     if (status) params.set('status', status);
-    if (customerType) params.set('customerType', customerType);
     const result = await apiCall('/remittances?' + params.toString());
     if (result.items.length === 0) { el.textContent = 'لا توجد حوالات مطابقة.'; document.getElementById('remittances-pager').innerHTML = ''; return; }
-    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الغرفة/الزبون</th><th>الطرف الآخر</th><th>الرقم المرجعي</th><th>القيمة الأساسية</th><th>استلام تركيا</th><th>تسليم ليبيا</th><th>الربح (USD)</th><th>بدل تركيا (LYD)</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الزبون</th><th>الرقم المرجعي</th><th>استلام تركيا</th><th>تسليم ليبيا</th><th>الربح (USD)</th><th>بدل تركيا (LYD)</th><th>الحالة</th><th></th></tr></thead><tbody>';
     result.items.forEach(r => {
-      const customer = r.customerType === 'INTERNAL' ? (r.client ? r.client.fullName : '—') : `${r.externalCustomerName || '—'} <span class="pill">خارجي</span>`;
+      const customer = r.client ? `${r.client.fullName} <span class="num" style="color:var(--ink-faint)">${r.client.phone}</span>` : (r.externalCustomerName || '—');
       const profitColor = parseFloat(r.profit) < 0 ? 'var(--critical)' : 'var(--success)';
       const actions = r.status === 'PENDING'
         ? `<button class="btn-primary btn-sm" onclick="withdrawRemittance('${r.id}', this)">تم السحب</button> <button class="btn-danger btn-sm" onclick="rejectRemittancePrompt('${r.id}', this)">رفض</button>`
         : '—';
-      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${customer}</td><td>${r.counterpartyName}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.principalAmount)}</td><td class="num">${fmtNum(r.turkeyReceiptAmount)}</td><td class="num">${fmtNum(r.libyaDeliveryAmount)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td class="num">${r.turkeyAllowanceLyd ? fmtNum(r.turkeyAllowanceLyd) : '—'}</td><td><span class="pill ${r.status}">${RM_STATUS_LABELS[r.status] || r.status}</span></td><td>${actions}</td></tr>`;
+      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${customer}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.turkeyReceiptAmount)}</td><td class="num">${fmtNum(r.libyaDeliveryAmount)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td class="num">${r.turkeyAllowanceLyd ? fmtNum(r.turkeyAllowanceLyd) : '—'}</td><td><span class="pill ${r.status}">${RM_STATUS_LABELS[r.status] || r.status}</span></td><td>${actions}</td></tr>`;
     });
     el.innerHTML = html + '</tbody></table></div>';
     pagerHtml('remittances-pager', remittancesPage, 10, result.total, 'p => { remittancesPage = p; loadRemittances(); }');
@@ -2186,10 +2157,10 @@ async function loadRemittancesSummary(){
     if (summary.items.length === 0) {
       tableEl.innerHTML = '<div class="state-msg">لا توجد حوالات مسحوبة لهذه الفترة.</div>';
     } else {
-      let html = '<div class="table-wrap"><table><thead><tr><th>الشبكة</th><th>العدد</th><th>القيمة الأساسية</th><th>إجمالي استلام تركيا</th><th>إجمالي تسليم ليبيا</th><th>الربح الصافي (دولار)</th><th>بدل تركيا (دينار)</th></tr></thead><tbody>';
+      let html = '<div class="table-wrap"><table><thead><tr><th>الشبكة</th><th>العدد</th><th>إجمالي استلام تركيا</th><th>إجمالي تسليم ليبيا</th><th>الربح الصافي (دولار)</th><th>بدل تركيا (دينار)</th></tr></thead><tbody>';
       summary.items.forEach(i => {
         const c = parseFloat(i.totalProfitUsd) < 0 ? 'var(--critical)' : 'var(--success)';
-        html += `<tr><td>${RM_PROVIDER_LABELS[i.provider] || i.provider}</td><td class="num">${i.count}</td><td class="num">${fmtNum(i.totalPrincipal)}</td><td class="num">${fmtNum(i.totalTurkeyReceiptAmount)}</td><td class="num">${fmtNum(i.totalLibyaDeliveryAmount)}</td><td class="num" style="color:${c}">${fmtNum(i.totalProfitUsd)}</td><td class="num">${fmtNum(i.totalTurkeyAllowanceLyd)}</td></tr>`;
+        html += `<tr><td>${RM_PROVIDER_LABELS[i.provider] || i.provider}</td><td class="num">${i.count}</td><td class="num">${fmtNum(i.totalTurkeyReceiptAmount)}</td><td class="num">${fmtNum(i.totalLibyaDeliveryAmount)}</td><td class="num" style="color:${c}">${fmtNum(i.totalProfitUsd)}</td><td class="num">${fmtNum(i.totalTurkeyAllowanceLyd)}</td></tr>`;
       });
       tableEl.innerHTML = html + '</tbody></table></div>';
     }
@@ -2500,6 +2471,18 @@ function reverseJournalEntryPrompt(id, btn){
   apiCall('/accounting/journal-entries/' + id + '/reverse', { method: 'POST', body: JSON.stringify({ reason }) })
     .then(() => { showToast('تم عكس القيد بنجاح'); loadAccountingAll(); })
     .catch(err => { showToast(err.message, true); btn.disabled = false; });
+}
+
+async function resetLedger(){
+  const reason = document.getElementById('reset-ledger-reason').value.trim();
+  if (!reason) { showToast('اكتب سبب التصفير أولًا', true); return; }
+  if (!confirm('تأكيد نهائي: سيُحذَف كل قيد يومية في النظام بلا رجعة، وتعود قائمتا الدخل والمركز المالي إلى صفر. الصفقات والحوالات والمصاريف تبقى في سجلاتها. هل تريد المتابعة؟')) return;
+  await runBusy('reset-ledger-btn', async () => {
+    const result = await apiCall('/accounting/reset-ledger', { method: 'POST', body: JSON.stringify({ reason }) });
+    showToast(`تم تصفير دفتر اليومية — حُذف ${result.deletedEntries} قيدًا (${result.deletedLines} سطرًا)`);
+    document.getElementById('reset-ledger-reason').value = '';
+    loadAccountingAll();
+  })().catch(err => showToast(err.message, true));
 }
 </script>
 </body>

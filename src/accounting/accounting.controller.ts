@@ -9,6 +9,7 @@ import { AccountingService } from './accounting.service';
 import { BalanceSheetQuery } from './dto/balance-sheet.query';
 import { ListJournalEntriesQuery } from './dto/list-journal-entries.query';
 import { PostJournalEntryDto } from './dto/post-journal-entry.dto';
+import { ResetLedgerDto } from './dto/reset-ledger.dto';
 import { ReverseJournalEntryDto } from './dto/reverse-journal-entry.dto';
 
 const LEDGER_ROLES = [StaffRole.ADMIN, StaffRole.TREASURY_MANAGER];
@@ -79,5 +80,15 @@ export class AccountingController {
   @ApiOperation({ summary: 'قائمة الدخل لفترة — الإيرادات والمصاريف وصافي الربح قبل/بعد الضريبة' })
   getIncomeStatement(@Query() query: ReportPeriodQuery) {
     return this.accountingService.getIncomeStatement(query);
+  }
+
+  @Post('reset-ledger')
+  @Roles(StaffRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'تصفير دفتر اليومية بالكامل (حذف كل القيود) — لا تراجع؛ الصفقات/الحوالات/المصاريف تبقى في سجلاتها',
+  })
+  resetLedger(@Body() dto: ResetLedgerDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.accountingService.resetLedger(dto, actor);
   }
 }

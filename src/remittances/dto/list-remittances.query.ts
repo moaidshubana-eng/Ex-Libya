@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { RemittanceCustomerType, RemittanceProvider, RemittanceStatus } from '@prisma/client';
+import { RemittanceProvider, RemittanceStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsISO8601, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
@@ -14,17 +14,14 @@ export class ListRemittancesQuery {
   @IsEnum(RemittanceStatus)
   status?: RemittanceStatus;
 
-  @ApiPropertyOptional({ enum: RemittanceCustomerType })
-  @IsOptional()
-  @IsEnum(RemittanceCustomerType)
-  customerType?: RemittanceCustomerType;
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
   branchId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: 'حوالات عميل بعينه — لعرض كل حوالات نفس الزبون (قيد التعديل ومسحوبة معًا)',
+  })
   @IsOptional()
   @IsUUID()
   clientId?: string;

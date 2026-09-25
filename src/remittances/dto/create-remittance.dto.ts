@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { RemittanceCustomerType, RemittanceProvider } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { RemittanceProvider } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, IsUUID, Matches, MinLength } from 'class-validator';
 import { IsDecimalString } from '../../common/validators/is-decimal-string.decorator';
 
 export class CreateRemittanceDto {
@@ -8,36 +8,24 @@ export class CreateRemittanceDto {
   @IsEnum(RemittanceProvider)
   provider!: RemittanceProvider;
 
-  @ApiProperty({ enum: RemittanceCustomerType })
-  @IsEnum(RemittanceCustomerType)
-  customerType!: RemittanceCustomerType;
-
-  @ApiPropertyOptional({
-    description: 'إلزامي فقط عند customerType = INTERNAL — معرّف العميل المسجَّل في النظام',
-  })
-  @IsOptional()
-  @IsUUID()
-  clientId?: string;
-
-  @ApiPropertyOptional({
-    description: 'إلزامي فقط عند customerType = EXTERNAL — اسم الزبون العابر غير المسجَّل',
-  })
-  @IsOptional()
-  @IsString()
-  externalCustomerName?: string;
-
-  @ApiPropertyOptional({ description: 'هاتف الزبون العابر — اختياري حتى مع EXTERNAL' })
-  @IsOptional()
-  @IsString()
-  externalCustomerPhone?: string;
-
   @ApiProperty({
-    description: 'اسم الطرف الآخر — المستفيد النهائي في ليبيا',
+    description: 'اسم الزبون — يُستخدم لتسجيله تلقائيًا كعميل جديد إن لم يكن هاتفه مسجَّلًا مسبقًا',
     example: 'محمد علي الفيتوري',
   })
   @IsString()
-  @MinLength(3, { message: 'اسم الطرف الآخر يجب ألا يقل عن 3 أحرف' })
-  counterpartyName!: string;
+  @MinLength(3, { message: 'اسم الزبون يجب ألا يقل عن 3 أحرف' })
+  customerName!: string;
+
+  @ApiProperty({
+    description:
+      'هاتف الزبون — مفتاح البحث عن عميل مسجَّل مسبقًا (لدعم أكثر من حوالة له في يوم واحد)؛ ' +
+      'إن لم يكن مسجَّلًا يُسجَّل تلقائيًا بهذا الاسم والهاتف',
+    example: '+218910000000',
+  })
+  @Matches(/^\+\d{8,15}$/, {
+    message: 'رقم الهاتف يجب أن يكون بالصيغة الدولية، مثل ‎+218911234567',
+  })
+  customerPhone!: string;
 
   @ApiProperty({
     description: 'MTCN لوسترن يونيون أو الرقم المرجعي لموني جرام',
@@ -46,18 +34,6 @@ export class CreateRemittanceDto {
   @IsString()
   @MinLength(3, { message: 'الرقم المرجعي إلزامي لتتبّع الحوالة عبر الشبكة' })
   referenceNumber!: string;
-
-  @ApiPropertyOptional({ description: 'رمز بلد الطرف الآخر (اختياري)', example: 'EG' })
-  @IsOptional()
-  @IsString()
-  countryCode?: string;
-
-  @ApiProperty({
-    description: 'القيمة الأساسية للحوالة (ما يُسلَّم فعليًا للمستفيد في ليبيا) — دومًا بالدولار',
-    example: '500.00',
-  })
-  @IsDecimalString(2)
-  principalAmount!: string;
 
   @ApiProperty({
     description: 'سعر الاستلام في تركيا — دومًا بالدولار',

@@ -9,6 +9,7 @@ import { CHART_OF_ACCOUNTS } from './chart-of-accounts';
 import { BalanceSheetQuery } from './dto/balance-sheet.query';
 import { ListJournalEntriesQuery } from './dto/list-journal-entries.query';
 import { PostJournalEntryDto } from './dto/post-journal-entry.dto';
+import { ResetLedgerDto } from './dto/reset-ledger.dto';
 import { ReverseJournalEntryDto } from './dto/reverse-journal-entry.dto';
 import { postJournalEntry } from './post-journal-entry';
 
@@ -50,6 +51,33 @@ export class AccountingService implements OnModuleInit {
 
   listAccounts() {
     return this.prisma.account.findMany({ where: { isActive: true }, orderBy: { code: 'asc' } });
+  }
+
+  /**
+   * تصفير دفتر اليومية بالكامل — حذف فعلي لكل JournalEntry/JournalLine (لا
+   * رجعة إطلاقًا)، فتعود كل أرقام قائمتَي الدخل والمركز المالي إلى صفر. لا
+   * يمسّ أي سجل مصدر (الصفقات، الحوالات، المصاريف، حركات الخزينة/المصارف،
+   * تعديلات أرصدة العملاء) — تبقى في سجلاتها كما هي، فقط أثرها المحاسبي
+   * المُرحَّل يُحذَف. مخصَّص لتصفير بيانات اختبار قبل الانطلاق الفعلي؛
+   * ADMIN فقط، وبسبب موثَّق إلزامي في سجل التدقيق.
+   */
+  async resetLedger(dto: ResetLedgerDto, actor: AuthenticatedUser) {
+    const { deletedLines, deletedEntries } = await this.prisma.$transaction(async (tx) => {
+      const deletedLines = await tx.journalLine.deleteMany({});
+      const deletedEntries = await tx.journalEntry.deleteMany({});
+      return { deletedLines, deletedEntries };
+    });
+
+    await this.audit.record({
+      entityType: 'JournalEntry',
+      entityId: 'ALL',
+      action: 'RESET_LEDGER',
+      actorId: actor.id,
+      before: { deletedEntries: deletedEntries.count, deletedLines: deletedLines.count },
+      after: { reason: dto.reason },
+    });
+
+    return { deletedEntries: deletedEntries.count, deletedLines: deletedLines.count };
   }
 
   private async getCurrencyOrThrow(currencyCode: string) {
