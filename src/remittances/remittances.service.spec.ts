@@ -9,6 +9,7 @@ import { RemittancesService } from './remittances.service';
 function buildWhatsApp() {
   return {
     sendRemittanceWithdrawn: jest.fn().mockResolvedValue(undefined),
+    sendRemittanceRejected: jest.fn().mockResolvedValue(undefined),
   } as unknown as WhatsAppService;
 }
 
@@ -356,6 +357,21 @@ describe('RemittancesService.reject', () => {
     );
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'REJECT_REMITTANCE' }),
+    );
+  });
+
+  it('يرسل إشعار واتساب بالرفض والسبب لعميل الحوالة بعد نجاح التحديث', async () => {
+    const prisma = buildPrismaMock();
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const whatsApp = buildWhatsApp();
+    const service = new RemittancesService(prisma, audit, whatsApp);
+
+    await service.reject('rem-1', { reason: 'تسجيل مكرر بالخطأ' }, actor);
+
+    expect(whatsApp.sendRemittanceRejected).toHaveBeenCalledWith(
+      { id: 'client-1', fullName: 'محمد الصالح', phone: '+218911234567' },
+      { id: 'rem-1', referenceNumber: 'MTCN123' },
+      'تسجيل مكرر بالخطأ',
     );
   });
 

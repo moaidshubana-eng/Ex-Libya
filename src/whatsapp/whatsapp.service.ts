@@ -25,10 +25,13 @@ import {
   composeRateInquiryReply,
   composeRateUpdateLogBody,
   composeRateUpdateParams,
+  composeRemittanceRejectedLogBody,
+  composeRemittanceRejectedParams,
   composeRemittanceWithdrawnLogBody,
   composeRemittanceWithdrawnParams,
   LimitAlertInput,
   RateSummary,
+  RemittanceRejectedInput,
   RemittanceWithdrawnInput,
 } from './message-composer';
 import { toDigitsOnly, toE164 } from './phone';
@@ -250,6 +253,31 @@ export class WhatsAppService {
       templateKey: 'REMITTANCE_WITHDRAWN',
       templateParams: composeRemittanceWithdrawnParams(input),
       logBody: composeRemittanceWithdrawnLogBody(input),
+      relatedRemittanceId: remittance.id,
+    });
+  }
+
+  /**
+   * إشعار تلقائي برفض حوالة — يُستدعى من RemittancesService.reject بعد نجاح
+   * التحديث فعليًا، لعميل الحوالة المرتبط عبر رقمه المسجَّل.
+   */
+  async sendRemittanceRejected(
+    client: { id: string; fullName: string; phone: string },
+    remittance: { id: string; referenceNumber: string },
+    reason: string,
+  ) {
+    const input: RemittanceRejectedInput = {
+      clientName: client.fullName,
+      referenceNumber: remittance.referenceNumber,
+      reason,
+    };
+
+    await this.sendTemplateSafely({
+      to: toDigitsOnly(client.phone),
+      clientId: client.id,
+      templateKey: 'REMITTANCE_REJECTED',
+      templateParams: composeRemittanceRejectedParams(input),
+      logBody: composeRemittanceRejectedLogBody(input),
       relatedRemittanceId: remittance.id,
     });
   }

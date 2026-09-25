@@ -139,3 +139,20 @@ export function composeRemittanceWithdrawnParams(
 export function composeRemittanceWithdrawnLogBody(input: RemittanceWithdrawnInput): string {
   return `تم سحب حوالة ${input.referenceNumber} — ${input.libyaDeliveryAmount} ${input.currencyCode}`;
 }
+
+export interface RemittanceRejectedInput {
+  clientName: string;
+  referenceNumber: string;
+  reason: string;
+}
+
+/** [اسم الزبون، الرقم المرجعي، سبب الرفض] لقالب REMITTANCE_REJECTED. */
+export function composeRemittanceRejectedParams(
+  input: RemittanceRejectedInput,
+): [string, string, string] {
+  return [input.clientName, input.referenceNumber, input.reason];
+}
+
+export function composeRemittanceRejectedLogBody(input: RemittanceRejectedInput): string {
+  return `رُفضت حوالة ${input.referenceNumber} — السبب: ${input.reason}`;
+}

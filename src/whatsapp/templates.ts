@@ -36,6 +36,12 @@ export const WHATSAPP_TEMPLATES = {
     /** [اسم الزبون، الرقم المرجعي، القيمة المُسلَّمة والعملة] */
     describeParams: (params: [string, string, string]) => params,
   },
+  REMITTANCE_REJECTED: {
+    name: 'exlibya_remittance_rejected',
+    language: 'ar',
+    /** [اسم الزبون، الرقم المرجعي، سبب الرفض] */
+    describeParams: (params: [string, string, string]) => params,
+  },
 } as const;
 
 export type WhatsAppTemplateKey = keyof typeof WHATSAPP_TEMPLATES;

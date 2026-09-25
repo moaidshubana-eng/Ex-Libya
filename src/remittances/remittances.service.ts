@@ -344,6 +344,19 @@ export class RemittancesService {
       after: { status: RemittanceStatus.REJECTED, reason: dto.reason },
     });
 
+    // إشعار واتساب بالرفض — بعد نجاح التحديث فعليًا وخارجه، على غرار withdraw.
+    if (remittance.client) {
+      await this.whatsApp.sendRemittanceRejected(
+        {
+          id: remittance.client.id,
+          fullName: remittance.client.fullName,
+          phone: remittance.client.phone,
+        },
+        { id: remittance.id, referenceNumber: remittance.referenceNumber },
+        dto.reason,
+      );
+    }
+
     return this.findOne(id);
   }
 

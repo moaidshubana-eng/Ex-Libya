@@ -5,6 +5,8 @@ import {
   composeDealConfirmationParams,
   composeLimitAlertParams,
   composeRateInquiryReply,
+  composeRemittanceRejectedLogBody,
+  composeRemittanceRejectedParams,
   composeRemittanceWithdrawnLogBody,
   composeRemittanceWithdrawnParams,
 } from './message-composer';
@@ -138,5 +140,28 @@ describe('composeRemittanceWithdrawnLogBody', () => {
     });
     expect(body).toContain('MTCN123');
     expect(body).toContain('1940.00 USD');
+  });
+});
+
+describe('composeRemittanceRejectedParams', () => {
+  it('يرتب المعاملات: اسم الزبون، الرقم المرجعي، ثم سبب الرفض', () => {
+    const params = composeRemittanceRejectedParams({
+      clientName: 'محمد الصالح',
+      referenceNumber: 'MTCN123',
+      reason: 'تسجيل مكرر بالخطأ',
+    });
+    expect(params).toEqual(['محمد الصالح', 'MTCN123', 'تسجيل مكرر بالخطأ']);
+  });
+});
+
+describe('composeRemittanceRejectedLogBody', () => {
+  it('يبني نصًا يعكس الرقم المرجعي وسبب الرفض', () => {
+    const body = composeRemittanceRejectedLogBody({
+      clientName: 'محمد الصالح',
+      referenceNumber: 'MTCN123',
+      reason: 'تسجيل مكرر بالخطأ',
+    });
+    expect(body).toContain('MTCN123');
+    expect(body).toContain('تسجيل مكرر بالخطأ');
   });
 });
