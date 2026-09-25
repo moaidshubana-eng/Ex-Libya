@@ -379,9 +379,18 @@ enum DealStatus {
 model Transaction {
   id String @id @default(uuid())
 
+  // رقم معاملة تسلسلي قابل للقراءة — مستقل عن id (UUID داخلي)، للعرض والمتابعة
+  // في الواجهة والمراسلات الداخلية فقط؛ لا يُستخدم في أي مسار API (التنفيذ/
+  // الاعتماد/الإلغاء تبقى كلها بـ id). يولَّده تسلسل قاعدة بيانات منفصل
+  // (transactions_dealNumber_seq)، لا Prisma — القيمة دومًا جاهزة عند الإنشاء.
+  dealNumber Int @unique @default(autoincrement())
+
   // تصنيف الطرف المتعامل — على غرار Remittance.customerType بالضبط: عميل
-  // داخلي مسجَّل (clientId إلزامي)، أو زبون خارجي عابر (اسمه يُدخَل يدويًا لهذه
-  // الصفقة فقط دون تسجيله كعميل كامل في النظام).
+  // داخلي مسجَّل (clientId إلزامي)، أو زبون خارجي عابر. externalCustomerName/
+  // externalCustomerPhone أُبقيا في المخطط للحفاظ على بيانات صفقات تاريخية
+  // فقط — DealsService.create لم يعد يقبلهما أو يطلبهما إطلاقًا (أُلغي إدخال
+  // اسم وهاتف الزبون الخارجي صراحةً)؛ كل صفقة EXTERNAL جديدة تُخزَّن بهما
+  // null، وتُعرَض بتسمية عامة "زبون خارجي" بدل اسم فعلي (انظر dealPartyName).
   customerType          DealCustomerType @default(INTERNAL)
   clientId              String?
   client                Client?          @relation(fields: [clientId], references: [id])

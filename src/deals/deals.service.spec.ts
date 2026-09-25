@@ -61,7 +61,9 @@ function buildPrismaMockForCreate() {
     transaction: {
       create: jest
         .fn()
-        .mockImplementation(({ data }: any) => Promise.resolve({ id: 'deal-1', ...data })),
+        .mockImplementation(({ data }: any) =>
+          Promise.resolve({ id: 'deal-1', dealNumber: 100001, ...data }),
+        ),
     },
   } as unknown as PrismaService;
 }
@@ -181,15 +183,13 @@ describe('DealsService.create', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('ينشئ صفقة لزبون خارجي باسمه فقط، بلا عميل مسجَّل ولا فحص KYC', async () => {
+  it('ينشئ صفقة لزبون خارجي بلا اسم أو هاتف (أُلغي إدخالهما) — بلا عميل مسجَّل ولا فحص KYC', async () => {
     const prisma = buildPrismaMockForCreate();
     const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
 
     const deal = await service.create(
       {
         customerType: DealCustomerType.EXTERNAL,
-        externalCustomerName: 'زبون عابر',
-        externalCustomerPhone: '+218900000000',
         currencyCode: 'USD',
         direction: DealDirection.SELL,
         amount: '500.00',
@@ -205,27 +205,8 @@ describe('DealsService.create', () => {
     const callArg = (prisma.transaction.create as jest.Mock).mock.calls[0][0];
     expect(callArg.data.customerType).toBe(DealCustomerType.EXTERNAL);
     expect(callArg.data.clientId).toBeNull();
-    expect(callArg.data.externalCustomerName).toBe('زبون عابر');
-    expect(callArg.data.externalCustomerPhone).toBe('+218900000000');
-  });
-
-  it('يرفض صفقة زبون خارجي بلا externalCustomerName', async () => {
-    const prisma = buildPrismaMockForCreate();
-    const service = new DealsService(prisma, buildAudit(), buildWhatsApp());
-
-    await expect(
-      service.create(
-        {
-          customerType: DealCustomerType.EXTERNAL,
-          currencyCode: 'USD',
-          direction: DealDirection.SELL,
-          amount: '500.00',
-          dealRate: '8.00',
-          parallelMarketRate: '7.90',
-        },
-        teller,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(callArg.data.externalCustomerName).toBeNull();
+    expect(callArg.data.externalCustomerPhone).toBeNull();
   });
 
   it('يرفض مزج clientId مع زبون خارجي (EXTERNAL)', async () => {
@@ -237,7 +218,6 @@ describe('DealsService.create', () => {
         {
           customerType: DealCustomerType.EXTERNAL,
           clientId: verifiedClient.id,
-          externalCustomerName: 'زبون عابر',
           currencyCode: 'USD',
           direction: DealDirection.SELL,
           amount: '500.00',
@@ -315,11 +295,13 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
       lydCurrencyOverride?: unknown;
       lydBalance?: string;
       external?: boolean;
+      externalCustomerName?: string | null;
       externalCustomerPhone?: string | null;
     } = {},
   ) {
     const deal = {
       id: 'deal-1',
+      dealNumber: 100001,
       status: DealStatus.APPROVED,
       requestedById: teller.id,
       customerType: options.external ? DealCustomerType.EXTERNAL : DealCustomerType.INTERNAL,
@@ -327,7 +309,11 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
       client: options.external
         ? null
         : { id: 'client-1', fullName: 'شركة الوفاء', phone: '+218911234567' },
-      externalCustomerName: options.external ? 'زبون عابر' : null,
+      externalCustomerName: options.external
+        ? 'externalCustomerName' in options
+          ? options.externalCustomerName
+          : 'زبون عابر'
+        : null,
       externalCustomerPhone: options.external
         ? 'externalCustomerPhone' in options
           ? options.externalCustomerPhone
@@ -521,5 +507,23 @@ describe('DealsService.execute — ترحيل هامش الصفقة إلى قا�
     await service.execute('deal-1', manager);
 
     expect(whatsApp.sendDealConfirmation).not.toHaveBeenCalled();
+  });
+
+  it('يستخدم التسمية العامة "زبون خارجي" لصفقة زبون خارجي جديدة بلا اسم مخزَّن (أُلغي إدخاله عند الإنشاء)', async () => {
+    const prisma = buildPrismaMockForExecute({
+      external: true,
+      externalCustomerName: null,
+      externalCustomerPhone: '+218900000000',
+    });
+    const whatsApp = buildWhatsApp();
+    const service = new DealsService(prisma, buildAudit(), whatsApp);
+
+    await service.execute('deal-1', manager);
+
+    expect(whatsApp.sendDealConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client: { id: undefined, fullName: 'زبون خارجي', phone: '+218900000000' },
+      }),
+    );
   });
 });

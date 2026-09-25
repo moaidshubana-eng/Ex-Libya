@@ -33,15 +33,19 @@ const DEAL_INCLUDE = {
   executedBy: { select: { id: true, fullName: true, role: true } },
 } satisfies Prisma.TransactionInclude;
 
-/** اسم الطرف المتعامل في الصفقة — عميل داخلي مسجَّل أو زبون خارجي عابر. */
+/**
+ * اسم الطرف المتعامل في الصفقة — عميل داخلي مسجَّل أو زبون خارجي عابر.
+ * externalCustomerName لم يعد يُقبل عند الإنشاء (أُلغي إدخاله صراحةً)، فكل
+ * صفقة EXTERNAL جديدة تعرض التسمية العامة "زبون خارجي"؛ صفقة تاريخية سابقة
+ * على هذا التغيير قد يبقى اسمها الفعلي محفوظًا فتُعرَض به.
+ */
 function dealPartyName(deal: {
   customerType: DealCustomerType;
   client: { fullName: string } | null;
   externalCustomerName: string | null;
 }): string {
-  return deal.customerType === DealCustomerType.INTERNAL
-    ? deal.client!.fullName
-    : deal.externalCustomerName!;
+  if (deal.customerType === DealCustomerType.INTERNAL) return deal.client!.fullName;
+  return deal.externalCustomerName ?? 'زبون خارجي';
 }
 
 @Injectable()
@@ -64,21 +68,13 @@ export class DealsService {
       throw new BadRequestException('يجب تحديد الفرع — المستخدم الحالي غير مرتبط بفرع ثابت');
     }
 
-    // تصنيف الطرف المتعامل: عميل داخلي يتطلب clientId وحده، أو زبون خارجي
-    // يتطلب اسمًا يدويًا وحده — لا يُقبل مزج الاثنين أو تركهما فارغين، تمامًا
-    // كوحدة الحوالات (Remittance.customerType).
+    // تصنيف الطرف المتعامل: عميل داخلي يتطلب clientId وحده، أو زبون خارجي —
+    // بلا أي بيانات إضافية عنه بعد إلغاء اسم وهاتف الزبون الخارجي صراحةً؛
+    // customerType وحده يكفي لتمييزه. لا يُقبل clientId مع EXTERNAL.
     if (dto.customerType === DealCustomerType.INTERNAL) {
       if (!dto.clientId) throw new BadRequestException('صفقة لعميل داخلي تتطلب تحديد clientId');
-      if (dto.externalCustomerName) {
-        throw new BadRequestException('لا يُقبل اسم زبون خارجي مع عميل داخلي (clientId)');
-      }
-    } else {
-      if (!dto.externalCustomerName) {
-        throw new BadRequestException('صفقة لزبون خارجي تتطلب تحديد externalCustomerName');
-      }
-      if (dto.clientId) {
-        throw new BadRequestException('لا يُقبل clientId مع زبون خارجي (customerType = EXTERNAL)');
-      }
+    } else if (dto.clientId) {
+      throw new BadRequestException('لا يُقبل clientId مع زبون خارجي (customerType = EXTERNAL)');
     }
 
     const [client, currency, latestRate] = await Promise.all([
@@ -144,10 +140,9 @@ export class DealsService {
       data: {
         customerType: dto.customerType,
         clientId: dto.customerType === DealCustomerType.INTERNAL ? dto.clientId : null,
-        externalCustomerName:
-          dto.customerType === DealCustomerType.EXTERNAL ? dto.externalCustomerName : null,
-        externalCustomerPhone:
-          dto.customerType === DealCustomerType.EXTERNAL ? dto.externalCustomerPhone : null,
+        // لا اسم ولا هاتف للزبون الخارجي بعد الآن — أُلغي إدخالهما صراحةً.
+        externalCustomerName: null,
+        externalCustomerPhone: null,
         branchId,
         currencyId: currency.id,
         direction: dto.direction,
@@ -171,10 +166,9 @@ export class DealsService {
       action: 'CREATE_DEAL',
       actorId: actor.id,
       after: {
+        dealNumber: deal.dealNumber,
         customerType: deal.customerType,
         clientId: deal.clientId,
-        externalCustomerName: deal.externalCustomerName,
-        externalCustomerPhone: deal.externalCustomerPhone,
         direction: deal.direction,
         currency: currency.code,
         amount: deal.amount,
@@ -334,7 +328,7 @@ export class DealsService {
 
       const dealDirection = deal.direction as DealDirection;
       const partyName = dealPartyName(deal);
-      const reason = `تنفيذ صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${partyName}`;
+      const reason = `تنفيذ صفقة #${deal.dealNumber} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${partyName}`;
 
       // طرف العملة الأجنبية: الكمية المتداولة نفسها (deal.amount).
       const fxResult = await applyMovement(tx, {
@@ -374,7 +368,7 @@ export class DealsService {
       if (!profitLyd.isZero()) {
         const isGain = profitLyd.isPositive();
         await postJournalEntry(tx, {
-          description: `هامش صفقة #${deal.id.slice(0, 8)} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${partyName} (${deal.currency.code})`,
+          description: `هامش صفقة #${deal.dealNumber} — ${dealDirection === DealDirection.BUY ? 'شراء من' : 'بيع لـ'} ${partyName} (${deal.currency.code})`,
           sourceType: 'Transaction',
           sourceId: deal.id,
           postedById: actor.id,

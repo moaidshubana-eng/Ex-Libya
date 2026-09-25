@@ -15,17 +15,9 @@ export class CreateDealDto {
   @IsUUID()
   clientId?: string;
 
-  @ApiPropertyOptional({
-    description: 'إلزامي فقط عند customerType = EXTERNAL — اسم الزبون العابر غير المسجَّل',
-  })
-  @IsOptional()
-  @IsString()
-  externalCustomerName?: string;
-
-  @ApiPropertyOptional({ description: 'هاتف الزبون الخارجي — اختياري حتى مع EXTERNAL' })
-  @IsOptional()
-  @IsString()
-  externalCustomerPhone?: string;
+  // لا اسم ولا هاتف للزبون الخارجي — أُلغي إدخالهما صراحةً؛ صفقة EXTERNAL
+  // تُميَّز بـ customerType وحده، وتُعرَض بتسمية عامة "زبون خارجي" (انظر
+  // Transaction.externalCustomerName في schema.prisma وDealsService.dealPartyName).
 
   @ApiProperty({
     required: false,

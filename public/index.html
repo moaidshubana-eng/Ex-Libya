@@ -91,6 +91,12 @@
   .field label{ display:block; font-size:12.5px; font-weight:700; margin-bottom:6px; color:var(--ink-soft); }
   .field input, .field select, .field textarea{ width:100%; padding:10px 13px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); font-size:13.5px; font-family:inherit; background:var(--paper); color:var(--ink); transition:border-color .15s, box-shadow .15s; }
   .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .field.ac-field{ position:relative; }
+  .ac-dropdown{ position:absolute; z-index:30; top:100%; inset-inline-start:0; inset-inline-end:0; margin-top:4px; background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius-sm); box-shadow:var(--shadow-lift); max-height:230px; overflow-y:auto; }
+  .ac-item{ padding:9px 13px; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; align-items:center; gap:10px; border-bottom:1px solid var(--line); }
+  .ac-item:last-child{ border-bottom:none; }
+  .ac-item:hover{ background:var(--accent-soft); }
+  .ac-empty{ padding:10px 13px; font-size:12.5px; color:var(--ink-faint); }
   .hint-box{ background:var(--gold-soft); border-inline-start:3px solid var(--gold); border-radius:var(--radius-sm); padding:11px 13px; font-size:12px; color:var(--ink-soft); margin-top:18px; line-height:1.7; }
   .hint-box b{ color:var(--ink); }
   .error-msg{ background:var(--critical-soft); color:var(--critical); padding:10px 13px; border-radius:var(--radius-sm); font-size:13px; margin-top:14px; display:none; }
@@ -430,12 +436,15 @@
             <div class="field"><label>الفرع (لو حسابك غير مرتبط بفرع ثابت)</label><select id="deal-branch"><option value="">— الفرع الافتراضي لحسابك —</option></select></div>
           </div>
           <div class="form-grid" id="deal-internal-fields">
-            <div class="field"><label>العميل</label><select id="deal-client"></select></div>
+            <div class="field ac-field">
+              <label>العميل</label>
+              <input type="text" id="deal-client-search" placeholder="اكتب اسم العميل أو رقم هاتفه للبحث..." autocomplete="off" oninput="onDealClientSearchInput()" onfocus="onDealClientSearchInput()" />
+              <input type="hidden" id="deal-client-id" />
+              <div id="deal-client-dropdown" class="ac-dropdown" style="display:none"></div>
+            </div>
           </div>
-          <div class="form-grid" id="deal-external-fields" style="display:none">
-            <div class="field"><label>اسم الزبون الخارجي</label><input type="text" id="deal-ext-name" placeholder="اسم الزبون العابر" /></div>
-            <div class="field"><label>هاتف الزبون (اختياري)</label><input type="text" id="deal-ext-phone" placeholder="+218910000000" /></div>
-          </div>
+          <!-- زبون خارجي: customerType وحده يكفي لتمييزه — لا اسم ولا هاتف يُدخَلان (أُلغيا صراحةً) -->
+          <p class="form-note" id="deal-external-note" style="display:none">صفقة لزبون خارجي عابر — بلا اسم أو هاتف يُدخَلان، تُسجَّل وتُعرَض بتسمية عامة "زبون خارجي".</p>
           <div class="form-grid">
             <div class="field"><label>العملة</label><select id="deal-currency"></select></div>
             <div class="field"><label>الاتجاه</label><select id="deal-direction" onchange="updateDealProfitPreview()"><option value="SELL">بيع للعميل</option><option value="BUY">شراء من العميل</option></select></div>
@@ -1159,7 +1168,9 @@ async function loadClients(){
     if (risk) params.set('riskTier', risk);
     const result = await apiCall('/clients?' + params.toString());
     clientsCache = result.items;
-    document.getElementById('deal-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
+    // ملاحظة: خانة العميل في شاشة الصفقات (deal-client-search) لا تُغذَّى من هذا
+    // الكاش المحدود بصفحة واحدة — تبحث مباشرة عبر الخادم بكل العملاء (انظر
+    // onDealClientSearchInput)، فلا حاجة لتحديثها هنا.
     document.getElementById('mv-client').innerHTML = '<option value="">— حركة خزينة عادية بلا ربط بعميل —</option>' + clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
     document.getElementById('rm-client').innerHTML = clientsCache.map(c => `<option value="${c.id}">${c.fullName}</option>`).join('');
     if (result.items.length === 0) { el.textContent = 'لا يوجد عملاء مطابقون.'; document.getElementById('clients-pager').innerHTML = ''; return; }
@@ -1323,8 +1334,52 @@ const DEAL_STATUS_LABELS = {
 function onDealCustomerTypeChange(){
   const isInternal = document.getElementById('deal-customer-type').value === 'INTERNAL';
   document.getElementById('deal-internal-fields').style.display = isInternal ? '' : 'none';
-  document.getElementById('deal-external-fields').style.display = isInternal ? 'none' : '';
+  document.getElementById('deal-external-note').style.display = isInternal ? 'none' : '';
+  if (isInternal) return;
+  document.getElementById('deal-client-search').value = '';
+  document.getElementById('deal-client-id').value = '';
+  document.getElementById('deal-client-dropdown').style.display = 'none';
 }
+
+/** بحث حيّ (مع تأخير بسيط) عن عميل داخلي بالاسم أو الهاتف مباشرة عبر الخادم
+ * — لا يقتصر على صفحة العملاء المحمَّلة حاليًا في الكاش المحلي. */
+let dealClientSearchTimer = null;
+function onDealClientSearchInput(){
+  document.getElementById('deal-client-id').value = ''; // أي كتابة تُبطل التحديد السابق حتى يُختار عنصر صراحةً
+  clearTimeout(dealClientSearchTimer);
+  const q = document.getElementById('deal-client-search').value.trim();
+  const dropdown = document.getElementById('deal-client-dropdown');
+  if (!q) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
+  dealClientSearchTimer = setTimeout(async () => {
+    try{
+      const result = await apiCall('/clients?search=' + encodeURIComponent(q) + '&pageSize=8');
+      if (!result.items.length) {
+        dropdown.innerHTML = '<div class="ac-empty">لا يوجد عملاء مطابقون</div>';
+      } else {
+        dropdown.innerHTML = result.items.map(c =>
+          `<div class="ac-item" onclick='selectDealClient(${JSON.stringify(c.id)}, ${JSON.stringify(c.fullName)})'>
+            <span>${c.fullName}</span><span class="num" style="color:var(--ink-faint)">${c.phone}</span>
+          </div>`
+        ).join('');
+      }
+      dropdown.style.display = 'block';
+    }catch(err){
+      dropdown.innerHTML = `<div class="ac-empty" style="color:var(--critical)">${err.message}</div>`;
+      dropdown.style.display = 'block';
+    }
+  }, 300);
+}
+function selectDealClient(id, fullName){
+  document.getElementById('deal-client-id').value = id;
+  document.getElementById('deal-client-search').value = fullName;
+  document.getElementById('deal-client-dropdown').style.display = 'none';
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#deal-client-search') && !e.target.closest('#deal-client-dropdown')) {
+    const dd = document.getElementById('deal-client-dropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
 
 /** معاينة حيّة لهامش ربح/خسارة الصفقة من سعر الصفقة وسعر السوق الموازي
  * المُدخلَين يدويًا — كلاهما نهائي، لا تقديري: عند الشراء الربح إن كان سعر
@@ -1344,9 +1399,7 @@ function updateDealProfitPreview(){
 
 async function createDeal(){
   const customerType = document.getElementById('deal-customer-type').value;
-  const clientId = document.getElementById('deal-client').value;
-  const externalCustomerName = document.getElementById('deal-ext-name').value.trim();
-  const externalCustomerPhone = document.getElementById('deal-ext-phone').value.trim();
+  const clientId = document.getElementById('deal-client-id').value;
   const branchId = document.getElementById('deal-branch').value;
   const currencyCode = document.getElementById('deal-currency').value;
   const direction = document.getElementById('deal-direction').value;
@@ -1354,20 +1407,20 @@ async function createDeal(){
   const dealRate = document.getElementById('deal-rate').value.trim();
   const parallelMarketRate = document.getElementById('deal-parallel-rate').value.trim();
 
-  if (customerType === 'INTERNAL' && !clientId) { showToast('اختر عميلًا داخليًا أولًا (سجّل عميلًا من تبويب العملاء إن كانت القائمة فاضية)', true); return; }
-  if (customerType === 'EXTERNAL' && !externalCustomerName) { showToast('أدخل اسم الزبون الخارجي', true); return; }
+  if (customerType === 'INTERNAL' && !clientId) { showToast('ابحث عن عميل واخترْه من القائمة أولًا', true); return; }
   if (!dealRate) { showToast('أدخل سعر الصفقة', true); return; }
   if (!parallelMarketRate) { showToast('أدخل سعر السوق الموازي', true); return; }
 
   const body = { customerType, currencyCode, direction, amount, dealRate, parallelMarketRate };
   if (customerType === 'INTERNAL') { body.clientId = clientId; }
-  else { body.externalCustomerName = externalCustomerName; if (externalCustomerPhone) body.externalCustomerPhone = externalCustomerPhone; }
   if (branchId) body.branchId = branchId;
 
   await runBusy('create-deal-btn', async () => {
     const deal = await apiCall('/deals', { method: 'POST', body: JSON.stringify(body) });
-    showToast('أُنشئت الصفقة — الحالة: ' + deal.status);
-    ['deal-rate','deal-parallel-rate','deal-ext-name','deal-ext-phone'].forEach(id => document.getElementById(id).value = '');
+    showToast('أُنشئت الصفقة رقم ' + deal.dealNumber + ' — الحالة: ' + deal.status);
+    ['deal-rate','deal-parallel-rate'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('deal-client-search').value = '';
+    document.getElementById('deal-client-id').value = '';
     document.getElementById('deal-profit-preview').value = '';
     dealsPage = 1; loadDeals();
   })().catch(err => showToast(err.message, true));
@@ -1400,7 +1453,7 @@ function renderDealsTable(){
   const el = document.getElementById('deals-content');
   if (!dealsCache.length) { el.textContent = 'لا توجد صفقات مطابقة.'; return; }
   const now = Date.now();
-  let html = '<div class="table-wrap"><table><thead><tr><th>الطرف المتعامل</th><th>العملية</th><th>الكمية</th><th>سعر الصفقة</th><th>السوق الموازي</th><th>الربح/الخسارة</th><th>الحالة</th><th>قفل السعر</th><th>إجراء</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><thead><tr><th>رقم المعاملة</th><th>الطرف المتعامل</th><th>العملية</th><th>الكمية</th><th>سعر الصفقة</th><th>السوق الموازي</th><th>الربح/الخسارة</th><th>الحالة</th><th>قفل السعر</th><th>إجراء</th></tr></thead><tbody>';
   dealsCache.forEach(d => {
     let actions = '—';
     if (d.status === 'APPROVED') actions = `<button class="btn-primary btn-sm" onclick="dealAction('${d.id}','execute', this)">تنفيذ</button> <button class="btn-danger btn-sm" onclick="dealAction('${d.id}','cancel', this)">إلغاء</button>`;
@@ -1414,10 +1467,13 @@ function renderDealsTable(){
     const profit = parseFloat(d.profitLyd);
     const profitColor = profit < 0 ? 'var(--critical)' : profit > 0 ? 'var(--success)' : 'var(--ink-faint)';
     const directionLabel = d.direction === 'BUY' ? 'شراء من العميل' : 'بيع للعميل';
+    // صفقة خارجية جديدة بلا اسم مخزَّن (أُلغي إدخاله) تُعرَض بتسمية عامة؛ صفقة
+    // تاريخية سابقة على هذا التغيير قد يبقى اسمها الفعلي محفوظًا فتُعرَض به.
     const party = d.customerType === 'INTERNAL'
       ? (d.client ? d.client.fullName : '—')
-      : `${d.externalCustomerName || '—'} <span class="pill">خارجي</span>`;
+      : `${d.externalCustomerName || 'زبون خارجي'} <span class="pill">خارجي</span>`;
     html += `<tr>
+      <td class="num">#${d.dealNumber}</td>
       <td><b>${party}</b></td>
       <td>${directionLabel} <span style="color:var(--ink-faint)">(${d.currency.code})</span></td>
       <td class="num">${d.amount}</td>
