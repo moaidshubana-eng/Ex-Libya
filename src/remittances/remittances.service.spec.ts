@@ -285,6 +285,35 @@ describe('RemittancesService.withdraw', () => {
     await expect(service.withdraw('rem-1', actor)).rejects.toBeInstanceOf(ConflictException);
     expect(audit.record).not.toHaveBeenCalled();
   });
+
+  it('لا يرحّل أي قيد إطلاقًا عندما يكون الربح صفرًا بالضبط وبلا بدل تركيا (لا سطر بلا مدين أو دائن)', async () => {
+    const prisma = buildPrismaMock({ createdOverrides: { profit: '0.00' } });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new RemittancesService(prisma, audit);
+
+    const result = await service.withdraw('rem-1', actor);
+
+    expect(result.status).toBe('WITHDRAWN');
+    expect(prisma.tx.journalEntry.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'WITHDRAW_REMITTANCE' }),
+    );
+  });
+
+  it('يرحّل سطرَي بدل تركيا فقط عندما يكون الربح بالدولار صفرًا لكن بدل تركيا موجود', async () => {
+    const prisma = buildPrismaMock({
+      createdOverrides: { profit: '0.00', turkeyAllowanceLyd: '50.00' },
+    });
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new RemittancesService(prisma, audit);
+
+    await service.withdraw('rem-1', actor);
+
+    expect(prisma.tx.journalEntry.create).toHaveBeenCalledTimes(1);
+    const lines = (prisma.tx.journalEntry.create as jest.Mock).mock.calls[0][0].data.lines.create;
+    expect(lines).toHaveLength(2); // سطرا بدل تركيا فقط — لا سطري ربح صفريَّين
+    expect(lines.every((l: any) => l.currencyId === 'cur-lyd')).toBe(true);
+  });
 });
 
 describe('RemittancesService.reject', () => {

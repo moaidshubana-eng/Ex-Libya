@@ -22,9 +22,12 @@ import { RejectRemittanceDto } from './dto/reject-remittance.dto';
  * كاملة) — على غرار DealsService.execute بالضبط: ذمم الهامش تتحرك بصافي
  * الربح (مدينة إن كان موجبًا، دائنة إن كان خسارة)، مقابل إيراد الهامش بنفس
  * القيمة على الجانب الآخر — قيد بسطرين فقط، لا تفصيل إيراد/تكلفة إجماليَين.
- * بدل تركيا (إن وُجد) سطران إضافيان بالدينار الليبي ضمن القيد نفسه — عملة
- * مستقلة تمامًا، تُوازَن على حدة (postJournalEntry يتحقق من توازن كل عملة
- * بمعزل عن الأخرى).
+ * سطرا الربح يُتخطَّيان كليًا إن كان الربح صفرًا بالضبط (postJournalEntry
+ * يرفض أي سطر بلا قيمة مدينة أو دائنة — سطر مدين/دائن صفرَين معًا مرفوض،
+ * تمامًا كما يتخطّى DealsService.execute ترحيل هامش الصفقة كليًا إن كان
+ * صفرًا). بدل تركيا (إن وُجد) سطران إضافيان بالدينار الليبي ضمن القيد نفسه —
+ * عملة مستقلة تمامًا، تُوازَن على حدة (postJournalEntry يتحقق من توازن كل
+ * عملة بمعزل عن الأخرى) — يُضافان حتى لو كان الربح بالدولار صفرًا.
  */
 function remittanceLedgerLines(params: {
   profit: Prisma.Decimal;
@@ -33,21 +36,31 @@ function remittanceLedgerLines(params: {
   lydCurrencyId?: string;
   branchId?: string | null;
 }) {
-  const profitIsGain = !params.profit.isNegative();
-  const lines = [
-    {
-      accountCode: ACCOUNT_CODES.REMITTANCE_RECEIVABLE,
-      ...(profitIsGain ? { debit: params.profit } : { credit: params.profit.abs() }),
-      currencyId: params.currencyId,
-      branchId: params.branchId,
-    },
-    {
-      accountCode: ACCOUNT_CODES.REMITTANCE_MARGIN_REVENUE,
-      ...(profitIsGain ? { credit: params.profit } : { debit: params.profit.abs() }),
-      currencyId: params.currencyId,
-      branchId: params.branchId,
-    },
-  ];
+  const lines: {
+    accountCode: string;
+    debit?: Prisma.Decimal.Value;
+    credit?: Prisma.Decimal.Value;
+    currencyId: string;
+    branchId?: string | null;
+  }[] = [];
+
+  if (!params.profit.isZero()) {
+    const profitIsGain = !params.profit.isNegative();
+    lines.push(
+      {
+        accountCode: ACCOUNT_CODES.REMITTANCE_RECEIVABLE,
+        ...(profitIsGain ? { debit: params.profit } : { credit: params.profit.abs() }),
+        currencyId: params.currencyId,
+        branchId: params.branchId,
+      },
+      {
+        accountCode: ACCOUNT_CODES.REMITTANCE_MARGIN_REVENUE,
+        ...(profitIsGain ? { credit: params.profit } : { debit: params.profit.abs() }),
+        currencyId: params.currencyId,
+        branchId: params.branchId,
+      },
+    );
+  }
 
   const allowance = params.turkeyAllowanceLyd ? toMoney(params.turkeyAllowanceLyd) : null;
   if (allowance && !allowance.isZero() && params.lydCurrencyId) {
@@ -239,19 +252,24 @@ export class RemittancesService {
         throw new ConflictException('تغيّرت حالة الحوالة قبل تسجيل السحب — يرجى إعادة المحاولة');
       }
 
-      await postJournalEntry(tx, {
-        description: `هامش حوالة ${remittance.referenceNumber} — تم السحب`,
-        sourceType: 'Remittance',
-        sourceId: remittance.id,
-        postedById: actor.id,
-        lines: remittanceLedgerLines({
-          profit: toMoney(remittance.profit),
-          currencyId: remittance.currencyId,
-          turkeyAllowanceLyd: remittance.turkeyAllowanceLyd,
-          lydCurrencyId: lydCurrency?.id,
-          branchId: remittance.branchId,
-        }),
+      // لا قيد إطلاقًا إن كان الربح صفرًا بالضبط وبلا بدل تركيا — لا شيء
+      // فعليًا لترحيله (تمامًا كتخطّي DealsService.execute ترحيل هامش صفري).
+      const lines = remittanceLedgerLines({
+        profit: toMoney(remittance.profit),
+        currencyId: remittance.currencyId,
+        turkeyAllowanceLyd: remittance.turkeyAllowanceLyd,
+        lydCurrencyId: lydCurrency?.id,
+        branchId: remittance.branchId,
       });
+      if (lines.length > 0) {
+        await postJournalEntry(tx, {
+          description: `هامش حوالة ${remittance.referenceNumber} — تم السحب`,
+          sourceType: 'Remittance',
+          sourceId: remittance.id,
+          postedById: actor.id,
+          lines,
+        });
+      }
 
       return tx.remittance.findUniqueOrThrow({ where: { id }, include: REMITTANCE_INCLUDE });
     });
