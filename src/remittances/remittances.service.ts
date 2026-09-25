@@ -12,6 +12,7 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { toMoney } from '../common/money';
 import { ReportPeriodQuery } from '../reports/dto/report-period.query';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { CreateRemittanceDto } from './dto/create-remittance.dto';
 import { ListRemittancesQuery } from './dto/list-remittances.query';
 import { RejectRemittanceDto } from './dto/reject-remittance.dto';
@@ -89,6 +90,11 @@ const REMITTANCE_INCLUDE = {
   branch: { select: { id: true, code: true, name: true } },
   recordedBy: { select: { id: true, fullName: true, role: true } },
   statusChangedBy: { select: { id: true, fullName: true, role: true } },
+  whatsappMessages: {
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { status: true, errorMessage: true, createdAt: true },
+  },
 } satisfies Prisma.RemittanceInclude;
 
 // وحدة حوالات تركيا↔ليبيا (عبر شبكة وسترن يونيون/موني جرام كوكيل) — تدفق
@@ -101,6 +107,7 @@ export class RemittancesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly whatsApp: WhatsAppService,
   ) {}
 
   private async getUsdCurrencyOrThrow() {
@@ -282,6 +289,25 @@ export class RemittancesService {
       before: { status: RemittanceStatus.PENDING },
       after: { status: RemittanceStatus.WITHDRAWN },
     });
+
+    // إشعار واتساب بالسحب — بعد نجاح المعاملة فعليًا وخارجها، على غرار
+    // DealsService.execute؛ فشل الإرسال (لا يُرمى أبدًا من sendTemplateSafely)
+    // لا يكسر تسجيل السحب المُنجَز بالفعل.
+    if (updated.client) {
+      await this.whatsApp.sendRemittanceWithdrawn(
+        {
+          id: updated.client.id,
+          fullName: updated.client.fullName,
+          phone: updated.client.phone,
+        },
+        {
+          id: updated.id,
+          referenceNumber: updated.referenceNumber,
+          libyaDeliveryAmount: updated.libyaDeliveryAmount.toString(),
+        },
+        updated.currency.code,
+      );
+    }
 
     return updated;
   }

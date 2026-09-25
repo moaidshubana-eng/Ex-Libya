@@ -2103,14 +2103,14 @@ async function loadRemittances(){
     if (status) params.set('status', status);
     const result = await apiCall('/remittances?' + params.toString());
     if (result.items.length === 0) { el.textContent = 'لا توجد حوالات مطابقة.'; document.getElementById('remittances-pager').innerHTML = ''; return; }
-    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الزبون</th><th>الرقم المرجعي</th><th>استلام تركيا</th><th>تسليم ليبيا</th><th>الربح (USD)</th><th>بدل تركيا (LYD)</th><th>الحالة</th><th></th></tr></thead><tbody>';
+    let html = '<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الشبكة</th><th>الزبون</th><th>الرقم المرجعي</th><th>استلام تركيا</th><th>تسليم ليبيا</th><th>الربح (USD)</th><th>بدل تركيا (LYD)</th><th>الحالة</th><th>إشعار واتساب</th><th></th></tr></thead><tbody>';
     result.items.forEach(r => {
       const customer = r.client ? `${r.client.fullName} <span class="num" style="color:var(--ink-faint)">${r.client.phone}</span>` : (r.externalCustomerName || '—');
       const profitColor = parseFloat(r.profit) < 0 ? 'var(--critical)' : 'var(--success)';
       const actions = r.status === 'PENDING'
         ? `<button class="btn-primary btn-sm" onclick="withdrawRemittance('${r.id}', this)">تم السحب</button> <button class="btn-danger btn-sm" onclick="rejectRemittancePrompt('${r.id}', this)">رفض</button>`
         : '—';
-      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${customer}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.turkeyReceiptAmount)}</td><td class="num">${fmtNum(r.libyaDeliveryAmount)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td class="num">${r.turkeyAllowanceLyd ? fmtNum(r.turkeyAllowanceLyd) : '—'}</td><td><span class="pill ${r.status}">${RM_STATUS_LABELS[r.status] || r.status}</span></td><td>${actions}</td></tr>`;
+      html += `<tr><td>${fmtDate(r.createdAt)}</td><td>${RM_PROVIDER_LABELS[r.provider] || r.provider}</td><td>${customer}</td><td class="num">${r.referenceNumber}</td><td class="num">${fmtNum(r.turkeyReceiptAmount)}</td><td class="num">${fmtNum(r.libyaDeliveryAmount)}</td><td class="num" style="color:${profitColor}">${fmtNum(r.profit)}</td><td class="num">${r.turkeyAllowanceLyd ? fmtNum(r.turkeyAllowanceLyd) : '—'}</td><td><span class="pill ${r.status}">${RM_STATUS_LABELS[r.status] || r.status}</span></td><td>${cbmWhatsAppBadge(r)}</td><td>${actions}</td></tr>`;
     });
     el.innerHTML = html + '</tbody></table></div>';
     pagerHtml('remittances-pager', remittancesPage, 10, result.total, 'p => { remittancesPage = p; loadRemittances(); }');

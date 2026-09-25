@@ -30,6 +30,12 @@ export const WHATSAPP_TEMPLATES = {
     /** [اسم العميل، نوع الحركة بالعربية، المبلغ الموقَّع والعملة، الرصيد الجديد والعملة] */
     describeParams: (params: [string, string, string, string]) => params,
   },
+  REMITTANCE_WITHDRAWN: {
+    name: 'exlibya_remittance_withdrawn',
+    language: 'ar',
+    /** [اسم الزبون، الرقم المرجعي، القيمة المُسلَّمة والعملة] */
+    describeParams: (params: [string, string, string]) => params,
+  },
 } as const;
 
 export type WhatsAppTemplateKey = keyof typeof WHATSAPP_TEMPLATES;

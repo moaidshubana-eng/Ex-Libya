@@ -3,7 +3,14 @@ import { buildLedgerMockDelegates } from '../accounting/testing/mock-ledger';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { RemittancesService } from './remittances.service';
+
+function buildWhatsApp() {
+  return {
+    sendRemittanceWithdrawn: jest.fn().mockResolvedValue(undefined),
+  } as unknown as WhatsAppService;
+}
 
 const actor: AuthenticatedUser = {
   id: 'user-1',
@@ -49,6 +56,8 @@ function buildPrismaMock(
     turkeyAllowanceLyd: null,
     branchId: 'branch-1',
     status: 'PENDING',
+    client: { id: 'client-1', fullName: 'محمد الصالح', phone: '+218911234567' },
+    currency: { id: 'cur-usd', code: 'USD', name: 'دولار أمريكي' },
     ...options.createdOverrides,
   };
 
@@ -104,7 +113,7 @@ describe('RemittancesService.create', () => {
   it('يعيد استخدام عميل مسجَّل مسبقًا بهاتفه، ويحسب الربح تلقائيًا، بحالة PENDING', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     const result = await service.create(
       {
@@ -131,7 +140,7 @@ describe('RemittancesService.create', () => {
   it('يسجّل عميلًا جديدًا تلقائيًا إن لم يكن هاتفه مسجَّلًا مسبقًا', async () => {
     const prisma = buildPrismaMock({ existingClient: null });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await service.create(
       {
@@ -161,7 +170,7 @@ describe('RemittancesService.create', () => {
   it('يرفض تسجيل حوالة لعميل معطَّل (وُجد بهاتفه لكنه غير نشط)', async () => {
     const prisma = buildPrismaMock({ existingClient: { ...existingClient, isActive: false } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.create(
@@ -182,7 +191,7 @@ describe('RemittancesService.create', () => {
   it('يقبل بدل تركيا اختياريًا بالدينار الليبي، منفصلًا عن الربح بالدولار', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await service.create(
       {
@@ -205,7 +214,7 @@ describe('RemittancesService.create', () => {
   it('يرفض فرعًا غير موجود', async () => {
     const prisma = buildPrismaMock({ branch: null });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await expect(
       service.create(
@@ -226,7 +235,7 @@ describe('RemittancesService.create', () => {
   it('يحسب ربحًا سالبًا إذا كان سعر التسليم في ليبيا أعلى من سعر الاستلام في تركيا (لا يرفض العملية)', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await service.create(
       {
@@ -249,7 +258,7 @@ describe('RemittancesService.withdraw', () => {
   it('يرحّل صافي الربح فقط (سطران، لا تفصيل إيراد/تكلفة إجماليَين) وينقلها إلى WITHDRAWN', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     const result = await service.withdraw('rem-1', actor);
 
@@ -264,10 +273,25 @@ describe('RemittancesService.withdraw', () => {
     );
   });
 
+  it('يرسل إشعار واتساب بالسحب لعميل الحوالة بعد نجاح المعاملة', async () => {
+    const prisma = buildPrismaMock();
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const whatsApp = buildWhatsApp();
+    const service = new RemittancesService(prisma, audit, whatsApp);
+
+    await service.withdraw('rem-1', actor);
+
+    expect(whatsApp.sendRemittanceWithdrawn).toHaveBeenCalledWith(
+      { id: 'client-1', fullName: 'محمد الصالح', phone: '+218911234567' },
+      { id: 'rem-1', referenceNumber: 'MTCN123', libyaDeliveryAmount: '1940.00' },
+      'USD',
+    );
+  });
+
   it('يضيف سطرين إضافيين بالدينار عند وجود بدل تركيا', async () => {
     const prisma = buildPrismaMock({ createdOverrides: { turkeyAllowanceLyd: '50.00' } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await service.withdraw('rem-1', actor);
 
@@ -280,7 +304,7 @@ describe('RemittancesService.withdraw', () => {
   it('يرفض تسجيل السحب لحوالة ليست قيد التعديل (PENDING)', async () => {
     const prisma = buildPrismaMock({ createdOverrides: { status: 'WITHDRAWN' } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await expect(service.withdraw('rem-1', actor)).rejects.toBeInstanceOf(ConflictException);
     expect(audit.record).not.toHaveBeenCalled();
@@ -289,7 +313,7 @@ describe('RemittancesService.withdraw', () => {
   it('لا يرحّل أي قيد إطلاقًا عندما يكون الربح صفرًا بالضبط وبلا بدل تركيا (لا سطر بلا مدين أو دائن)', async () => {
     const prisma = buildPrismaMock({ createdOverrides: { profit: '0.00' } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     const result = await service.withdraw('rem-1', actor);
 
@@ -305,7 +329,7 @@ describe('RemittancesService.withdraw', () => {
       createdOverrides: { profit: '0.00', turkeyAllowanceLyd: '50.00' },
     });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await service.withdraw('rem-1', actor);
 
@@ -320,7 +344,7 @@ describe('RemittancesService.reject', () => {
   it('يرفض الحوالة ويدوّن السبب دون أي ترحيل محاسبي', async () => {
     const prisma = buildPrismaMock();
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     const result = await service.reject('rem-1', { reason: 'تسجيل مكرر بالخطأ' }, actor);
 
@@ -338,7 +362,7 @@ describe('RemittancesService.reject', () => {
   it('يرفض رفض حوالة ليست قيد التعديل (PENDING)', async () => {
     const prisma = buildPrismaMock({ createdOverrides: { status: 'REJECTED' } });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new RemittancesService(prisma, audit);
+    const service = new RemittancesService(prisma, audit, buildWhatsApp());
 
     await expect(service.reject('rem-1', { reason: 'محاولة ثانية' }, actor)).rejects.toBeInstanceOf(
       ConflictException,

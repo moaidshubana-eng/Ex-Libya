@@ -503,6 +503,9 @@ model WhatsAppMessage {
   // انظر WhatsAppService.sendClientBalanceUpdate.
   relatedClientBalanceMovementId String?
   relatedClientBalanceMovement   ClientBalanceMovement? @relation(fields: [relatedClientBalanceMovementId], references: [id])
+  // إشعار تلقائي بسحب حوالة — انظر WhatsAppService.sendRemittanceWithdrawn.
+  relatedRemittanceId            String?
+  relatedRemittance              Remittance?            @relation(fields: [relatedRemittanceId], references: [id])
   createdAt                      DateTime               @default(now())
 
   @@index([clientId, createdAt])
@@ -669,6 +672,8 @@ model Remittance {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  whatsappMessages WhatsAppMessage[]
 
   @@index([provider, status, createdAt])
   @@index([branchId, createdAt])

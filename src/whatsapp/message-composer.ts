@@ -117,3 +117,25 @@ export function composeClientBalanceUpdateLogBody(input: ClientBalanceUpdateInpu
   const sign = CLIENT_BALANCE_MOVEMENT_INCREASING.includes(input.type) ? '+' : '-';
   return `${CLIENT_BALANCE_MOVEMENT_TYPE_LABEL[input.type]}: ${sign}${input.amount} ${input.currencyCode} — الرصيد الجديد: ${input.balanceAfter} ${input.currencyCode}`;
 }
+
+export interface RemittanceWithdrawnInput {
+  clientName: string;
+  referenceNumber: string;
+  libyaDeliveryAmount: string;
+  currencyCode: string;
+}
+
+/** [اسم الزبون، الرقم المرجعي، القيمة المُسلَّمة والعملة] لقالب REMITTANCE_WITHDRAWN. */
+export function composeRemittanceWithdrawnParams(
+  input: RemittanceWithdrawnInput,
+): [string, string, string] {
+  return [
+    input.clientName,
+    input.referenceNumber,
+    `${input.libyaDeliveryAmount} ${input.currencyCode}`,
+  ];
+}
+
+export function composeRemittanceWithdrawnLogBody(input: RemittanceWithdrawnInput): string {
+  return `تم سحب حوالة ${input.referenceNumber} — ${input.libyaDeliveryAmount} ${input.currencyCode}`;
+}

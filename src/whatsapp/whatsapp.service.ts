@@ -25,8 +25,11 @@ import {
   composeRateInquiryReply,
   composeRateUpdateLogBody,
   composeRateUpdateParams,
+  composeRemittanceWithdrawnLogBody,
+  composeRemittanceWithdrawnParams,
   LimitAlertInput,
   RateSummary,
+  RemittanceWithdrawnInput,
 } from './message-composer';
 import { toDigitsOnly, toE164 } from './phone';
 import { WHATSAPP_PROVIDER, WhatsAppProvider } from './provider/whatsapp-provider.interface';
@@ -224,6 +227,33 @@ export class WhatsAppService {
     });
   }
 
+  /**
+   * إشعار تلقائي بسحب حوالة (تم السحب) — يُستدعى من RemittancesService.withdraw
+   * بعد نجاح المعاملة فعليًا (خارج معاملة قاعدة البيانات، على غرار
+   * sendDealConfirmation)، لعميل الحوالة المرتبط عبر رقمه المسجَّل.
+   */
+  async sendRemittanceWithdrawn(
+    client: { id: string; fullName: string; phone: string },
+    remittance: { id: string; referenceNumber: string; libyaDeliveryAmount: string },
+    currencyCode: string,
+  ) {
+    const input: RemittanceWithdrawnInput = {
+      clientName: client.fullName,
+      referenceNumber: remittance.referenceNumber,
+      libyaDeliveryAmount: remittance.libyaDeliveryAmount,
+      currencyCode,
+    };
+
+    await this.sendTemplateSafely({
+      to: toDigitsOnly(client.phone),
+      clientId: client.id,
+      templateKey: 'REMITTANCE_WITHDRAWN',
+      templateParams: composeRemittanceWithdrawnParams(input),
+      logBody: composeRemittanceWithdrawnLogBody(input),
+      relatedRemittanceId: remittance.id,
+    });
+  }
+
   /** يبثّ تحديث سعر لكل عميل مفعّل ومكتمل KYC وافق صراحة (whatsappOptIn) على تحديثات واتساب الجماعية. */
   async broadcastRateUpdate(currencyCode: string, triggeredByActorId: string) {
     const currency = await this.prisma.currency.findUnique({
@@ -334,6 +364,7 @@ export class WhatsAppService {
     logBody: string;
     relatedDealId?: string;
     relatedClientBalanceMovementId?: string;
+    relatedRemittanceId?: string;
   }) {
     const template = WHATSAPP_TEMPLATES[input.templateKey];
     try {
@@ -352,6 +383,7 @@ export class WhatsAppService {
           providerMessageId: result.providerMessageId,
           relatedDealId: input.relatedDealId,
           relatedClientBalanceMovementId: input.relatedClientBalanceMovementId,
+          relatedRemittanceId: input.relatedRemittanceId,
         },
       });
       return MessageStatus.SENT;
@@ -369,6 +401,7 @@ export class WhatsAppService {
           errorMessage: (error as Error).message,
           relatedDealId: input.relatedDealId,
           relatedClientBalanceMovementId: input.relatedClientBalanceMovementId,
+          relatedRemittanceId: input.relatedRemittanceId,
         },
       });
       return MessageStatus.FAILED;

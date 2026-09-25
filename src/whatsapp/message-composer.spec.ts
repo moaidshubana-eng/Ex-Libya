@@ -5,6 +5,8 @@ import {
   composeDealConfirmationParams,
   composeLimitAlertParams,
   composeRateInquiryReply,
+  composeRemittanceWithdrawnLogBody,
+  composeRemittanceWithdrawnParams,
 } from './message-composer';
 
 describe('composeRateInquiryReply', () => {
@@ -111,5 +113,30 @@ describe('composeClientBalanceUpdateLogBody', () => {
     expect(body).toContain('إيداع');
     expect(body).toContain('+500.00 USD');
     expect(body).toContain('1200.00 USD');
+  });
+});
+
+describe('composeRemittanceWithdrawnParams', () => {
+  it('يرتب المعاملات: اسم الزبون، الرقم المرجعي، ثم قيمة التسليم مع العملة', () => {
+    const params = composeRemittanceWithdrawnParams({
+      clientName: 'محمد الصالح',
+      referenceNumber: 'MTCN123',
+      libyaDeliveryAmount: '1940.00',
+      currencyCode: 'USD',
+    });
+    expect(params).toEqual(['محمد الصالح', 'MTCN123', '1940.00 USD']);
+  });
+});
+
+describe('composeRemittanceWithdrawnLogBody', () => {
+  it('يبني نصًا يعكس الرقم المرجعي وقيمة التسليم', () => {
+    const body = composeRemittanceWithdrawnLogBody({
+      clientName: 'محمد الصالح',
+      referenceNumber: 'MTCN123',
+      libyaDeliveryAmount: '1940.00',
+      currencyCode: 'USD',
+    });
+    expect(body).toContain('MTCN123');
+    expect(body).toContain('1940.00 USD');
   });
 });
