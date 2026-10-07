@@ -1,0 +1,26 @@
+# بيئة محلية/تجريبية كاملة: PostgreSQL + التطبيق. للإنتاج انظر docs/10-deployment-and-training.md
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: auction
+      POSTGRES_PASSWORD: auction
+      POSTGRES_DB: car_auction
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auction"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://auction:auction@db:5432/car_auction
+      NODE_ENV: development
+      MOCK_FEEDS: "true"
+      COOKIE_SECURE: "false"
+    ports: ["4000:4000"]
+volumes:
+  pgdata:

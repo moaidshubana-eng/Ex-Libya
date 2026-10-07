@@ -1,0 +1,33 @@
+{
+  "name": "car-auction-system",
+  "version": "0.1.0",
+  "description": "منظومة مزاد واستيراد السيارات — تتبع السيارات من مزادات Copart/IAAI حتى البيع في ليبيا",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:schema": "node scripts/apply-schema.js",
+    "db:seed": "node scripts/seed.js",
+    "db:reset": "node scripts/apply-schema.js && node scripts/seed.js",
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "test:unit": "node --test \"test/unit/*.test.js\"",
+    "test:integration": "node --test --test-concurrency=1 \"test/integration/*.test.js\"",
+    "load-test": "node scripts/load-test.js",
+    "screenshots": "node scripts/screenshots.js"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

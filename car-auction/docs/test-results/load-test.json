@@ -1,0 +1,212 @@
+{
+  "at": "2026-10-07T14:25:31.437Z",
+  "base": "http://localhost:4100",
+  "dashboardColdMs": 75.2,
+  "durationSecPerScenario": 20,
+  "dataset": {
+    "vehicles": "20058",
+    "costs": "200638",
+    "bids": "967",
+    "db_size": "116 MB"
+  },
+  "node": "v22.22.0",
+  "results": [
+    {
+      "name": "GET /api/vehicles (قائمة مقسمة صفحات، 20 ألف سيارة)",
+      "concurrency": 50,
+      "requests": 5255,
+      "rps": 261.2,
+      "p50": 183.9,
+      "p95": 254.9,
+      "p99": 291.9,
+      "max": 349.9,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 5255
+      }
+    },
+    {
+      "name": "GET /api/vehicles (بحث + مرشحات)",
+      "concurrency": 50,
+      "requests": 3821,
+      "rps": 189.6,
+      "p50": 259.9,
+      "p95": 318.4,
+      "p99": 343.4,
+      "max": 399.9,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 3821
+      }
+    },
+    {
+      "name": "GET /api/vehicles/:id (ملف كامل مع التكاليف)",
+      "concurrency": 50,
+      "requests": 4731,
+      "rps": 234.3,
+      "p50": 215.1,
+      "p95": 241.6,
+      "p99": 251,
+      "max": 273.7,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 4731
+      }
+    },
+    {
+      "name": "GET /api/dashboard (مع ذاكرة مؤقتة 10 ثوانٍ)",
+      "concurrency": 20,
+      "requests": 27649,
+      "rps": 1381.5,
+      "p50": 13.7,
+      "p95": 22.6,
+      "p99": 28.2,
+      "max": 90.7,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 27649
+      }
+    },
+    {
+      "name": "GET /api/reports/costs?status=IN_STOCK (تقرير ~2,200 سيارة)",
+      "concurrency": 10,
+      "requests": 170,
+      "rps": 8.2,
+      "p50": 1208,
+      "p95": 1462.6,
+      "p99": 1620.4,
+      "max": 1658.8,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 170
+      }
+    },
+    {
+      "name": "GET /api/reports/costs (كل الأسطول: 20 ألف سيارة)",
+      "concurrency": 5,
+      "requests": 21,
+      "rps": 1,
+      "p50": 5100,
+      "p95": 5292.7,
+      "p99": 6216.1,
+      "max": 6216.1,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 21
+      }
+    },
+    {
+      "name": "GET /api/reports/costs.xlsx?status=SOLD (تصدير Excel ~4,400 سيارة)",
+      "concurrency": 3,
+      "requests": 9,
+      "rps": 0.4,
+      "p50": 6308.8,
+      "p95": 11259.7,
+      "p99": 11259.7,
+      "max": 11259.7,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 9
+      }
+    },
+    {
+      "name": "GET /api/lots/:id أثناء 3 تصديرات Excel متزامنة",
+      "concurrency": 60,
+      "requests": 5206,
+      "rps": 258.2,
+      "p50": 199.4,
+      "p95": 416,
+      "p99": 750.3,
+      "max": 990.8,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 5206
+      }
+    },
+    {
+      "name": "(خلفية) تصدير Excel أثناء المزايدة",
+      "concurrency": 3,
+      "requests": 9,
+      "rps": 0.4,
+      "p50": 7108.3,
+      "p95": 8702.9,
+      "p99": 8702.9,
+      "max": 8702.9,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 9
+      }
+    },
+    {
+      "name": "GET /api/lots/:id (60 مزايدًا يتابعون اللوتات)",
+      "concurrency": 60,
+      "requests": 10759,
+      "rps": 535.4,
+      "p50": 110.8,
+      "p95": 138.7,
+      "p99": 148.1,
+      "max": 190.5,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "200": 10759
+      }
+    },
+    {
+      "name": "POST /api/lots/:id/bids (60 مزايدًا على 3 لوتات)",
+      "concurrency": 60,
+      "requests": 1003,
+      "rps": 61.5,
+      "p50": 10.2,
+      "p95": 103.1,
+      "p99": 138.5,
+      "max": 156.1,
+      "errors": 0,
+      "errorRate": 0,
+      "statuses": {
+        "201": 903,
+        "422": 100
+      }
+    }
+  ],
+  "integrity": [
+    {
+      "lot": "e6071fc4",
+      "bids": 298,
+      "strictlyIncreasing": true,
+      "priceMatchesLastBid": true,
+      "countMatches": true
+    },
+    {
+      "lot": "55c3357a",
+      "bids": 314,
+      "strictlyIncreasing": true,
+      "priceMatchesLastBid": true,
+      "countMatches": true
+    },
+    {
+      "lot": "3dbd61a3",
+      "bids": 315,
+      "strictlyIncreasing": true,
+      "priceMatchesLastBid": true,
+      "countMatches": true
+    }
+  ],
+  "sse": {
+    "clients": 300,
+    "bidStatus": 201,
+    "delivered": 300,
+    "p50": 29,
+    "p95": 39.5,
+    "max": 40.5
+  }
+}
