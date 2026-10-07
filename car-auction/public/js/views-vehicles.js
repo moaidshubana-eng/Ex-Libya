@@ -321,14 +321,14 @@ const TAB = {
         return html`<div class="cost-stage"><span>${LABELS.stage[k]}</span><div class="progress"><span style="width:${(val / max) * 100}%;background:${STAGE_COLORS[k]}"></span></div><b class="num" style="text-align:end">${fmt.lyd(val)}</b></div>`;
       })}</div>
       ${s.sale_price_lyd ? html`<div class="alert"><b>سعر البيع:</b> ${fmt.lyd(s.sale_price_lyd)} · <b>الهامش:</b> <span class="${Number(s.margin_lyd) >= 0 ? 'pos' : 'neg'}">${fmt.lyd(s.margin_lyd)} (${((Number(s.margin_lyd) / Number(s.total_cost_lyd)) * 100).toFixed(1)}%)</span></div>` : ''}
-      <div class="table-wrap"><table class="t"><thead><tr><th>البند</th><th>الوصف</th><th>المورد</th><th class="n">المبلغ</th><th class="n">الصرف</th><th class="n">بالدينار</th><th>التاريخ</th><th></th></tr></thead>
+      <div class="table-wrap"><table class="t"><thead><tr><th>البند والتاريخ</th><th>الوصف والمورد</th><th class="n">المبلغ الأصلي</th><th class="n">بالدينار</th><th></th></tr></thead>
         <tbody>${v.costs.items.map((c) => html`<tr>
-          <td><span class="badge" style="color:${STAGE_COLORS[c.stage]}"><span class="dot"></span><span style="color:var(--text)">${c.category}</span></span></td>
-          <td>${c.description || ''} ${c.status === 'ESTIMATED' ? html`<span class="badge" style="color:var(--accent)">تقديري</span>` : ''} ${c.is_shared ? html`<span class="faint">(مشتركة)</span>` : ''}</td>
-          <td>${c.vendor || '—'}</td><td class="n">${fmt.money(c.amount, c.currency)}</td><td class="n">${c.currency === 'LYD' ? '—' : Number(c.fx_rate_to_lyd).toFixed(4)}</td>
-          <td class="n"><b>${fmt.lyd(c.amount_lyd, true)}</b></td><td>${fmt.date(c.incurred_at)} ${c.is_paid ? '' : html`<span class="badge" style="color:var(--danger)">غير مسدد</span>`}</td>
+          <td><span class="badge" style="color:${STAGE_COLORS[c.stage]}"><span class="dot"></span><span style="color:var(--text)">${c.category}</span></span><div class="faint">${fmt.date(c.incurred_at)}</div></td>
+          <td class="wrap">${c.description || ''} ${c.status === 'ESTIMATED' ? html`<span class="badge" style="color:var(--accent)">تقديري</span>` : ''} ${c.is_shared ? html`<span class="faint">(مشتركة)</span>` : ''}${c.vendor ? html`<div class="faint">${c.vendor}</div>` : ''}</td>
+          <td class="n">${fmt.money(c.amount, c.currency)}${c.currency === 'LYD' ? '' : html`<div class="faint">× ${Number(c.fx_rate_to_lyd).toFixed(4)}</div>`}</td>
+          <td class="n"><b>${fmt.lyd(c.amount_lyd, true)}</b>${c.is_paid ? '' : html`<div><span class="badge" style="color:var(--danger)">غير مسدد</span></div>`}</td>
           <td>${can('ADMIN', 'ACCOUNTANT') && !c.is_shared ? html`<button class="btn btn-sm btn-ghost btn-danger" data-void="${c.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody>
-        <tfoot><tr><td colspan="5">الإجمالي</td><td class="n">${fmt.lyd(s.total_cost_lyd, true)}</td><td colspan="2"></td></tr></tfoot></table></div>
+        <tfoot><tr><td colspan="3">الإجمالي</td><td class="n">${fmt.lyd(s.total_cost_lyd, true)}</td><td></td></tr></tfoot></table></div>
     </div>`;
   },
 
