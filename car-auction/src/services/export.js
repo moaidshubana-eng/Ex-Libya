@@ -45,11 +45,13 @@ export async function buildCostWorkbook({ report, lines, user, filters }) {
   wb.creator = user.full_name;
   wb.created = new Date();
   wb.title = 'تقرير تكاليف السيارات';
+  wb.company = 'Golden Gate Motors';
 
   // 1) الملخص
   const s = wb.addWorksheet('الملخص', { views: [{ rightToLeft: true }] });
   s.columns = [{ width: 34 }, { width: 22 }];
-  s.addRow(['تقرير تكاليف السيارات المستوردة']).font = { bold: true, size: 16 };
+  s.addRow(['Golden Gate Motors']).font = { bold: true, size: 18, color: { argb: 'FF0B1628' } };
+  s.addRow(['تقرير تكاليف السيارات المستوردة']).font = { bold: true, size: 15, color: { argb: 'FFA8874A' } };
   s.addRow([`تاريخ الإصدار: ${new Date().toLocaleString('en-GB')}`]);
   s.addRow([`أصدره: ${user.full_name}`]);
   s.addRow([`المرشحات: ${Object.entries(filters).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('، ') || 'بلا'}`]);

@@ -94,7 +94,7 @@ export async function reportsView(el, { query }) {
   const totalCost = Number(t.total_cost_lyd) || 1;
 
   render(el, html`
-    <div class="print-only" style="margin-bottom:10px"><h2 style="margin:0">تقرير تكاليف السيارات المستوردة</h2>
+    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo.svg" alt="Golden Gate Motors"><h2 style="margin:0">تقرير تكاليف السيارات المستوردة</h2>
       <div>صدر في ${fmt.dt(r.generatedAt)} · بواسطة ${state.user.full_name} · ${qs ? `مرشحات: ${decodeURIComponent(qs)}` : 'كل السيارات'}</div></div>
     <form class="card filters no-print" data-f>
       <label class="field">الحالة<select class="input" name="status"><option value="">الكل</option>${state.meta.statuses.map((s) => html`<option value="${s.code}" ${s.code === f.status ? 'selected' : ''}>${s.label}</option>`)}</select></label>

@@ -42,7 +42,7 @@ async function navigate() {
   const seg = { lots: 'auctions', compare: 'vehicles' }[location.hash.split(/[/?]/)[1]] || location.hash.split(/[/?]/)[1];
   $$('.nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#/${seg}`));
   $('.shell').classList.remove('nav-open');
-  const setTitle = (t, crumb = '') => { $('[data-title]').textContent = t; $('[data-crumbs]').textContent = crumb; document.title = `${t} — مزاد السيارات`; };
+  const setTitle = (t, crumb = '') => { $('[data-title]').textContent = t; $('[data-crumbs]').textContent = crumb; document.title = `${t} — Golden Gate Motors`; };
   setTitle(m.route.title);
   const content = $('[data-content]');
   render(content, html`<div class="grid g4">${[1, 2, 3, 4].map(() => html`<div class="skeleton" style="height:110px"></div>`)}</div><div class="skeleton" style="height:320px;margin-top:16px"></div>`);
@@ -66,14 +66,14 @@ function shell() {
   });
   render(document.body, html`<a class="sr-only" href="#main">تخطَّ إلى المحتوى</a><div class="shell">
     <aside class="sidebar" aria-label="القائمة الرئيسية">
-      <div class="brand"><div class="brand-mark">م</div><div><b>مزاد السيارات</b><small>استيراد · تتبع · مزايدة</small></div></div>
+      <div class="brand"><img class="brand-logo" src="/brand/ggm-logo-light.svg" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
       <nav class="nav">${nav}</nav>
       <div class="me"><b>${u.full_name}</b><span>${LABELS.role[u.role]}</span>
         <div class="row" style="margin-top:8px"><button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-theme-toggle>الوضع الداكن/الفاتح</button>
         <button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-logout>${icon('logout')} خروج</button></div></div>
     </aside>
     <main class="main" id="main">
-      <header class="topbar"><button class="btn btn-sm menu-btn" data-menu aria-label="القائمة">${icon('menu')}</button>
+      <header class="topbar"><button class="btn btn-sm menu-btn" data-menu aria-label="القائمة">${icon('menu')}</button><img class="topbar-mark" src="/brand/ggm-mark.svg" alt="Golden Gate Motors">
         <div><h1 data-title></h1><div class="crumbs" data-crumbs></div></div><span class="spacer"></span></header>
       <div class="content" data-content></div>
     </main></div><div class="toast-host" aria-live="polite"></div>`);
@@ -89,7 +89,7 @@ function shell() {
 function loginScreen() {
   render(document.body, html`<div class="login">
     <section class="hero">
-      <div class="brand" style="padding:0"><div class="brand-mark">م</div><div><b>مزاد السيارات</b><small style="color:#9fb4cc">منظومة الاستيراد والمزايدة</small></div></div>
+      <div class="brand brand-hero"><img class="brand-logo" src="/brand/ggm-logo-light.svg" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
       <div><h1>من ساحة المزاد في أمريكا<br>إلى المشتري في ليبيا — في شاشة واحدة</h1>
         <p>تتبع كل سيارة عبر الشحن والجمارك والنقل، تكاليف دقيقة لكل سيارة، ومزايدات حية مع ربط آلي بمنصتي Copart و IAAI.</p></div>
       <div class="feats">
