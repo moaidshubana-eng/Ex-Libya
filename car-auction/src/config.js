@@ -30,8 +30,11 @@ export const config = {
   lookupKey: Buffer.from(requiredInProd('LOOKUP_HMAC_KEY', Buffer.alloc(32, 9).toString('base64')), 'base64'),
   sessionTtlHours: Number(env.SESSION_TTL_HOURS || 10),
   cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : isProd,
-  mockFeeds: env.MOCK_FEEDS ? env.MOCK_FEEDS === 'true' : !isProd,
-  schedulerEnabled: env.SCHEDULER_ENABLED ? env.SCHEDULER_ENABLED === 'true' : true,
+  // الربط الآلي مع Copart/IAAI/التتبع: معطّل افتراضيًا. تُدخل السيارات يدويًا أو بملف CSV.
+  // لتفعيله لاحقًا: INTEGRATIONS_ENABLED=true مع مفاتيح المصادر (انظر docs/03).
+  integrationsEnabled: env.INTEGRATIONS_ENABLED === 'true',
+  mockFeeds: env.INTEGRATIONS_ENABLED === 'true' && (env.MOCK_FEEDS ? env.MOCK_FEEDS === 'true' : !isProd),
+  schedulerEnabled: env.INTEGRATIONS_ENABLED === 'true' && (env.SCHEDULER_ENABLED ? env.SCHEDULER_ENABLED === 'true' : true),
   sources: {
     COPART: { baseUrl: env.COPART_FEED_URL || null, token: env.COPART_API_TOKEN || null },
     IAAI: { baseUrl: env.IAAI_FEED_URL || null, token: env.IAAI_API_TOKEN || null },

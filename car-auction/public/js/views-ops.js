@@ -135,7 +135,46 @@ export async function reportsView(el, { query }) {
 const kpi = (label, value, sub) => html`<div class="card kpi"><span class="label">${label}</span><span class="value num">${value}</span><span class="sub">${sub}</span></div>`;
 
 // ======================================================================= التكامل والمزامنة
+const CSV_COLS = ['lot_number', 'vin', 'year', 'make', 'model', 'trim', 'color', 'odometer', 'title', 'damage', 'yard', 'state', 'purchase_price_usd', 'buyer_fee_usd', 'sale_date'];
+
+/** صفحة استيراد السيارات من ملف (عند تعطيل الربط الآلي) */
+async function importView(el) {
+  const d = await api('/integrations');
+  const jobs = d.jobs.filter((j) => j.source === 'CSV');
+  const dead = d.deadLetters.filter((x) => x.source === 'CSV');
+  render(el, html`
+    <div class="card card-b stack">
+      <h3 style="margin:0">رفع ملف سيارات (CSV)</h3>
+      <p class="muted" style="margin:0">لإدخال عدة سيارات دفعة واحدة، مثلًا من ملف Excel محفوظ بصيغة CSV أو من تصدير بوابة المزاد. تُنشأ كل سيارة بحالة "تم الشراء" مع تكاليف شرائها، ويُرفض أي سطر خاطئ مع بيان السبب دون أن يوقف بقية الأسطر. لإدخال سيارة واحدة استخدم "إضافة سيارة" في صفحة السيارات.</p>
+      <div class="row"><input type="file" accept=".csv,text/csv" data-csv class="input" style="max-width:340px"><button class="btn" data-template>تنزيل ملف نموذجي</button></div>
+      <div class="faint">الأعمدة: <span class="mono">${CSV_COLS.join(', ')}</span>. الأعمدة المطلوبة: lot_number, vin, year, make, model. رقم الهيكل يُتحقق منه بما فيه خانة التحقق. حتى 5000 سطر.</div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h3>أسطر مرفوضة تحتاج تصحيحًا</h3><span class="badge">${dead.length}</span></div>
+      ${dead.length ? html`<div class="table-wrap"><table class="t"><thead><tr><th>رقم اللوت</th><th>السبب</th><th>التاريخ</th></tr></thead>
+        <tbody>${dead.map((x) => html`<tr><td class="mono">${x.external_ref}</td><td>${x.error}</td><td>${fmt.dt(x.created_at)}</td></tr>`)}</tbody></table></div>
+        <p class="faint" style="padding:0 18px 14px">صحّح الأسطر في الملف وارفعه مجددًا. السيارات الموجودة تُحدَّث ولا تتكرر، وتُغلق الأخطاء تلقائيًا عند نجاح السطر.</p>` : html`<div class="empty">لا توجد أسطر مرفوضة</div>`}</div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h3>آخر عمليات الاستيراد</h3></div>
+      ${jobs.length ? html`<div class="table-wrap"><table class="t"><thead><tr><th>#</th><th>الوقت</th><th class="n">أسطر</th><th class="n">جديدة</th><th class="n">محدثة</th><th class="n">بلا تغيير</th><th class="n">مرفوضة</th></tr></thead>
+        <tbody>${jobs.slice(0, 10).map((j) => html`<tr><td>${j.id}</td><td>${fmt.dt(j.started_at)}</td><td class="n">${j.items_seen}</td><td class="n">${j.items_created}</td><td class="n">${j.items_updated}</td><td class="n">${j.items_unchanged}</td><td class="n ${j.items_failed ? 'neg' : ''}">${j.items_failed}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">لم يُرفع أي ملف بعد</div>`}</div>`);
+  $('[data-template]', el).addEventListener('click', () => {
+    const csv = '\uFEFF' + CSV_COLS.join(',') + '\n12345678,1M8GDM9AXKP042788,2019,Toyota,Camry,SE,WHITE,45000,SALVAGE,FRONT END,Houston North,TX,8450,926,2026-10-01\n';
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: 'cars-template.csv' });
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  $('[data-csv]', el).addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const r = await api('/integrations/csv', { method: 'POST', body: await file.text(), headers: { 'Content-Type': 'text/csv' } });
+      toast(`تم: ${r.created} جديدة، ${r.updated} محدثة، ${r.unchanged} بلا تغيير، ${r.failed} مرفوضة`, r.failed ? '' : 'ok');
+    } catch (err) { toast(err.message, 'err'); }
+    importView(el);
+  });
+}
+
 export async function integrationsView(el) {
+  if (!state.meta.integrationsEnabled) return importView(el);
   const d = await api('/integrations');
   const canRun = can('ADMIN', 'OPERATIONS');
   const srcState = (s) => s.circuit_open_until && new Date(s.circuit_open_until) > new Date() ? html`<span class="badge" style="color:var(--danger)"><span class="dot"></span>قاطع الدائرة مفتوح حتى ${fmt.dt(s.circuit_open_until)}</span>`

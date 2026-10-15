@@ -413,3 +413,59 @@ describe('محرك المزامنة مع Copart/IAAI', () => {
     if (vinError('5NPEL4JA1LH123456')) assert.equal(r.data.failed, 1); else assert.equal(r.data.created, 1);
   });
 });
+
+// ===================================================================== الإدخال اليدوي (بدون ربط آلي)
+describe('إدخال السيارات يدويًا والربط الآلي معطّل', () => {
+  const ops = client(base);
+  let MANUAL_VIN;
+  before(async () => { await ops.login('ops@auction.ly'); });
+  const body = (over = {}) => ({ vin: '1M8GDM9A7KP042789', year: 2020, make: 'Toyota', model: 'Corolla', source: 'COPART', lotNumber: '71000001', purchasePriceUsd: '5200', buyerFeeUsd: '780', purchaseDate: '2026-10-01', ...over });
+
+  test('الربط الآلي معطّل افتراضيًا: زر المزامنة يعيد 404 وmeta تصرّح بذلك', async () => {
+    assert.equal((await ops.get('/api/meta')).data.integrationsEnabled, false);
+    assert.equal((await ops.post('/api/integrations/COPART/sync')).status, 404);
+  });
+  test('إنشاء سيارة: رقم مخزون وحالة PURCHASED وتكاليف شراء بسعر صرف يوم الشراء', async () => {
+    const { makeVin } = await import('../../src/domain/vin.js');
+    const vin = (MANUAL_VIN = makeVin('4T1G11AK', 'K', 'U', 777000));
+    const r = await ops.post('/api/vehicles', body({ vin }));
+    assert.equal(r.status, 201, JSON.stringify(r.data));
+    assert.match(r.data.stock_no, /^LY-\d{4}-\d{4}$/);
+    const v = await one('SELECT status FROM vehicles WHERE id = $1', [r.data.id]);
+    assert.equal(v.status, 'PURCHASED');
+    const costs = (await query('SELECT category_code, amount, fx_rate_to_lyd FROM vehicle_costs WHERE vehicle_id = $1 ORDER BY category_code', [r.data.id])).rows;
+    assert.deepEqual(costs.map((c) => c.category_code), ['AUCTION_BUYER_FEE', 'HAMMER_PRICE']);
+    const rate = await one(`SELECT rate_to_lyd FROM exchange_rates WHERE currency = 'USD' AND effective_date <= '2026-10-01' ORDER BY effective_date DESC LIMIT 1`);
+    assert.equal(costs[0].fx_rate_to_lyd, rate.rate_to_lyd);
+    assert.equal((await one(`SELECT lot_number FROM source_listings WHERE vehicle_id = $1`, [r.data.id])).lot_number, '71000001');
+  });
+  test('رقم هيكل مكرر أو لوت مكرر أو VIN خاطئ يُرفض برسالة واضحة', async () => {
+    assert.equal((await ops.post('/api/vehicles', body({ vin: MANUAL_VIN, lotNumber: '71000009' }))).data.error.code, 'DUPLICATE_VIN');
+    const { makeVin } = await import('../../src/domain/vin.js');
+    assert.equal((await ops.post('/api/vehicles', body({ vin: makeVin('4T1G11AK', 'K', 'U', 777001), lotNumber: '71000001' }))).data.error.code, 'DUPLICATE_LOT');
+    assert.equal((await ops.post('/api/vehicles', body({ vin: '1M8GDM9A1KP042788', lotNumber: '71000002' }))).data.error.code, 'BAD_VIN');
+  });
+  test('بلا سعر صرف في تاريخ الشراء: الإنشاء بأكمله يُلغى (لا سيارة بلا تكاليف)', async () => {
+    const { makeVin } = await import('../../src/domain/vin.js');
+    const vin = makeVin('4T1G11AK', 'K', 'U', 777002);
+    const r = await ops.post('/api/vehicles', body({ vin, lotNumber: '71000003', purchaseDate: '2001-01-01' }));
+    assert.equal(r.data.error.code, 'NO_FX_RATE');
+    assert.equal((await query('SELECT 1 FROM vehicles WHERE vin = $1', [vin])).rowCount, 0);
+  });
+  test('إدخال بلا بيانات شراء مسموح، والصلاحيات: المحاسب والمزايد ممنوعان', async () => {
+    const { makeVin } = await import('../../src/domain/vin.js');
+    assert.equal((await ops.post('/api/vehicles', { vin: makeVin('4T1G11AK', 'K', 'U', 777003), year: 2018, make: 'Kia', model: 'K5' })).status, 201);
+    assert.equal((await accountant.post('/api/vehicles', body())).status, 403);
+    assert.equal((await bidder.post('/api/vehicles', body())).status, 403);
+  });
+  test('تعديل بيانات السيارة يقفل الحقول المعدّلة ويحترم رقم الإصدار', async () => {
+    const v = await one('SELECT id, version FROM vehicles WHERE vin = $1', [MANUAL_VIN]);
+    const r = await ops.patch(`/api/vehicles/${v.id}`, { model: 'Corolla Hybrid', odometer: 33000, version: v.version });
+    assert.equal(r.status, 200);
+    const after = await one('SELECT model, odometer, locked_fields, version FROM vehicles WHERE id = $1', [v.id]);
+    assert.equal(after.model, 'Corolla Hybrid');
+    assert.deepEqual([...after.locked_fields].sort(), ['model', 'odometer']);
+    assert.equal((await ops.patch(`/api/vehicles/${v.id}`, { odometer: 1, version: v.version })).status, 409);
+    assert.equal((await ops.patch(`/api/vehicles/${v.id}`, { vin: 'X' })).status, 422);
+  });
+});

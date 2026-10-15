@@ -6,6 +6,70 @@ const STAGES = [
   ['USA', 'في أمريكا'], ['OCEAN', 'الشحن البحري'], ['LIBYA', 'ليبيا: الميناء والجمارك'], ['SALES', 'المبيعات'], ['CLOSED', 'منتهية'],
 ];
 
+
+// ======================================================================= نموذج إضافة/تعديل سيارة
+const COLORS_AR = [['WHITE', 'أبيض'], ['BLACK', 'أسود'], ['SILVER', 'فضي'], ['GRAY', 'رمادي'], ['BLUE', 'أزرق'], ['RED', 'أحمر'], ['BURGUNDY', 'عنابي'], ['BEIGE', 'بيج'], ['GREEN', 'أخضر']];
+const sel = (name, opts, cur, blank = true) => html`<select class="input" name="${name}">${blank ? html`<option value="">—</option>` : ''}${opts.map(([v, l]) => html`<option value="${v}" ${String(v) === String(cur ?? '') ? 'selected' : ''}>${l}</option>`)}</select>`;
+const triBool = (name, cur) => sel(name, [['true', 'نعم'], ['false', 'لا']], cur == null ? '' : String(cur));
+const fixedFields = (v = {}) => html`
+  <div class="grid g3"><label class="field">سنة الصنع<input class="input num" name="year" required inputmode="numeric" pattern="\\d{4}" value="${v.year || ''}"></label>
+    <label class="field">الماركة<input class="input" name="make" required maxlength="60" value="${v.make || ''}" list="makes-list"></label>
+    <label class="field">الطراز<input class="input" name="model" required maxlength="80" value="${v.model || ''}"></label></div>
+  <datalist id="makes-list">${state.meta.makes.map((m) => html`<option value="${m}">`)}</datalist>
+  <div class="grid g3"><label class="field">الفئة (Trim)<input class="input" name="trim" maxlength="80" value="${v.trim || ''}"></label>
+    <label class="field">نوع الهيكل<input class="input" name="bodyStyle" maxlength="40" value="${v.body_style || ''}" placeholder="SEDAN / SUV / PICKUP"></label>
+    <label class="field">اللون<select class="input" name="exteriorColor"><option value="">—</option>${COLORS_AR.map(([c, l]) => html`<option value="${c}" ${c === v.exterior_color ? 'selected' : ''}>${l}</option>`)}</select></label></div>
+  <div class="grid g3"><label class="field">قراءة العداد<input class="input num" name="odometer" inputmode="numeric" pattern="\\d+" value="${v.odometer ?? ''}"></label>
+    <label class="field">الوحدة${sel('odometerUnit', [['mi', 'ميل'], ['km', 'كم']], v.odometer_unit || 'mi', false)}</label>
+    <label class="field">نوع الملكية${sel('titleType', Object.entries(LABELS.title), v.title_type || 'OTHER', false)}</label></div>
+  <div class="grid g3"><label class="field">الضرر الرئيسي<input class="input" name="primaryDamage" maxlength="80" value="${v.primary_damage || ''}" placeholder="FRONT END"></label>
+    <label class="field">المفاتيح متوفرة؟${triBool('hasKeys', v.has_keys)}</label>
+    <label class="field">تعمل وتسير؟${triBool('runAndDrive', v.run_and_drive)}</label></div>`;
+
+const toBody = (r) => {
+  const b = {};
+  for (const [k, val] of Object.entries(r)) {
+    if (val === '') continue;
+    b[k] = ['year', 'odometer'].includes(k) ? Number(val) : ['hasKeys', 'runAndDrive'].includes(k) ? val === 'true' : val;
+  }
+  return b;
+};
+
+export async function addVehicleDialog() {
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await modal({
+    title: 'إضافة سيارة', submitLabel: 'حفظ السيارة', body: html`
+      <label class="field">رقم الهيكل (VIN) — 17 خانة<input class="input mono" name="vin" required minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase"></label>
+      ${fixedFields()}
+      <div class="alert" style="font-size:13px">بيانات الشراء (اختيارية). تُسجَّل تكاليف الشراء تلقائيًا بالدولار بسعر صرف يوم الشراء، لذا يجب أن يكون سعر الدولار لذلك اليوم مُدخَلًا.</div>
+      <div class="grid g3"><label class="field">المزاد${sel('source', [['COPART', 'Copart'], ['IAAI', 'IAAI'], ['OTHER', 'مصدر آخر']], '', true)}</label>
+        <label class="field">رقم اللوت<input class="input num" name="lotNumber" inputmode="numeric" pattern="\\d{4,12}"></label>
+        <label class="field">تاريخ الشراء<input class="input" type="date" name="purchaseDate" value="${today}"></label></div>
+      <div class="grid g3"><label class="field">سعر الشراء ($)<input class="input num" name="purchasePriceUsd" inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label>
+        <label class="field">رسوم المشتري ($)<input class="input num" name="buyerFeeUsd" inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label>
+        <label class="field">رسوم أخرى ($)<input class="input num" name="otherFeesUsd" inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label></div>
+      <label class="field">ميناء الوصول${sel('destinationPort', state.meta.ports.filter((p) => p.country === 'LY').map((p) => [p.code, p.name_ar]), 'LYMRA', false)}</label>
+      <label class="field">ملاحظات<input class="input" name="notes" maxlength="1000"></label>` });
+  if (!r) return;
+  try {
+    const v = await api('/vehicles', { method: 'POST', body: toBody(r) });
+    toast(`أُضيفت السيارة ${v.stock_no}`, 'ok');
+    location.hash = `#/vehicles/${v.id}`;
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function editVehicleDialog(v, reload) {
+  const r = await modal({ title: `تعديل بيانات ${v.stock_no}`, submitLabel: 'حفظ التعديل', body: html`
+    <div class="faint">رقم الهيكل <span class="mono">${v.vin}</span> لا يُعدَّل. الحقول التي تعدّلها تُقفل فلا تستبدلها أي مزامنة لاحقة.</div>
+    ${fixedFields(v)}` });
+  if (!r) return;
+  try {
+    const out = await api(`/vehicles/${v.id}`, { method: 'PATCH', body: { ...toBody(r), version: v.version } });
+    toast(out.unchanged ? 'لا تغييرات للحفظ' : 'تم حفظ التعديل', out.unchanged ? '' : 'ok');
+    reload();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
 // ======================================================================= لوحة المؤشرات
 export async function dashboardView(el) {
   const d = await api('/dashboard');
@@ -15,6 +79,7 @@ export async function dashboardView(el) {
   const sum = (codes) => codes.reduce((a, c) => a + (count[c] || 0), 0);
   const inTransit = sum(['LOADED', 'IN_TRANSIT_SEA']);
   const atPort = sum(['AT_PORT_LIBYA', 'IN_CUSTOMS']);
+  const syncOn = state.meta.integrationsEnabled;
   const syncBad = d.sync.filter((s) => s.circuit_open_until || s.consecutive_failures > 0 || s.open_errors > 0);
 
   render(el, html`
@@ -58,7 +123,7 @@ export async function dashboardView(el) {
             ${line('مستحقات غير مسددة للموردين', fmt.lyd(d.money.unpaid_lyd))}
           </div>
         </div>
-        <div class="card">
+        ${syncOn ? html`<div class="card">
           <div class="card-h"><h2>صحة الربط الخارجي</h2><span style="flex:1"></span><a href="#/integrations">التفاصيل</a></div>
           <div class="card-b stack" style="gap:8px">
             ${d.sync.map((s) => html`<div class="row" style="justify-content:space-between">
@@ -69,7 +134,7 @@ export async function dashboardView(el) {
             </div>`)}
             ${syncBad.length ? html`<div class="alert">توجد عناصر تحتاج مراجعة في طابور أخطاء المزامنة.</div>` : ''}
           </div>
-        </div>
+        </div>` : ''}
       </div>
     </div>`);
 }
@@ -99,6 +164,7 @@ export async function vehiclesView(el, { query }) {
         ${staff ? html`<label class="field">المصدر<select class="input" name="source"><option value="">الكل</option>${['COPART', 'IAAI'].map((s) => html`<option ${s === f.source ? 'selected' : ''}>${s}</option>`)}</select></label>` : ''}
         <label class="field">الترتيب<select class="input" name="sort">${[['newest', 'الأحدث'], ['year_desc', 'سنة الصنع'], ['price_asc', 'السعر ↑'], ['price_desc', 'السعر ↓'], ['eta', 'أقرب وصول'], ['status', 'الحالة']].map(([v, l]) => html`<option value="${v}" ${v === f.sort ? 'selected' : ''}>${l}</option>`)}</select></label>
         <button class="btn btn-primary">تطبيق</button>
+        ${can('ADMIN', 'OPERATIONS') ? html`<button type="button" class="btn btn-accent" data-add>${icon('plus')} إضافة سيارة</button>` : ''}
         <div class="row" style="margin-inline-start:auto">
           <button type="button" class="btn btn-sm ${f.view === 'grid' ? 'btn-primary' : ''}" data-view="grid">بطاقات</button>
           <button type="button" class="btn btn-sm ${f.view === 'table' ? 'btn-primary' : ''}" data-view="table">جدول</button>
@@ -125,6 +191,7 @@ export async function vehiclesView(el, { query }) {
   }));
   $$('[data-view]', el).forEach((b) => b.addEventListener('click', () => go({ view: b.dataset.view, page: f.page })));
   $$('[data-page]', el).forEach((b) => b.addEventListener('click', () => go({ page: b.dataset.page })));
+  $('[data-add]', el)?.addEventListener('click', addVehicleDialog);
   bindCompare(el);
 }
 
@@ -210,6 +277,7 @@ export async function vehicleDetailView(el, { params, setTitle }) {
           ${v.lot && ['OPEN', 'PENDING'].includes(v.lot.status) ? html`<a class="btn btn-accent" href="#/lots/${v.lot.id}">${icon('gavel')} المزايدة الحية — ${fmt.lyd(v.lot.current_price)}</a>` : ''}
           ${v.costs ? html`<div class="row" style="justify-content:space-between;border-top:1px dashed var(--border);padding-top:10px"><span class="muted">التكلفة الواصلة حتى الآن</span><b class="num" style="font-size:18px">${fmt.lyd(v.costs.summary.total_cost_lyd)}</b></div>` : ''}
           ${v.sale ? html`<div class="row" style="justify-content:space-between"><span class="muted">سعر البيع (${v.sale.invoice_no})</span><b class="num">${fmt.lyd(v.sale.sale_price_lyd)}</b></div>` : ''}
+          ${can('ADMIN', 'OPERATIONS') ? html`<button class="btn" data-edit>تعديل بيانات السيارة</button>` : ''}
           ${can('ADMIN', 'SALES') && v.status === 'IN_STOCK' ? html`<button class="btn btn-accent" data-list>${icon('gavel')} إدراج في مزاد</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') && v.next_statuses.length ? html`<div class="row" style="border-top:1px dashed var(--border);padding-top:10px">
             <select class="input" data-next style="flex:1">${v.next_statuses.map((s) => html`<option value="${s}">${label(s)}</option>`)}</select>
@@ -242,6 +310,7 @@ export async function vehicleDetailView(el, { params, setTitle }) {
     } catch (e) { toast(e.message, 'err'); }
   });
 
+  $('[data-edit]', el)?.addEventListener('click', () => editVehicleDialog(v, () => vehicleDetailView(el, { params, setTitle })));
   $('[data-list]', el)?.addEventListener('click', async () => {
     const { events } = await api('/auctions');
     const open = events.filter((e) => ['SCHEDULED', 'LIVE'].includes(e.status) && new Date(e.ends_at) > new Date());

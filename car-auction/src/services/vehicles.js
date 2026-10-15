@@ -1,4 +1,6 @@
-import { query, audit } from '../db.js';
+import { query, tx, audit } from '../db.js';
+import { rateToLyd } from './costs.js';
+import { vinError } from '../domain/vin.js';
 import { canTransition, manualNextStatuses, STATUS_LABEL } from '../domain/status.js';
 import { HttpError } from '../security/middleware.js';
 
@@ -168,4 +170,84 @@ export async function getVehicleCosts(vehicleId) {
 
 export async function compareVehicles(ids, opts) {
   return Promise.all(ids.map((id) => getVehicle(id, opts)));
+}
+
+const EDITABLE = {
+  year: 'year', make: 'make', model: 'model', trim: 'trim', bodyStyle: 'body_style', exteriorColor: 'exterior_color', interiorColor: 'interior_color',
+  engine: 'engine', transmission: 'transmission', driveType: 'drive_type', fuelType: 'fuel_type', odometer: 'odometer', odometerUnit: 'odometer_unit',
+  titleType: 'title_type', titleState: 'title_state', primaryDamage: 'primary_damage', secondaryDamage: 'secondary_damage', hasKeys: 'has_keys',
+  runAndDrive: 'run_and_drive', conditionGrade: 'condition_grade', listPriceLyd: 'list_price_lyd', notes: 'notes',
+};
+
+/**
+ * إدخال سيارة يدويًا (بدون ربط آلي): تُنشأ بحالة PURCHASED مع رقم مخزون، وتُسجَّل تكاليف الشراء بالدولار
+ * بسعر صرف يوم الشراء، ويُحفظ رقم اللوت في المصدر إن وُجد. إن فُعِّل الربط لاحقًا فسيُطابَق اللوت/VIN
+ * مع هذا السجل نفسه فلا يتكرر.
+ */
+export async function createVehicle(b, actor) {
+  const ve = vinError(b.vin);
+  if (ve) throw new HttpError(422, 'BAD_VIN', ve);
+  const vin = b.vin.trim().toUpperCase();
+  return tx(async (c) => {
+    const { rows: dup } = await c.query('SELECT stock_no FROM vehicles WHERE vin = $1', [vin]);
+    if (dup[0]) throw new HttpError(409, 'DUPLICATE_VIN', `هذه السيارة مسجلة مسبقًا برقم المخزون ${dup[0].stock_no}`);
+    let srcId = null;
+    if (b.source && b.source !== 'OTHER') {
+      srcId = (await c.query('SELECT id FROM external_sources WHERE code = $1', [b.source])).rows[0]?.id;
+      if (b.lotNumber) {
+        const { rows: l } = await c.query('SELECT v.stock_no FROM source_listings s JOIN vehicles v ON v.id = s.vehicle_id WHERE s.source_id = $1 AND s.lot_number = $2', [srcId, b.lotNumber]);
+        if (l[0]) throw new HttpError(409, 'DUPLICATE_LOT', `رقم اللوت مسجل مسبقًا على السيارة ${l[0].stock_no}`);
+      }
+    }
+    const port = (await c.query('SELECT id FROM ports WHERE code = $1', [b.destinationPort || 'LYMRA'])).rows[0];
+    const { rows: [v] } = await c.query(
+      `INSERT INTO vehicles (stock_no, vin, year, make, model, trim, body_style, exterior_color, odometer, odometer_unit, title_type, primary_damage,
+                             has_keys, run_and_drive, destination_port_id, notes)
+       VALUES ('LY-' || to_char(now(),'YYYY') || '-' || lpad(nextval('stock_seq')::text, 4, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING id, stock_no`,
+      [vin, b.year, b.make, b.model, b.trim || null, b.bodyStyle || null, b.exteriorColor || null, b.odometer ?? null, b.odometerUnit || 'mi',
+        b.titleType || 'OTHER', b.primaryDamage || null, b.hasKeys ?? null, b.runAndDrive ?? null, port?.id || null, b.notes || null]);
+    await c.query(`INSERT INTO vehicle_status_history (vehicle_id, from_status, to_status, source, reason, changed_by) VALUES ($1, NULL, 'PURCHASED', 'MANUAL', 'إدخال يدوي', $2)`, [v.id, actor.id]);
+    const date = b.purchaseDate || new Date().toISOString().slice(0, 10);
+    if (b.source && b.source !== 'OTHER' && b.lotNumber) {
+      await c.query(
+        `INSERT INTO source_listings (vehicle_id, source_id, lot_number, sale_date, sale_status, purchase_price_usd, raw_payload, payload_hash)
+         VALUES ($1,$2,$3,$4,'SOLD',$5,$6,$7)`,
+        [v.id, srcId, b.lotNumber, date, b.purchasePriceUsd || null, JSON.stringify({ manual: true, enteredBy: actor.id }), `manual:${v.id}`]);
+    }
+    const lines = [['HAMMER_PRICE', b.purchasePriceUsd, 'سعر الشراء'], ['AUCTION_BUYER_FEE', b.buyerFeeUsd, 'رسوم المشتري'], ['AUCTION_OTHER_FEES', b.otherFeesUsd, 'رسوم مزاد أخرى']]
+      .filter(([, amount]) => amount && Number(amount) > 0);
+    if (lines.length) {
+      const fx = await rateToLyd(c, 'USD', date);
+      for (const [code, amount, desc] of lines) {
+        await c.query(
+          `INSERT INTO vehicle_costs (vehicle_id, category_code, description, amount, currency, fx_rate_to_lyd, status, incurred_at, invoice_ref, is_paid, created_by)
+           VALUES ($1,$2,$3,$4,'USD',$5,'ACTUAL',$6,$7,false,$8)`,
+          [v.id, code, `${desc}${b.lotNumber ? ` — لوت ${b.lotNumber}` : ''}`, amount, fx, date, b.lotNumber ? `LOT-${b.lotNumber}` : null, actor.id]);
+      }
+    }
+    await audit(c, { actorId: actor.id, action: 'VEHICLE_CREATED', entity: 'vehicle', entityId: v.id, after: { stock_no: v.stock_no, vin, manual: true }, ip: actor.ip });
+    return v;
+  });
+}
+
+/** تعديل بيانات السيارة. الحقول المعدَّلة تُقفل (locked_fields) فلا تكتب فوقها المزامنة لاحقًا إن فُعِّل الربط. */
+export async function updateVehicle(id, b, actor) {
+  const { version, ...fields } = b;
+  return tx(async (c) => {
+    const { rows: [cur] } = await c.query('SELECT * FROM vehicles WHERE id = $1 FOR UPDATE', [id]);
+    if (!cur) throw new HttpError(404, 'NOT_FOUND', 'السيارة غير موجودة');
+    if (version != null && cur.version !== version) throw new HttpError(409, 'STALE', 'تم تعديل السيارة من مستخدم آخر — أعد تحميل الصفحة');
+    const sets = [], vals = [id], locked = new Set(cur.locked_fields || []), before = {}, after = {};
+    for (const [k, v] of Object.entries(fields)) {
+      const col = EDITABLE[k];
+      if (!col || String(cur[col] ?? '') === String(v)) continue;
+      vals.push(v); sets.push(`${col} = $${vals.length}`); locked.add(col); before[col] = cur[col]; after[col] = v;
+    }
+    if (!sets.length) return { id, unchanged: true, version: cur.version };
+    vals.push([...locked]);
+    const { rows: [upd] } = await c.query(`UPDATE vehicles SET ${sets.join(', ')}, locked_fields = $${vals.length}, version = version + 1 WHERE id = $1 RETURNING id, version`, vals);
+    await audit(c, { actorId: actor.id, action: 'VEHICLE_UPDATED', entity: 'vehicle', entityId: id, before, after, ip: actor.ip });
+    return upd;
+  });
 }

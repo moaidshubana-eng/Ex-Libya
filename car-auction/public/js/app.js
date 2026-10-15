@@ -91,12 +91,12 @@ function loginScreen() {
     <section class="hero">
       <div class="brand brand-hero"><img class="brand-logo" src="/brand/ggm-logo-light.svg" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
       <div><h1>من ساحة المزاد في أمريكا<br>إلى المشتري في ليبيا — في شاشة واحدة</h1>
-        <p>تتبع كل سيارة عبر الشحن والجمارك والنقل، تكاليف دقيقة لكل سيارة، ومزايدات حية مع ربط آلي بمنصتي Copart و IAAI.</p></div>
+        <p>تتبع كل سيارة عبر الشحن والجمارك والنقل، تكاليف دقيقة لكل سيارة، ومزايدات حية، وتقارير جاهزة للتصدير.</p></div>
       <div class="feats">
         <div class="feat"><b>تتبع شامل</b>16 حالة لدورة حياة السيارة بقواعد انتقال صارمة</div>
         <div class="feat"><b>مزايدة حية</b>تحديث لحظي، مزايدة آلية، وحماية من القنص</div>
         <div class="feat"><b>تكلفة واصلة دقيقة</b>كل بند بعملته وسعر صرفه لحظة التسجيل</div>
-        <div class="feat"><b>ربط آلي</b>مزامنة دورية مع معالجة الأخطاء وإعادة المحاولة</div>
+        <div class="feat"><b>استيراد وتصدير</b>رفع السيارات من ملف Excel/CSV وتصدير التقارير</div>
       </div>
     </section>
     <section class="form-side"><form data-login novalidate>
@@ -123,6 +123,10 @@ function loginScreen() {
 
 async function start() {
   state.meta = await api('/meta');
+  if (!state.meta.integrationsEnabled) {
+    const r = ROUTES.find((x) => x.path === '/integrations');
+    Object.assign(r, { title: 'استيراد من ملف', roles: ['ADMIN', 'OPERATIONS'] });
+  }
   shell();
   window.removeEventListener('hashchange', navigate);
   window.addEventListener('hashchange', navigate);

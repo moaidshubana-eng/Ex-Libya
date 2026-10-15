@@ -5,7 +5,8 @@ import { asyncH, requireAuth, requireRole, rateLimit, HttpError, ROLES } from '.
 import { verifyPassword, newToken, sha256, decrypt, mask } from '../security/crypto.js';
 import { validate, t, isUuid } from '../validate.js';
 import { STATUSES, STATUS_CODES } from '../domain/status.js';
-import { listVehicles, getVehicle, changeStatus, compareVehicles, getVehicleCosts } from '../services/vehicles.js';
+const TITLES = ['CLEAN', 'SALVAGE', 'REBUILT', 'PARTS_ONLY', 'CERTIFICATE_OF_DESTRUCTION', 'OTHER'];
+import { listVehicles, getVehicle, changeStatus, compareVehicles, getVehicleCosts, createVehicle, updateVehicle } from '../services/vehicles.js';
 import { addCost, voidCost, addSharedCost, costReport } from '../services/costs.js';
 import { placeBid, setProxy, listAuctions, getLot, createLot } from '../services/auctions.js';
 import { subscribe } from '../services/realtime.js';
@@ -66,7 +67,7 @@ api.get('/meta', requireAuth, asyncH(async (req, res) => {
     query('SELECT DISTINCT make FROM vehicles ORDER BY make'),
     isStaff(req.user) ? query('SELECT id, name, vendor_type FROM vendors WHERE is_active ORDER BY vendor_type, name') : { rows: [] },
   ]);
-  res.json({ statuses: STATUSES, costCategories: cats.rows, ports: ports.rows, rates: rates.rows, makes: makes.rows.map((m) => m.make), vendors: vendors.rows });
+  res.json({ integrationsEnabled: config.integrationsEnabled, statuses: STATUSES, costCategories: cats.rows, ports: ports.rows, rates: rates.rows, makes: makes.rows.map((m) => m.make), vendors: vendors.rows });
 }));
 
 // ---------------------------------------------------------------- لوحة المؤشرات
@@ -122,6 +123,30 @@ api.get('/vehicles/:id', requireAuth, uuidParam('id'), asyncH(async (req, res) =
   const v = await getVehicle(req.params.id, { includeCosts: ROLES.COST_READERS.includes(req.user.role), includeInternal: staff });
   if (!staff && !['IN_AUCTION', 'IN_STOCK', 'SOLD'].includes(v.status)) throw new HttpError(404, 'NOT_FOUND', 'السيارة غير متاحة');
   res.json(v);
+}));
+
+const vehicleFields = {
+  year: t.int({ min: 1950, max: new Date().getFullYear() + 1 }), make: t.string({ max: 60 }), model: t.string({ max: 80 }), trim: t.string({ max: 80 }),
+  bodyStyle: t.string({ max: 40 }), exteriorColor: t.string({ max: 40 }), odometer: t.int({ min: 0, max: 2_000_000 }), odometerUnit: t.enum(['mi', 'km']),
+  titleType: t.enum(TITLES), primaryDamage: t.string({ max: 80 }), hasKeys: t.bool(), runAndDrive: t.bool(), notes: t.string({ max: 1000 }),
+};
+
+api.post('/vehicles', requireRole(ROLES.LOGISTICS_WRITERS), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    ...vehicleFields, vin: t.string({ required: true, min: 17, max: 17 }),
+    year: { ...vehicleFields.year, required: true }, make: { ...vehicleFields.make, required: true }, model: { ...vehicleFields.model, required: true },
+    source: t.enum(['COPART', 'IAAI', 'OTHER']), lotNumber: t.string({ max: 20, pattern: /^\d{4,12}$/ }), purchaseDate: t.date(),
+    purchasePriceUsd: t.decimal({ positive: true }), buyerFeeUsd: t.decimal(), otherFeesUsd: t.decimal(), destinationPort: t.string({ max: 10 }),
+  });
+  res.status(201).json(await createVehicle(b, actorOf(req)));
+}));
+
+api.patch('/vehicles/:id', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    ...vehicleFields, interiorColor: t.string({ max: 40 }), engine: t.string({ max: 60 }), transmission: t.string({ max: 40 }), driveType: t.string({ max: 20 }),
+    fuelType: t.string({ max: 30 }), titleState: t.string({ max: 2 }), secondaryDamage: t.string({ max: 80 }), conditionGrade: t.decimal(), listPriceLyd: t.decimal(), version: t.int({ min: 1 }),
+  });
+  res.json(await updateVehicle(req.params.id, b, actorOf(req)));
 }));
 
 api.post('/vehicles/:id/status', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
@@ -325,7 +350,9 @@ api.get('/integrations', requireRole(ROLES.STAFF), asyncH(async (_req, res) => {
   res.json({ sources: sources.rows, jobs: jobs.rows, deadLetters: dead.rows });
 }));
 
-api.post('/integrations/:code/sync', requireRole(['ADMIN', 'OPERATIONS']), asyncH(async (req, res) => {
+const needIntegrations = (_req, _res, next) => (config.integrationsEnabled ? next() : next(new HttpError(404, 'INTEGRATIONS_OFF', 'الربط الآلي غير مفعّل')));
+
+api.post('/integrations/:code/sync', requireRole(['ADMIN', 'OPERATIONS']), needIntegrations, asyncH(async (req, res) => {
   const code = String(req.params.code).toUpperCase();
   if (!['COPART', 'IAAI', 'TRACKING'].includes(code)) throw new HttpError(404, 'NOT_FOUND', 'مصدر غير معروف');
   try {
