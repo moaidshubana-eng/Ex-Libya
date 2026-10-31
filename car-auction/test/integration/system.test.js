@@ -469,3 +469,59 @@ describe('إدخال السيارات يدويًا والربط الآلي مع�
     assert.equal((await ops.patch(`/api/vehicles/${v.id}`, { vin: 'X' })).status, 422);
   });
 });
+
+// ===================================================================== جاهزية الإنتاج: المستخدمون وكلمة المرور وأسعار الصرف
+describe('إدارة المستخدمين وكلمة المرور وأسعار الصرف', () => {
+  const adm = client(base);
+  before(async () => { await adm.login('admin@auction.ly'); });
+
+  test('المدير ينشئ موظفًا فيدخل بحسابه؛ والبريد المكرر والكلمة الضعيفة مرفوضان', async () => {
+    assert.equal((await adm.post('/api/users', { email: 'New.Ops@auction.ly', fullName: 'موظف جديد', role: 'OPERATIONS', password: 'Temp-Pass-2026' })).status, 201);
+    assert.equal((await adm.post('/api/users', { email: 'new.ops@auction.ly', fullName: 'مكرر', role: 'OPERATIONS', password: 'Temp-Pass-2026' })).data.error.code, 'EMAIL_TAKEN');
+    assert.equal((await adm.post('/api/users', { email: 'weak@auction.ly', fullName: 'ضعيف', role: 'VIEWER', password: 'short' })).data.error.code, 'WEAK_PASSWORD');
+    const c = client(base);
+    assert.equal((await c.login('new.ops@auction.ly', 'Temp-Pass-2026')).status, 200);
+  });
+  test('إنشاء مزايد ينشئ ملف عميل بهاتف مشفر', async () => {
+    const r = await adm.post('/api/users', { email: 'bid.new@auction.ly', fullName: 'تاجر جديد', role: 'BIDDER', password: 'Temp-Pass-2026', phone: '0911112222' });
+    assert.equal(r.status, 201);
+    const cu = await one(`SELECT c.code, c.phone_enc FROM users u JOIN customers c ON c.id = u.customer_id WHERE u.email = 'bid.new@auction.ly'`);
+    assert.match(cu.code, /^C-\d{5}$/);
+    assert.match(cu.phone_enc, /^v1:/);
+  });
+  test('غير المدير لا يدير المستخدمين، والمدير لا يعطّل نفسه', async () => {
+    const ops2 = client(base); await ops2.login('ops@auction.ly');
+    assert.equal((await ops2.get('/api/users')).status, 403);
+    assert.equal((await ops2.post('/api/users', { email: 'x@auction.ly', fullName: 'x y', role: 'ADMIN', password: 'Temp-Pass-2026' })).status, 403);
+    const me = (await adm.get('/api/auth/me')).data.user;
+    assert.equal((await adm.patch(`/api/users/${me.id}`, { isActive: false })).data.error.code, 'SELF_LOCKOUT');
+  });
+  test('تعطيل مستخدم يُنهي جلساته فورًا ويمنع دخوله', async () => {
+    const c = client(base); await c.login('new.ops@auction.ly', 'Temp-Pass-2026');
+    const u = await one(`SELECT id FROM users WHERE email = 'new.ops@auction.ly'`);
+    assert.equal((await adm.patch(`/api/users/${u.id}`, { isActive: false })).status, 200);
+    assert.equal((await c.get('/api/auth/me')).status, 401);
+    assert.equal((await client(base).login('new.ops@auction.ly', 'Temp-Pass-2026')).status, 401);
+  });
+  test('تغيير كلمة المرور: يتطلب الحالية، ويطبق السياسة، ويُنهي الجلسات الأخرى', async () => {
+    const a = client(base), b = client(base);
+    await a.login('viewer2@auction.ly').catch(() => {});
+    await adm.post('/api/users', { email: 'pw.user@auction.ly', fullName: 'مستخدم كلمة', role: 'VIEWER', password: 'Old-Pass-2026' });
+    await a.login('pw.user@auction.ly', 'Old-Pass-2026'); await b.login('pw.user@auction.ly', 'Old-Pass-2026');
+    assert.equal((await a.post('/api/auth/password', { current: 'wrong-pass-1', next: 'New-Pass-2027' })).status, 403);
+    assert.equal((await a.post('/api/auth/password', { current: 'Old-Pass-2026', next: 'short' })).data.error.code, 'WEAK_PASSWORD');
+    assert.equal((await a.post('/api/auth/password', { current: 'Old-Pass-2026', next: 'New-Pass-2027' })).status, 200);
+    assert.equal((await a.get('/api/auth/me')).status, 200);
+    assert.equal((await b.get('/api/auth/me')).status, 401);
+    assert.equal((await client(base).login('pw.user@auction.ly', 'New-Pass-2027')).status, 200);
+  });
+  test('سعر الصرف: المحاسب يسجل، وقيمة غير معقولة ترفض، وإعادة التسجيل تستبدل', async () => {
+    const acc = client(base); await acc.login('accountant@auction.ly');
+    assert.equal((await acc.post('/api/exchange-rates', { currency: 'USD', rateToLyd: '5.61', effectiveDate: '2026-11-01' })).status, 201);
+    assert.equal((await acc.post('/api/exchange-rates', { currency: 'USD', rateToLyd: '561', effectiveDate: '2026-11-02' })).data.error.code, 'FX_RANGE');
+    await acc.post('/api/exchange-rates', { currency: 'USD', rateToLyd: '5.63', effectiveDate: '2026-11-01' });
+    assert.equal((await one(`SELECT rate_to_lyd FROM exchange_rates WHERE currency='USD' AND effective_date='2026-11-01'`)).rate_to_lyd, '5.630000');
+    const ops3 = client(base); await ops3.login('ops@auction.ly');
+    assert.equal((await ops3.post('/api/exchange-rates', { currency: 'USD', rateToLyd: '5.5', effectiveDate: '2026-11-03' })).status, 403);
+  });
+});

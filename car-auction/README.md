@@ -51,7 +51,7 @@ docker compose up --build     # ثم نفّذ db:reset مرة واحدة من د
 ## الاختبارات
 
 ```bash
-npm test                 # 88 اختبارًا (وحدة + تكامل على PostgreSQL حقيقي) — كلها ناجحة
+npm test                 # 100 اختبار (وحدة + تكامل على PostgreSQL حقيقي) — كلها ناجحة
 npm run test:unit        # 48 اختبار وحدة بلا قاعدة بيانات
 ```
 
@@ -71,6 +71,7 @@ npm run test:unit        # 48 اختبار وحدة بلا قاعدة بيانا
 | 8 | دليل الصيانة والتشغيل | [docs/08-maintenance-guide.md](docs/08-maintenance-guide.md) |
 | 9 | **خطة الاختبار والنتائج** (وظيفي، أمان، أداء) | [docs/09-test-plan-and-results.md](docs/09-test-plan-and-results.md) |
 | 10 | النشر التدريجي والتدريب | [docs/10-deployment-and-training.md](docs/10-deployment-and-training.md) |
+| 11 | **النشر الفعلي على الإنترنت** (Render) | [docs/11-go-live.md](docs/11-go-live.md) · [render.yaml](render.yaml) |
 | — | **النموذج الأولي العامل** | هذا المستودع (`src/`, `public/`) |
 
 ## التقنيات

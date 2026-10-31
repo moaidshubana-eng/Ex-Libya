@@ -1,6 +1,7 @@
 import { html, render, $, $$, api, state, LABELS, icon, toast } from './core.js';
 import { dashboardView, vehiclesView, vehicleDetailView, compareView } from './views-vehicles.js';
 import { auctionsView, lotView } from './views-auctions.js';
+import { settingsView, changePasswordDialog } from './views-settings.js';
 import { shipmentsView, customsView, reportsView, integrationsView, auditView } from './views-ops.js';
 
 const STAFF = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER'];
@@ -15,6 +16,7 @@ const ROUTES = [
   { path: '/customs', title: 'الجمارك', view: customsView, roles: STAFF, nav: ['customs'] },
   { path: '/reports', title: 'تقرير التكاليف', view: reportsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS', 'VIEWER', 'SALES'], nav: ['report', 'المالية'] },
   { path: '/integrations', title: 'الربط مع Copart / IAAI', view: integrationsView, roles: STAFF, nav: ['sync', 'النظام'] },
+  { path: '/settings', title: 'الإعدادات', view: settingsView, roles: ['ADMIN', 'ACCOUNTANT'], nav: ['money'] },
   { path: '/audit', title: 'سجل التدقيق', view: auditView, roles: ['ADMIN'], nav: ['audit'] },
 ];
 
@@ -70,6 +72,7 @@ function shell() {
       <nav class="nav">${nav}</nav>
       <div class="me"><b>${u.full_name}</b><span>${LABELS.role[u.role]}</span>
         <div class="row" style="margin-top:8px"><button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-theme-toggle>الوضع الداكن/الفاتح</button>
+        <button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-pw>كلمة المرور</button>
         <button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-logout>${icon('logout')} خروج</button></div></div>
     </aside>
     <main class="main" id="main">
@@ -78,6 +81,7 @@ function shell() {
       <div class="content" data-content></div>
     </main></div><div class="toast-host" aria-live="polite"></div>`);
   $('[data-menu]').addEventListener('click', () => $('.shell').classList.toggle('nav-open'));
+  $('[data-pw]').addEventListener('click', changePasswordDialog);
   $('[data-logout]').addEventListener('click', async () => { await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); });
   $('[data-theme-toggle]').addEventListener('click', () => {
     const dark = document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);

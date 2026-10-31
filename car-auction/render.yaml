@@ -1,0 +1,37 @@
+# نشر على Render بنقرة: خدمة ويب (Docker) + قاعدة PostgreSQL مُدارة.
+# الاستخدام: Render ← New ← Blueprint ← اختر المستودع. ثم أدخل INITIAL_ADMIN_EMAIL و INITIAL_ADMIN_PASSWORD عند الطلب.
+# لا تستخدم الخطة المجانية للقاعدة: تُحذف بعد 30 يومًا.
+databases:
+  - name: auction-db
+    plan: basic-256mb        # ~6 دولار/شهر. زِدها مع نمو البيانات
+    databaseName: car_auction
+    user: auction
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: golden-gate-motors
+    runtime: docker
+    rootDir: car-auction     # المجلد داخل المستودع (احذف السطر إن رفعت المشروع وحده)
+    plan: starter            # ~7 دولار/شهر. لا خطة مجانية: تنام الخدمة فتقطع المزايدات الحية
+    healthCheckPath: /readyz
+    autoDeploy: false        # النشر يدويًا حتى لا يتحدث النظام أثناء مزاد حي
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase: { name: auction-db, property: connectionString }
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true  # يُولَّد مرة واحدة. احفظ نسخة منه خارج Render، فبدونه تضيع بيانات العملاء المشفرة
+      - key: LOOKUP_HMAC_KEY
+        generateValue: true
+      - key: INTEGRATIONS_ENABLED
+        value: "false"
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false          # يُطلب منك عند أول نشر
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: INITIAL_ADMIN_NAME
+        value: مدير النظام

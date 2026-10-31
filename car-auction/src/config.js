@@ -40,5 +40,8 @@ export const config = {
     IAAI: { baseUrl: env.IAAI_FEED_URL || null, token: env.IAAI_API_TOKEN || null },
     TRACKING: { baseUrl: env.TRACKING_API_URL || null, token: env.TRACKING_API_TOKEN || null },
   },
+  // عدد البروكسيات الموثوقة أمام التطبيق (Render/Railway/Nginx = 1) أو 'loopback'. ضروري لصحة عنوان IP وحد المعدل وHTTPS.
+  trustProxy: /^\d+$/.test(env.TRUST_PROXY || '') ? Number(env.TRUST_PROXY) : (env.TRUST_PROXY || 'loopback'),
+  bootstrapAdmin: { email: env.INITIAL_ADMIN_EMAIL || null, password: env.INITIAL_ADMIN_PASSWORD || null, name: env.INITIAL_ADMIN_NAME || 'مدير النظام' },
   instanceId: env.INSTANCE_ID || randomBytes(4).toString('hex'),
 };

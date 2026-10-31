@@ -2,7 +2,7 @@ import express from 'express';
 import { query, tx, audit } from '../db.js';
 import { config } from '../config.js';
 import { asyncH, requireAuth, requireRole, rateLimit, HttpError, ROLES } from '../security/middleware.js';
-import { verifyPassword, newToken, sha256, decrypt, mask } from '../security/crypto.js';
+import { verifyPassword, hashPassword, passwordPolicyError, newToken, sha256, encrypt, lookupHash, decrypt, mask } from '../security/crypto.js';
 import { validate, t, isUuid } from '../validate.js';
 import { STATUSES, STATUS_CODES } from '../domain/status.js';
 const TITLES = ['CLEAN', 'SALVAGE', 'REBUILT', 'PARTS_ONLY', 'CERTIFICATE_OF_DESTRUCTION', 'OTHER'];
@@ -57,6 +57,92 @@ api.get('/auth/me', requireAuth, (req, res) => {
   const { session_id, ...u } = req.user;
   res.json({ user: u });
 });
+
+api.post('/auth/password', requireAuth, rateLimit({ windowMs: 15 * 60_000, max: 10, key: (req) => `pw|${req.user?.id}` }), asyncH(async (req, res) => {
+  const b = validate(req.body, { current: t.string({ required: true, max: 200 }), next: t.string({ required: true, max: 200 }) });
+  const { rows: [u] } = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!(await verifyPassword(b.current, u.password_hash))) throw new HttpError(403, 'BAD_PASSWORD', 'كلمة المرور الحالية غير صحيحة');
+  const bad = passwordPolicyError(b.next);
+  if (bad) throw new HttpError(422, 'WEAK_PASSWORD', bad);
+  await query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [req.user.id, await hashPassword(b.next)]);
+  // إبطال كل الجلسات الأخرى (الجلسة الحالية تبقى)
+  await query('UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL', [req.user.id, req.user.session_id]);
+  await audit(null, { actorId: req.user.id, action: 'PASSWORD_CHANGED', entity: 'user', entityId: req.user.id, ip: req.ip });
+  res.json({ ok: true });
+}));
+
+// ---------------------------------------------------------------- المستخدمون (المدير)
+const USER_ROLES = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER', 'BIDDER'];
+
+api.get('/users', requireRole('ADMIN'), asyncH(async (_req, res) => {
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.full_name, u.role, u.is_active, u.last_login_at, u.locked_until, u.created_at, c.code AS customer_code
+       FROM users u LEFT JOIN customers c ON c.id = u.customer_id ORDER BY u.is_active DESC, u.role, u.full_name`);
+  res.json({ items: rows });
+}));
+
+api.post('/users', requireRole('ADMIN'), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    email: t.string({ required: true, max: 200, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ }), fullName: t.string({ required: true, min: 2, max: 120 }),
+    role: t.enum(USER_ROLES, { required: true }), password: t.string({ required: true, max: 200 }), phone: t.string({ max: 30 }),
+  });
+  const bad = passwordPolicyError(b.password);
+  if (bad) throw new HttpError(422, 'WEAK_PASSWORD', bad);
+  const out = await tx(async (c) => {
+    const email = b.email.toLowerCase();
+    if ((await c.query('SELECT 1 FROM users WHERE email = $1', [email])).rowCount) throw new HttpError(409, 'EMAIL_TAKEN', 'هذا البريد مسجل لمستخدم آخر');
+    let customerId = null;
+    if (b.role === 'BIDDER') {
+      const { rows: [cu] } = await c.query(
+        `INSERT INTO customers (code, full_name, customer_type, phone_enc, phone_hash, kyc_status)
+         VALUES ('C-' || lpad(nextval('customer_seq')::text, 5, '0'), $1, 'INDIVIDUAL', $2, $3, 'PENDING') RETURNING id`,
+        [b.fullName, encrypt(b.phone), lookupHash(b.phone)]);
+      customerId = cu.id;
+    }
+    const { rows: [u] } = await c.query(
+      `INSERT INTO users (email, full_name, password_hash, role, customer_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, email, full_name, role`,
+      [email, b.fullName, await hashPassword(b.password), b.role, customerId]);
+    await audit(c, { actorId: req.user.id, action: 'USER_CREATED', entity: 'user', entityId: u.id, after: { email, role: b.role }, ip: req.ip });
+    return u;
+  });
+  res.status(201).json(out);
+}));
+
+api.patch('/users/:id', requireRole('ADMIN'), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { isActive: t.bool(), role: t.enum(USER_ROLES), password: t.string({ max: 200 }) });
+  if (req.params.id === req.user.id && (b.isActive === false || (b.role && b.role !== 'ADMIN')))
+    throw new HttpError(422, 'SELF_LOCKOUT', 'لا يمكنك تعطيل حسابك أو خفض صلاحيتك بنفسك');
+  if (b.password) { const bad = passwordPolicyError(b.password); if (bad) throw new HttpError(422, 'WEAK_PASSWORD', bad); }
+  const out = await tx(async (c) => {
+    const { rows: [cur] } = await c.query('SELECT id, role, is_active FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!cur) throw new HttpError(404, 'NOT_FOUND', 'المستخدم غير موجود');
+    if (b.role && (cur.role === 'BIDDER') !== (b.role === 'BIDDER')) throw new HttpError(422, 'ROLE_KIND', 'لا يُحوَّل المزايد إلى موظف أو العكس؛ أنشئ حسابًا جديدًا');
+    const { rows: [u] } = await c.query(
+      `UPDATE users SET is_active = COALESCE($2, is_active), role = COALESCE($3::user_role, role),
+              password_hash = COALESCE($4, password_hash), failed_logins = 0, locked_until = NULL, updated_at = now() WHERE id = $1 RETURNING id, email, role, is_active`,
+      [req.params.id, b.isActive ?? null, b.role ?? null, b.password ? await hashPassword(b.password) : null]);
+    if (b.isActive === false || b.password) await c.query('UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [req.params.id]);
+    await audit(c, { actorId: req.user.id, action: 'USER_UPDATED', entity: 'user', entityId: u.id, before: { role: cur.role, is_active: cur.is_active }, after: { role: u.role, is_active: u.is_active, passwordReset: !!b.password }, ip: req.ip });
+    return u;
+  });
+  res.json(out);
+}));
+
+// ---------------------------------------------------------------- أسعار الصرف
+api.get('/exchange-rates', requireRole(ROLES.COST_READERS), asyncH(async (_req, res) => {
+  const { rows } = await query('SELECT id, currency, rate_to_lyd, effective_date, source FROM exchange_rates ORDER BY effective_date DESC, currency LIMIT 60');
+  res.json({ items: rows });
+}));
+
+api.post('/exchange-rates', requireRole(['ADMIN', 'ACCOUNTANT']), asyncH(async (req, res) => {
+  const b = validate(req.body, { currency: t.enum(['USD', 'EUR'], { required: true }), rateToLyd: t.decimal({ required: true, positive: true }), effectiveDate: t.date({ required: true }) });
+  if (Number(b.rateToLyd) < 0.5 || Number(b.rateToLyd) > 50) throw new HttpError(422, 'FX_RANGE', 'سعر غير معقول للدينار الليبي — راجع الرقم');
+  const { rows: [r] } = await query(
+    `INSERT INTO exchange_rates (currency, rate_to_lyd, effective_date, source) VALUES ($1,$2,$3,'MANUAL')
+     ON CONFLICT (currency, effective_date) DO UPDATE SET rate_to_lyd = EXCLUDED.rate_to_lyd RETURNING *`, [b.currency, b.rateToLyd, b.effectiveDate]);
+  await audit(null, { actorId: req.user.id, action: 'FX_RATE_SET', entity: 'exchange_rate', entityId: r.id, after: r, ip: req.ip });
+  res.status(201).json(r);
+}));
 
 // ---------------------------------------------------------------- مرجعيات
 api.get('/meta', requireAuth, asyncH(async (req, res) => {

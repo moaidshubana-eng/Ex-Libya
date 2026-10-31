@@ -13,8 +13,9 @@ COPY package.json ./
 COPY src ./src
 COPY public ./public
 COPY db ./db
-COPY scripts/apply-schema.js ./scripts/apply-schema.js
+COPY scripts/init-db.js ./scripts/init-db.js
 USER node
 EXPOSE 4000
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:4000/readyz || exit 1
-CMD ["node", "src/server.js"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s CMD wget -qO- http://127.0.0.1:4000/readyz || exit 1
+# يهيّئ قاعدة البيانات بأمان عند الإقلاع (لا يمس قاعدة موجودة) ثم يشغّل الخادم
+CMD ["sh", "-c", "node scripts/init-db.js && exec node src/server.js"]

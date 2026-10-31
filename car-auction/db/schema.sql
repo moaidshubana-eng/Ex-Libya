@@ -495,6 +495,7 @@ CREATE TABLE proxy_bids (
 CREATE SEQUENCE invoice_seq;
 CREATE SEQUENCE stock_seq;
 CREATE SEQUENCE shipment_seq;
+CREATE SEQUENCE customer_seq START 1000;
 
 CREATE TABLE sales (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

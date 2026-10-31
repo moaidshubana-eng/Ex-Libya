@@ -9,7 +9,7 @@ import { mockFeedsRouter } from './sync/mock-feeds.js';
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 'loopback'); // خلف Nginx على نفس الخادم: نثق بـ X-Forwarded-For منه فقط
+  app.set('trust proxy', config.trustProxy); // نثق بـ X-Forwarded-For من البروكسي المحدد فقط
 
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
   app.get('/readyz', async (_req, res) => {

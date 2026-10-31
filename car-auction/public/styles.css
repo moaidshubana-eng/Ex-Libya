@@ -67,6 +67,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav svg { width: 19px; height: 19px; flex: none; opacity: .9; }
 .nav .badge-live { margin-inline-start: auto; background: var(--danger); color: #fff; font-size: 11px; border-radius: 99px; padding: 0 7px; }
 .nav-section { font-size: 11px; color: #6b8099; padding: 14px 12px 4px; letter-spacing: .04em; }
+.sidebar .me .row { gap: 2px; }
 .sidebar .me { margin-top: auto; border-top: 1px solid rgb(255 255 255 / .08); padding: 12px 8px 0; font-size: 13px; }
 .sidebar .me b { color: #fff; display: block; }
 .main { min-width: 0; display: flex; flex-direction: column; }

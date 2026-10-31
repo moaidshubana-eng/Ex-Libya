@@ -29,6 +29,7 @@ export async function auctionsView(el) {
     draw(fresh.events);
   };
   const draw = (evs) => {
+    if (!evs.length) return render(el, html`<div class="card empty">لا توجد مزادات بعد.</div>`);
     render(el, html`${evs.map((e) => html`<section class="card" style="margin-bottom:18px">
       <div class="card-h">${e.status === 'LIVE' ? html`<span class="live-dot" aria-hidden="true"></span>` : ''}<h2>${e.title}</h2>
         <span class="badge">${{ LIVE: 'مباشر الآن', SCHEDULED: 'مجدول', CLOSED: 'منتهٍ', CANCELLED: 'ملغى' }[e.status]}</span>
