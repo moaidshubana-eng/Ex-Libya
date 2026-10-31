@@ -30,7 +30,14 @@ export function createApp() {
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'NOT_FOUND', 'المسار غير موجود')));
 
   const pub = fileURLToPath(new URL('../public', import.meta.url));
-  app.use(express.static(pub, { index: 'index.html', maxAge: config.isProd ? '1h' : 0 }));
+  // الكود (html/js/css) بلا ذاكرة مؤقتة ثابتة: المتصفح يتحقق كل مرة (304 سريع بـ ETag)،
+  // فيصل أي تحديث للمستخدمين فورًا. الصور والخطوط فقط تُخزَّن يومًا
+  app.use(express.static(pub, {
+    index: 'index.html',
+    setHeaders: (res, file) => {
+      res.setHeader('Cache-Control', /\.(html|js|mjs|css|json)$/.test(file) || !config.isProd ? 'no-cache' : 'public, max-age=86400');
+    },
+  }));
   app.use(errorHandler);
   return app;
 }
