@@ -19,15 +19,21 @@ function requiredInProd(name, devFallback) {
   return devFallback;
 }
 
+// مفاتيح التشفير يجب أن تكون 32 بايت بالضبط (base64)؛ مفتاح بطول خاطئ يفشل الإقلاع بوضوح بدل أن يفشل عند أول تشفير
+function checkKey(name, buf) {
+  if (buf.length !== 32) throw new Error(`${name} يجب أن يكون 32 بايت بترميز base64 (توليد: openssl rand -base64 32)`);
+  return buf;
+}
+
 export const config = {
   isProd,
   port: Number(env.PORT || 4000),
   databaseUrl: env.DATABASE_URL || 'postgresql://auction:auction@localhost:5432/car_auction',
   dbPoolMax: Number(env.DB_POOL_MAX || 20),
   // مفتاح تشفير البيانات الحساسة (32 بايت base64). في التطوير يُولَّد ثابتًا للتجربة فقط.
-  dataKey: Buffer.from(requiredInProd('DATA_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64')), 'base64'),
+  dataKey: checkKey('DATA_ENCRYPTION_KEY', Buffer.from(requiredInProd('DATA_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64')), 'base64')),
   // مفتاح HMAC منفصل لبصمات البحث (الهاتف/الهوية)
-  lookupKey: Buffer.from(requiredInProd('LOOKUP_HMAC_KEY', Buffer.alloc(32, 9).toString('base64')), 'base64'),
+  lookupKey: checkKey('LOOKUP_HMAC_KEY', Buffer.from(requiredInProd('LOOKUP_HMAC_KEY', Buffer.alloc(32, 9).toString('base64')), 'base64')),
   sessionTtlHours: Number(env.SESSION_TTL_HOURS || 10),
   cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : isProd,
   // الربط الآلي مع Copart/IAAI/التتبع: معطّل افتراضيًا. تُدخل السيارات يدويًا أو بملف CSV.
