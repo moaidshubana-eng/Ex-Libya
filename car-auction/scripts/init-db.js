@@ -7,10 +7,13 @@ import pg from 'pg';
 import { config } from '../src/config.js';
 import { hashPassword, passwordPolicyError } from '../src/security/crypto.js';
 
-const c = new pg.Client({ connectionString: config.databaseUrl });
-// قاعدة مُدارة قد تحتاج لحظات لتكون جاهزة عند أول إقلاع
+// قاعدة مُدارة قد تحتاج لحظات لتكون جاهزة عند أول إقلاع (أو تستيقظ من سبات Neon).
+// عميل pg لا يُعاد استخدامه بعد فشل الاتصال، فننشئ عميلًا جديدًا في كل محاولة
+let c;
 for (let i = 1; ; i++) {
+  c = new pg.Client({ connectionString: config.databaseUrl });
   try { await c.connect(); break; } catch (e) {
+    await c.end().catch(() => {});
     if (i >= 10) { console.error('[init-db] تعذر الاتصال بقاعدة البيانات:', e.message); process.exit(1); }
     await new Promise((r) => setTimeout(r, 3000));
   }
