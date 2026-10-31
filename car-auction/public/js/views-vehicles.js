@@ -1,5 +1,7 @@
 import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, imgUrl, toast, modal, icon } from './core.js';
 import { galleryTemplate, mountGallery, openLightbox } from './gallery.js';
+import { sellDialog, paymentDialog, openCustomsDialog } from './views-manage.js';
+const PRESALE = ['IN_TRANSIT_SEA', 'AT_PORT_LIBYA', 'IN_CUSTOMS', 'CUSTOMS_CLEARED', 'IN_STOCK'];
 
 const can = (...roles) => roles.includes(state.user.role);
 const STAGES = [
@@ -276,13 +278,15 @@ export async function vehicleDetailView(el, { params, setTitle }) {
           </div>
           ${v.lot && ['OPEN', 'PENDING'].includes(v.lot.status) ? html`<a class="btn btn-accent" href="#/lots/${v.lot.id}">${icon('gavel')} المزايدة الحية — ${fmt.lyd(v.lot.current_price)}</a>` : ''}
           ${v.costs ? html`<div class="row" style="justify-content:space-between;border-top:1px dashed var(--border);padding-top:10px"><span class="muted">التكلفة الواصلة حتى الآن</span><b class="num" style="font-size:18px">${fmt.lyd(v.costs.summary.total_cost_lyd)}</b></div>` : ''}
-          ${v.sale ? html`<div class="row" style="justify-content:space-between"><span class="muted">سعر البيع (${v.sale.invoice_no})</span><b class="num">${fmt.lyd(v.sale.sale_price_lyd)}</b></div>` : ''}
+          ${can('ADMIN', 'SALES') && PRESALE.includes(v.status) ? html`<button class="btn btn-primary" data-sell>بيع مباشر</button>` : ''}
+          ${can('ADMIN', 'OPERATIONS') && v.status === 'AT_PORT_LIBYA' && !v.customs ? html`<button class="btn" data-customs>${icon('customs')} فتح بيان جمركي</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') ? html`<button class="btn" data-edit>تعديل بيانات السيارة</button>` : ''}
           ${can('ADMIN', 'SALES') && v.status === 'IN_STOCK' ? html`<button class="btn btn-accent" data-list>${icon('gavel')} إدراج في مزاد</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') && v.next_statuses.length ? html`<div class="row" style="border-top:1px dashed var(--border);padding-top:10px">
             <select class="input" data-next style="flex:1">${v.next_statuses.map((s) => html`<option value="${s}">${label(s)}</option>`)}</select>
             <button class="btn btn-primary" data-move>تحديث الحالة</button></div>` : ''}
         </div>
+        ${v.sale ? salePanel(v.sale) : ''}
         ${v.shipment && staff ? html`<div class="card card-b stack" style="gap:8px">
           <div class="row" style="justify-content:space-between"><b>${icon('ship')} ${v.shipment.shipment_no}</b><span class="badge">${LABELS.shipment[v.shipment.status]}</span></div>
           ${routeBar(v.shipment)}
@@ -310,6 +314,10 @@ export async function vehicleDetailView(el, { params, setTitle }) {
     } catch (e) { toast(e.message, 'err'); }
   });
 
+  const reloadDetail = () => vehicleDetailView(el, { params, setTitle });
+  $('[data-sell]', el)?.addEventListener('click', () => sellDialog(v, reloadDetail));
+  $('[data-customs]', el)?.addEventListener('click', () => openCustomsDialog(v, reloadDetail));
+  $('[data-pay]', el)?.addEventListener('click', () => paymentDialog(v.sale, reloadDetail));
   $('[data-edit]', el)?.addEventListener('click', () => editVehicleDialog(v, () => vehicleDetailView(el, { params, setTitle })));
   $('[data-list]', el)?.addEventListener('click', async () => {
     const { events } = await api('/auctions');
@@ -339,6 +347,21 @@ export async function vehicleDetailView(el, { params, setTitle }) {
   $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
   showTab('specs');
 }
+
+const salePanel = (sale) => {
+  const due = Number(sale.sale_price_lyd) + Number(sale.buyer_fee_lyd || 0);
+  const paid = Number(sale.paid_lyd);
+  return html`<div class="card card-b stack" style="gap:8px">
+    <div class="row" style="justify-content:space-between"><b>فاتورة ${sale.invoice_no}</b><span class="badge" style="color:${paid >= due ? 'var(--success)' : 'var(--accent)'}"><span class="dot"></span><span style="color:var(--text)">${paid >= due ? 'مسدَّدة' : 'مستحقة'}</span></span></div>
+    <div class="faint">${sale.customer} · ${sale.sale_type === 'AUCTION' ? 'بالمزاد' : 'بيع مباشر'} · ${fmt.date(sale.sold_at)}</div>
+    <div class="row" style="justify-content:space-between"><span class="muted">السعر</span><b class="num">${fmt.lyd(sale.sale_price_lyd)}</b></div>
+    <div class="row" style="justify-content:space-between"><span class="muted">المدفوع</span><b class="num">${fmt.lyd(paid)}</b></div>
+    <div class="progress" aria-hidden="true"><span style="width:${Math.min(100, (paid / due) * 100)}%"></span></div>
+    ${paid < due ? html`<div class="row" style="justify-content:space-between"><span class="muted">المتبقي ${sale.payment_due_at ? `· حتى ${fmt.date(sale.payment_due_at)}` : ''}</span><b class="num neg">${fmt.lyd(due - paid)}</b></div>` : ''}
+    ${(sale.payments || []).map((p) => html`<div class="faint row" style="justify-content:space-between"><span>${fmt.date(p.at)} · ${{ CASH: 'نقدًا', BANK_TRANSFER: 'حوالة', CHEQUE: 'صك', CARD: 'بطاقة', OTHER: 'أخرى' }[p.method]}${p.reference ? ` · ${p.reference}` : ''}</span><span class="num">${fmt.money(p.amount, p.currency)}</span></div>`)}
+    ${can('ADMIN', 'SALES', 'ACCOUNTANT') && paid < due ? html`<button class="btn btn-sm btn-primary" data-pay>${icon('plus')} تسجيل دفعة</button>` : ''}
+  </div>`;
+};
 
 const mini = (k, v) => html`<div style="background:var(--surface-2);border-radius:10px;padding:8px"><div class="faint">${k}</div><b style="font-size:13px">${v}</b></div>`;
 

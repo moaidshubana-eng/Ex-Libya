@@ -1,3 +1,4 @@
+import { newVendorDialog, vendorTypeLabel } from './views-manage.js';
 import { html, render, $, $$, api, fmt, LABELS, state, toast, modal, icon } from './core.js';
 
 const ROLE_OPTS = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER', 'BIDDER'];
@@ -12,7 +13,7 @@ export async function settingsView(el) {
 
   render(el, html`
     <div class="card">
-      <div class="card-h"><h2>أسعار الصرف</h2><span style="flex:1"></span><button class="btn btn-accent btn-sm" data-fx>${icon('plus')} تسجيل سعر</button></div>
+      <div class="card-h"><h2>أسعار الصرف</h2><span style="flex:1"></span>${state.user.role !== 'OPERATIONS' ? html`<button class="btn btn-accent btn-sm" data-fx>${icon('plus')} تسجيل سعر</button>` : ''}</div>
       <div class="card-b stack">
         <p class="muted" style="margin:0">كم دينارًا ليبيًا يقابل وحدة واحدة من العملة. يُؤخذ منه سعر كل تكلفة بتاريخها ويُحفظ معها. <b>سجّل سعر كل يوم عمل</b>، فبدون سعر في التاريخ لا تُقبل التكاليف بالدولار.</p>
         <div class="grid g3">${['USD', 'EUR'].map((c) => html`<div class="card card-b" style="box-shadow:none"><div class="faint">${c === 'USD' ? 'الدولار الأمريكي' : 'اليورو'}</div>
@@ -21,6 +22,11 @@ export async function settingsView(el) {
         <div class="table-wrap"><table class="t"><thead><tr><th>التاريخ</th><th>العملة</th><th class="n">السعر (د.ل)</th></tr></thead>
           <tbody>${fx.items.slice(0, 12).map((r) => html`<tr><td>${fmt.date(r.effective_date)}</td><td>${r.currency}</td><td class="n">${Number(r.rate_to_lyd).toFixed(4)}</td></tr>`)}</tbody></table></div>
       </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h2>الموردون</h2><span style="flex:1"></span>${state.meta.vendors.length ? '' : html`<span class="faint">ابدأ بإضافة الخطوط الملاحية والمخلّصين</span>`}<button class="btn btn-accent btn-sm" data-newvendor>${icon('plus')} مورد جديد</button></div>
+      <div class="card-b"><p class="muted" style="margin:0 0 10px">الجهات التي تتعامل معها: خطوط الشحن، وكلاء الشحن، المخلّصون، شركات النقل والسحب، الورش. تظهر في قوائم التكاليف والشحنات والجمارك.</p>
+        <div class="chips">${state.meta.vendors.map((v) => html`<span class="chip">${v.name} <span class="faint">· ${vendorTypeLabel(v.vendor_type)}</span></span>`)}${state.meta.vendors.length ? '' : html`<span class="faint">لا موردين بعد</span>`}</div></div>
     </div>
     ${isAdmin ? html`<div class="card" style="margin-top:16px">
       <div class="card-h"><h2>المستخدمون</h2><span style="flex:1"></span><button class="btn btn-accent btn-sm" data-newuser>${icon('plus')} مستخدم جديد</button></div>
@@ -32,7 +38,7 @@ export async function settingsView(el) {
             ${u.id !== state.user.id ? html`<button class="btn btn-sm ${u.is_active ? 'btn-danger' : ''}" data-toggle="${u.id}" data-active="${u.is_active}">${u.is_active ? 'تعطيل' : 'تفعيل'}</button>` : ''}</td></tr>`)}</tbody></table></div>
     </div>` : ''}`);
 
-  $('[data-fx]', el).addEventListener('click', async () => {
+  $('[data-fx]', el)?.addEventListener('click', async () => {
     const r = await modal({ title: 'تسجيل سعر صرف', submitLabel: 'حفظ السعر', body: html`
       <div class="grid g3"><label class="field">العملة<select class="input" name="currency"><option>USD</option><option>EUR</option></select></label>
         <label class="field">السعر مقابل الدينار<input class="input num" name="rateToLyd" required inputmode="decimal" pattern="\\d+(\\.\\d{1,6})?" placeholder="5.5200"></label>
@@ -42,6 +48,7 @@ export async function settingsView(el) {
     try { await api('/exchange-rates', { method: 'POST', body: r }); toast('تم حفظ السعر', 'ok'); settingsView(el); } catch (e) { toast(e.message, 'err'); }
   });
 
+  $('[data-newvendor]', el).addEventListener('click', async () => { if (await newVendorDialog()) settingsView(el); });
   $('[data-newuser]', el)?.addEventListener('click', async () => {
     const r = await modal({ title: 'مستخدم جديد', submitLabel: 'إنشاء الحساب', body: html`
       <label class="field">الاسم الكامل<input class="input" name="fullName" required minlength="2"></label>

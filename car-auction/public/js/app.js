@@ -2,6 +2,7 @@ import { html, render, $, $$, api, state, LABELS, icon, toast } from './core.js'
 import { dashboardView, vehiclesView, vehicleDetailView, compareView } from './views-vehicles.js';
 import { auctionsView, lotView } from './views-auctions.js';
 import { settingsView, changePasswordDialog } from './views-settings.js';
+import { customersView } from './views-manage.js';
 import { shipmentsView, customsView, reportsView, integrationsView, auditView } from './views-ops.js';
 
 const STAFF = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER'];
@@ -12,11 +13,12 @@ const ROUTES = [
   { path: '/compare', title: 'مقارنة السيارات', view: compareView },
   { path: '/auctions', title: 'المزادات', view: auctionsView, nav: ['gavel'] },
   { path: '/lots/:id', title: 'المزايدة', view: lotView },
+  { path: '/customers', title: 'العملاء', view: customersView, roles: ['ADMIN', 'SALES', 'ACCOUNTANT'], nav: ['users'] },
   { path: '/shipments', title: 'تتبع الشحنات', view: shipmentsView, roles: STAFF, nav: ['ship', 'اللوجستيات'] },
   { path: '/customs', title: 'الجمارك', view: customsView, roles: STAFF, nav: ['customs'] },
   { path: '/reports', title: 'تقرير التكاليف', view: reportsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS', 'VIEWER', 'SALES'], nav: ['report', 'المالية'] },
   { path: '/integrations', title: 'الربط مع Copart / IAAI', view: integrationsView, roles: STAFF, nav: ['sync', 'النظام'] },
-  { path: '/settings', title: 'الإعدادات', view: settingsView, roles: ['ADMIN', 'ACCOUNTANT'], nav: ['money'] },
+  { path: '/settings', title: 'الإعدادات', view: settingsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS'], nav: ['money'] },
   { path: '/audit', title: 'سجل التدقيق', view: auditView, roles: ['ADMIN'], nav: ['audit'] },
 ];
 

@@ -51,7 +51,7 @@ docker compose up --build     # ثم نفّذ db:reset مرة واحدة من د
 ## الاختبارات
 
 ```bash
-npm test                 # 100 اختبار (وحدة + تكامل على PostgreSQL حقيقي) — كلها ناجحة
+npm test                 # 117 اختبارًا (وحدة + تكامل على PostgreSQL حقيقي) — كلها ناجحة
 npm run test:unit        # 48 اختبار وحدة بلا قاعدة بيانات
 ```
 

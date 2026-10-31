@@ -1,5 +1,8 @@
 import { html, render, $, $$, api, fmt, LABELS, state, imgUrl, toast, icon } from './core.js';
 import { galleryTemplate, mountGallery } from './gallery.js';
+import { newAuctionDialog, registrationsDialog, cancelAuctionDialog } from './views-manage.js';
+
+const canManage = () => ['ADMIN', 'SALES'].includes(state.user.role);
 
 // فرق الساعة بين المتصفح والخادم: العد التنازلي يعتمد وقت الخادم لا وقت جهاز المستخدم
 let clockSkew = 0;
@@ -26,26 +29,37 @@ export async function auctionsView(el) {
   const { events } = await api('/auctions');
   const load = async () => {
     const fresh = await api('/auctions');
-    draw(fresh.events);
+    current = fresh.events; draw(current);
   };
   const draw = (evs) => {
-    if (!evs.length) return render(el, html`<div class="card empty">لا توجد مزادات بعد.</div>`);
-    render(el, html`${evs.map((e) => html`<section class="card" style="margin-bottom:18px">
+    const top = canManage() ? html`<div class="row" style="margin-bottom:14px"><button class="btn btn-accent" data-newauction>${icon('plus')} مزاد جديد</button></div>` : '';
+    if (!evs.length) { render(el, html`${top}<div class="card empty">لا توجد مزادات بعد. ${canManage() ? 'أنشئ أول مزاد ثم أدرج فيه سيارات من ملف كل سيارة.' : ''}</div>`); return; }
+    render(el, html`${top}${evs.map((e) => html`<section class="card" style="margin-bottom:18px">
       <div class="card-h">${e.status === 'LIVE' ? html`<span class="live-dot" aria-hidden="true"></span>` : ''}<h2>${e.title}</h2>
         <span class="badge">${{ LIVE: 'مباشر الآن', SCHEDULED: 'مجدول', CLOSED: 'منتهٍ', CANCELLED: 'ملغى' }[e.status]}</span>
-        <span style="flex:1"></span><span class="faint">${fmt.dt(e.starts_at)} ← ${fmt.dt(e.ends_at)} · تأمين ${fmt.lyd(e.deposit_required_lyd)}</span></div>
+        <span style="flex:1"></span><span class="faint">${fmt.dt(e.starts_at)} ← ${fmt.dt(e.ends_at)} · تأمين ${fmt.lyd(e.deposit_required_lyd)}</span>
+        ${['ADMIN', 'SALES', 'ACCOUNTANT'].includes(state.user.role) ? html`<button class="btn btn-sm" data-regs="${e.id}">المسجلون والتأمين</button>` : ''}
+        ${canManage() && ['SCHEDULED', 'LIVE'].includes(e.status) ? html`<button class="btn btn-sm btn-danger" data-cancel="${e.id}">إلغاء</button>` : ''}</div>
       <div class="card-b">${e.lots.length ? html`<div class="vgrid">${e.lots.map(lotCard)}</div>` : html`<div class="empty">لم تُدرج سيارات بعد</div>`}</div>
     </section>`)}`);
     tickCountdowns(el);
   };
   draw(events);
+  let current = events;
+  const redraw = async () => { current = (await api('/auctions')).events; draw(current); };
+  // تفويض الأحداث على الحاوية (يُعاد رسم المحتوى) — يُزال عند مغادرة الصفحة
+  el.onclick = (e) => {
+    if (e.target.closest('[data-newauction]')) newAuctionDialog().then((r) => r && redraw());
+    const regs = e.target.closest('[data-regs]'); if (regs) registrationsDialog(current.find((x) => x.id === regs.dataset.regs));
+    const can = e.target.closest('[data-cancel]'); if (can) cancelAuctionDialog(current.find((x) => x.id === can.dataset.cancel), redraw);
+  };
   const timer = setInterval(() => tickCountdowns(el), 1000);
   // تحديث فوري لأي مزايدة على أي لوت
   const es = new EventSource('/api/auctions/stream');
   let pending = null;
   es.addEventListener('bid', () => { clearTimeout(pending); pending = setTimeout(load, 300); });
   es.addEventListener('closed', () => load());
-  return () => { clearInterval(timer); es.close(); };
+  return () => { clearInterval(timer); es.close(); el.onclick = null; };
 }
 
 function lotCard(l) {
@@ -160,6 +174,15 @@ export async function lotView(el, { params, setTitle }) {
     });
   };
 
+  if (canManage()) {
+    const bar = document.createElement('div');
+    bar.className = 'card card-b row'; bar.style.justifyContent = 'space-between';
+    render(bar, html`<span class="muted">إدارة اللوت</span><button class="btn btn-sm btn-danger" data-withdraw>سحب السيارة من المزاد</button>`);
+    $('[data-panel]', el).parentElement.appendChild(bar);
+    $('[data-withdraw]', bar).addEventListener('click', async () => {
+      try { await api(`/lots/${lot.id}/cancel`, { method: 'POST' }); toast('سُحبت السيارة وعادت للمعرض', 'ok'); location.hash = '#/auctions'; } catch (err) { toast(err.message, 'err'); }
+    });
+  }
   const bidsEl = $('[data-bids]', el);
   const drawBids = (newIds = new Set()) => {
     render(bidsEl, lot.bids.length ? html`${lot.bids.map((b, i) => html`<li class="${i === 0 ? 'top' : ''} ${newIds.has(b.id) ? 'new' : ''}">

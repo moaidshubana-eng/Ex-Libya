@@ -53,6 +53,7 @@ export function client(base) {
     post: (p, b = {}, h) => req('POST', p, b, h),
     put: (p, b = {}, h) => req('PUT', p, b, h),
     patch: (p, b = {}, h) => req('PATCH', p, b, h),
+    delete: (p, h) => req('DELETE', p, {}, h),
     login: (email, password = 'Demo@2026pass') => req('POST', '/api/auth/login', { email, password }),
     get cookie() { return cookie; },
   };

@@ -1,3 +1,4 @@
+import { newShipmentDialog, editShipmentDialog, addCarToShipmentDialog, removeCarFromShipment } from './views-manage.js';
 import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, toast, modal, icon } from './core.js';
 
 const can = (...roles) => roles.includes(state.user.role);
@@ -8,6 +9,7 @@ export async function shipmentsView(el) {
   const open = items.filter((s) => !['CLOSED', 'CANCELLED'].includes(s.status));
   const closed = items.filter((s) => ['CLOSED', 'CANCELLED'].includes(s.status));
   const pct = (s) => ({ BOOKED: 4, LOADING: 10, DEPARTED: 25, IN_TRANSIT: 55, TRANSSHIPMENT: 60, ARRIVED: 92, DISCHARGED: 100, CLOSED: 100 }[s.status] ?? 0);
+  const editable = (s) => ['BOOKED', 'LOADING'].includes(s.status);
   const card = (s) => html`<article class="card ship">
     <div class="row" style="justify-content:space-between"><div><b style="font-size:16px">${s.shipment_no}</b> <span class="faint">· ${s.carrier || ''} · ${s.vessel_name || ''} ${s.voyage_no || ''}</span></div><span class="badge">${LABELS.shipment[s.status]}</span></div>
     <div class="route"><div class="port"><b>${s.pol}</b><span class="faint">${fmt.date(s.atd || s.etd)}</span></div>
@@ -15,14 +17,24 @@ export async function shipmentsView(el) {
       <div class="port" style="text-align:end"><b>${s.pod}</b><span class="faint">${s.ata ? fmt.date(s.ata) : `متوقع ${fmt.date(s.eta)}`}</span></div></div>
     <div class="row faint"><span>الحاوية <span class="mono">${s.container_no}</span> (${s.container_type.replace('C', '')})</span><span>بوليصة <span class="mono">${s.bill_of_lading || '—'}</span></span>
       ${s.last_event ? html`<span>آخر حدث: <b>${s.last_event.code}</b> ${s.last_event.description} · ${fmt.dt(s.last_event.at)}</span>` : ''}<span>تحديث التتبع ${fmt.ago(s.last_tracking_at)}</span></div>
-    <div class="row">${s.vehicles.map((v) => html`<a class="chip" href="#/vehicles/${v.id}">${v.stock_no} · ${v.title}</a>`)}<span class="faint">${s.vehicles.length}/${s.capacity}</span>
-      ${can('ADMIN', 'ACCOUNTANT', 'OPERATIONS') ? html`<button class="btn btn-sm" style="margin-inline-start:auto" data-shared="${s.id}" data-no="${s.shipment_no}">${icon('plus')} تكلفة مشتركة</button>` : ''}</div>
+    <div class="row">${s.vehicles.map((v) => html`<span class="chip"><a href="#/vehicles/${v.id}">${v.stock_no} · ${v.title}</a>${editable(s) ? html` <button class="btn btn-ghost btn-sm" style="min-height:22px;padding:0 4px" data-rm="${s.id}|${v.id}" aria-label="إنزال">✕</button>` : ''}</span>`)}<span class="faint">${s.vehicles.length}/${s.capacity}</span>
+      <span class="row" style="margin-inline-start:auto">
+        ${can('ADMIN', 'OPERATIONS') && editable(s) && s.vehicles.length < s.capacity ? html`<button class="btn btn-sm btn-primary" data-addcar="${s.id}">${icon('plus')} تحميل سيارة</button>` : ''}
+        ${can('ADMIN', 'OPERATIONS') && !['CLOSED', 'CANCELLED'].includes(s.status) ? html`<button class="btn btn-sm" data-editship="${s.id}">تحديث الحالة والبيانات</button>` : ''}
+        ${can('ADMIN', 'ACCOUNTANT', 'OPERATIONS') ? html`<button class="btn btn-sm" data-shared="${s.id}" data-no="${s.shipment_no}">${icon('plus')} تكلفة مشتركة</button>` : ''}</span></div>
   </article>`;
-  render(el, html`<div class="stack">${open.map(card)}</div>
+  const reload = () => shipmentsView(el);
+  render(el, html`${can('ADMIN', 'OPERATIONS') ? html`<div class="row" style="margin-bottom:14px"><button class="btn btn-accent" data-newship>${icon('plus')} شحنة جديدة</button></div>` : ''}
+    ${open.length ? '' : html`<div class="card empty">لا توجد شحنات مفتوحة.</div>`}
+    <div class="stack">${open.map(card)}</div>
     <h3 style="margin:26px 2px 10px">شحنات مغلقة</h3>
     <div class="card table-wrap"><table class="t"><thead><tr><th>الشحنة</th><th>الحاوية</th><th>المسار</th><th>الوصول</th><th class="n">سيارات</th></tr></thead>
       <tbody>${closed.map((s) => html`<tr><td>${s.shipment_no}</td><td class="mono">${s.container_no}</td><td>${s.pol} ← ${s.pod}</td><td>${fmt.date(s.ata)}</td><td class="n">${s.vehicles.length}</td></tr>`)}</tbody></table></div>`);
 
+  $('[data-newship]', el)?.addEventListener('click', async () => { if (await newShipmentDialog()) reload(); });
+  $$('[data-editship]', el).forEach((b) => b.addEventListener('click', () => editShipmentDialog(items.find((x) => x.id === b.dataset.editship), reload)));
+  $$('[data-addcar]', el).forEach((b) => b.addEventListener('click', () => addCarToShipmentDialog(items.find((x) => x.id === b.dataset.addcar), reload)));
+  $$('[data-rm]', el).forEach((b) => b.addEventListener('click', () => { const [sid, vid] = b.dataset.rm.split('|'); removeCarFromShipment(items.find((x) => x.id === sid), vid, reload); }));
   $$('[data-shared]', el).forEach((b) => b.addEventListener('click', async () => {
     const r = await modal({
       title: `تكلفة مشتركة على ${b.dataset.no}`, submitLabel: 'توزيع التكلفة', body: html`

@@ -11,6 +11,7 @@ export const t = {
   int: (o = {}) => ({ kind: 'int', ...o }),
   uuid: (o = {}) => ({ kind: 'uuid', ...o }),
   date: (o = {}) => ({ kind: 'date', ...o }),
+  datetime: (o = {}) => ({ kind: 'datetime', ...o }),
   bool: (o = {}) => ({ kind: 'bool', ...o }),
   array: (of, o = {}) => ({ kind: 'array', of, ...o }),
 };
@@ -42,6 +43,10 @@ function check(name, spec, v) {
       return typeof v === 'string' && UUID.test(v) ? { value: v } : `${name}: معرّف غير صالح`;
     case 'date':
       return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) && !Number.isNaN(Date.parse(v)) ? { value: v.slice(0, 10) } : `${name}: تاريخ غير صالح`;
+    case 'datetime': {
+      const ms = typeof v === 'string' ? Date.parse(v) : NaN;
+      return Number.isNaN(ms) ? `${name}: تاريخ ووقت غير صالح` : { value: new Date(ms).toISOString() };
+    }
     case 'bool':
       return typeof v === 'boolean' ? { value: v } : `${name}: يجب أن يكون true/false`;
     case 'array': {

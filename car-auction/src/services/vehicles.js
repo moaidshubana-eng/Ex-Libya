@@ -129,8 +129,9 @@ export async function getVehicle(id, { includeCosts, includeInternal }) {
     query(`SELECT l.id, l.lot_no, l.status, l.current_price, l.bid_count, l.ends_at, e.title AS event_title
              FROM auction_lots l JOIN auction_events e ON e.id = l.auction_event_id
             WHERE l.vehicle_id = $1 ORDER BY l.starts_at DESC LIMIT 1`, [id]),
-    includeInternal ? query(`SELECT s.invoice_no, s.sale_type, s.sale_price_lyd, s.sold_at, c.full_name AS customer,
-                  COALESCE((SELECT sum(amount * fx_rate_to_lyd) FROM payments WHERE sale_id = s.id),0)::numeric(14,3) AS paid_lyd
+    includeInternal ? query(`SELECT s.id, s.invoice_no, s.sale_type, s.sale_price_lyd, s.buyer_fee_lyd, s.sold_at, s.payment_due_at, c.full_name AS customer, c.id AS customer_id,
+                  COALESCE((SELECT sum(amount * fx_rate_to_lyd) FROM payments WHERE sale_id = s.id),0)::numeric(14,3) AS paid_lyd,
+                  COALESCE((SELECT json_agg(json_build_object('amount', p.amount, 'currency', p.currency, 'method', p.method, 'reference', p.reference, 'at', p.received_at) ORDER BY p.received_at) FROM payments p WHERE p.sale_id = s.id), '[]') AS payments
              FROM sales s JOIN customers c ON c.id = s.customer_id WHERE s.vehicle_id = $1`, [id]) : { rows: [] },
     includeCosts ? getVehicleCosts(id) : null,
   ]);

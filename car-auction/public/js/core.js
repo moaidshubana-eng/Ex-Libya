@@ -39,8 +39,9 @@ export async function api(path, { method = 'GET', body, headers } = {}) {
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
-    headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
-    body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+    // كل طلب غير GET يرسل JSON (حتى بلا جسم) لأن الخادم يرفض غيره حماية من CSRF
+    headers: { ...(body !== undefined || method !== 'GET' ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : method !== 'GET' ? '{}' : undefined,
   });
   const ct = res.headers.get('content-type') || '';
   const data = ct.includes('json') ? await res.json() : await res.text();
@@ -140,6 +141,7 @@ export const ICONS = {
   left: '<path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   right: '<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  users: '<path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4 21a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
   compare: '<path d="M8 3v18M16 3v18M3 8h5M16 16h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
 };
 export const icon = (name) => raw(`<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${ICONS[name] || ''}</svg>`);

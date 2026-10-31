@@ -10,6 +10,7 @@ import { listVehicles, getVehicle, changeStatus, compareVehicles, getVehicleCost
 import { addCost, voidCost, addSharedCost, costReport } from '../services/costs.js';
 import { placeBid, setProxy, listAuctions, getLot, createLot } from '../services/auctions.js';
 import { subscribe } from '../services/realtime.js';
+import { ops } from './ops.js';
 import { costReportXlsx, costReportCsv } from '../services/export.js';
 import { renderVehicleSvg } from '../services/media.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
@@ -368,11 +369,14 @@ api.patch('/customs/:id', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'),
          VALUES ($1,'CUSTOMS_DUTY','رسم جمركي — بيان ' || COALESCE($3,'-'), $2, 'LYD', 1, current_date, $3, true, $4)`,
         [cd.vehicle_id, upd.duty_amount_lyd, upd.declaration_no, req.user.id]);
     }
-    const { rows: [v] } = await c.query('SELECT status FROM vehicles WHERE id = $1', [cd.vehicle_id]);
+    // أي تقدم في البيان بعد المستندات يدخل السيارة "في الجمارك" إن كانت في الميناء، والإفراج يخرجها منها (حتى لو قفز المستخدم مباشرة للإفراج)
+    let { rows: [v] } = await c.query('SELECT status FROM vehicles WHERE id = $1', [cd.vehicle_id]);
+    if (!['DOCS_PENDING', 'REJECTED'].includes(b.status) && v.status === 'AT_PORT_LIBYA') {
+      await changeStatus(c, cd.vehicle_id, 'IN_CUSTOMS', { actorId: req.user.id, reason: 'تقديم البيان الجمركي', ip: req.ip });
+      v = { status: 'IN_CUSTOMS' };
+    }
     if (b.status === 'RELEASED' && v.status === 'IN_CUSTOMS')
       await changeStatus(c, cd.vehicle_id, 'CUSTOMS_CLEARED', { actorId: req.user.id, reason: `إفراج جمركي — بيان ${upd.declaration_no || ''}`, ip: req.ip });
-    if (b.status === 'SUBMITTED' && v.status === 'AT_PORT_LIBYA')
-      await changeStatus(c, cd.vehicle_id, 'IN_CUSTOMS', { actorId: req.user.id, reason: 'تقديم البيان الجمركي', ip: req.ip });
     await audit(c, { actorId: req.user.id, action: 'CUSTOMS_UPDATED', entity: 'customs_declaration', entityId: cd.id, before: { status: cd.status }, after: { status: b.status }, ip: req.ip });
     return upd;
   });
@@ -419,7 +423,9 @@ api.get('/customers', requireRole(['ADMIN', 'SALES', 'ACCOUNTANT']), asyncH(asyn
   const { rows } = await query(
     `SELECT c.id, c.code, c.full_name, c.customer_type, c.city, c.kyc_status, c.phone_enc,
             (SELECT count(*)::int FROM sales s WHERE s.customer_id = c.id) AS purchases
-       FROM customers c ORDER BY c.code LIMIT 200`);
+       FROM customers c
+      WHERE ($1::text IS NULL OR c.full_name ILIKE '%' || $1 || '%' OR c.code ILIKE '%' || $1 || '%')
+      ORDER BY c.code LIMIT 200`, [req.query.q ? String(req.query.q).slice(0, 60) : null]);
   res.json({ items: rows.map(({ phone_enc, ...c }) => ({ ...c, phone: mask(decrypt(phone_enc)) })) });
 }));
 
@@ -474,3 +480,5 @@ api.get('/audit', requireRole(['ADMIN']), asyncH(async (req, res) => {
        FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id ORDER BY a.id DESC LIMIT 100`);
   res.json({ items: rows });
 }));
+
+api.use(ops);
