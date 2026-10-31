@@ -278,6 +278,8 @@ CREATE TABLE vehicle_images (
   kind          image_kind NOT NULL DEFAULT 'EXTERIOR',
   original_url  TEXT,                               -- رابط المصدر الأصلي
   storage_key   TEXT NOT NULL,                      -- مفتاح التخزين في S3/MinIO (النسخة المحفوظة لدينا)
+  content       BYTEA,                              -- محتوى الصورة المرفوعة يدويًا (حين لا يوجد تخزين خارجي)
+  mime          TEXT,                               -- image/jpeg | image/png | image/webp
   width         INT,
   height        INT,
   bytes         INT,

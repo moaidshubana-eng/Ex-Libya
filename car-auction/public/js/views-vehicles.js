@@ -1,4 +1,5 @@
 import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, imgUrl, toast, modal, icon } from './core.js';
+import { photosBar, mountPhotos } from './photos.js';
 import { galleryTemplate, mountGallery, openLightbox } from './gallery.js';
 import { sellDialog, paymentDialog, openCustomsDialog } from './views-manage.js';
 const PRESALE = ['IN_TRANSIT_SEA', 'AT_PORT_LIBYA', 'IN_CUSTOMS', 'CUSTOMS_CLEARED', 'IN_STOCK'];
@@ -262,6 +263,7 @@ export async function vehicleDetailView(el, { params, setTitle }) {
     <div class="detail">
       <div class="stack">
         ${galleryTemplate(v.images, urlOf, title)}
+        ${can('ADMIN', 'OPERATIONS') ? photosBar(v) : ''}
         ${staff ? html`<div class="card"><div class="timeline" aria-label="مراحل دورة الحياة">${MAIN.map((s, i) => html`<div class="tl ${i < curIdx ? 'done' : i === curIdx ? 'cur' : ''}"><div class="pt"></div>${label(s)}</div>`)}</div></div>` : ''}
         <div class="card">
           <div class="tabs" role="tablist">${tabs.map(([k, l], i) => html`<button role="tab" class="${i === 0 ? 'on' : ''}" data-tab="${k}">${l}</button>`)}</div>
@@ -298,6 +300,7 @@ export async function vehicleDetailView(el, { params, setTitle }) {
     </div>`);
 
   mountGallery(el, v.images, urlOf, title);
+  mountPhotos(el, v, () => vehicleDetailView(el, { params, setTitle }));
   $('[data-copy]', el)?.addEventListener('click', (e) => navigator.clipboard?.writeText(e.target.dataset.copy).then(() => toast('تم نسخ VIN', 'ok')));
   $('[data-move]', el)?.addEventListener('click', async () => {
     const to = $('[data-next]', el).value;

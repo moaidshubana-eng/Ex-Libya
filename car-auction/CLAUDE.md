@@ -19,7 +19,7 @@ Node.js 22 (ES modules) + Express + PostgreSQL 16 (مخطط `auction`). تبعي
 2. `npm install` ثم `cp .env.example .env`.
 3. `npm run db:reset`: يبني المخطط ويبذر بيانات تجريبية وهمية. **يحذف كل البيانات؛ للتطوير فقط، ويرفض العمل مع NODE_ENV=production.**
 4. `npm start` ثم http://localhost:4000. حسابات تجريبية، كلمة المرور لكلها `Demo@2026pass`: admin@ / ops@ / accountant@ / sales@ / viewer@ / bidder1@ + `auction.ly`.
-5. `npm test` = **117 اختبارًا يجب أن تنجح كلها** (يعيد بناء `car_auction_test`). `npm run test:unit` للوحدة بلا قاعدة.
+5. `npm test` = **123 اختبارًا يجب أن تنجح كلها** (يعيد بناء `car_auction_test`). `npm run test:unit` للوحدة بلا قاعدة.
 ابدأ دائمًا بالتأكد أن التشغيل والاختبارات تنجح، وأبلغ بالنتيجة الحقيقية.
 
 ## قرارات لا تُعكس بلا إذن المستخدم

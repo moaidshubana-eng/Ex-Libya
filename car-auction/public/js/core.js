@@ -90,7 +90,7 @@ export function statusBadge(code) {
   return html`<span class="badge" style="color:${s?.color || '#64748b'}"><span class="dot"></span><span style="color:var(--text)">${s?.label || code}</span></span>`;
 }
 
-export const imgUrl = (vehicleId, imageId) => (imageId ? `/api/media/vehicles/${vehicleId}/${imageId}.svg` : '');
+export const imgUrl = (vehicleId, imageId) => (imageId ? `/api/media/vehicles/${vehicleId}/${imageId}` : '');
 
 // ---------------------------------------------------------------- إشعارات ونوافذ
 export function toast(msg, kind = '') {

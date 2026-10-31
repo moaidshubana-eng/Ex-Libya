@@ -25,6 +25,8 @@ export function createApp() {
   if (config.mockFeeds) app.use('/mock', mockFeedsRouter());
 
   app.use(securityHeaders);
+  // رفع الصور وحده يقبل جسمًا أكبر (صورة مضغوطة بترميز base64)؛ بقية المسارات تبقى بحد 200kb
+  app.use(/^\/api\/vehicles\/[^/]+\/images\/?$/, express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
   app.use('/api', csrfGuard, authenticate, api);
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'NOT_FOUND', 'المسار غير موجود')));

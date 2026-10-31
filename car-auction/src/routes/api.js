@@ -13,6 +13,7 @@ import { subscribe } from '../services/realtime.js';
 import { ops } from './ops.js';
 import { costReportXlsx, costReportCsv } from '../services/export.js';
 import { renderVehicleSvg } from '../services/media.js';
+import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
 export const api = express.Router();
@@ -243,15 +244,40 @@ api.post('/vehicles/:id/status', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam
   res.json(r);
 }));
 
-api.get('/media/vehicles/:id/:imageId.svg', requireAuth, uuidParam('id'), uuidParam('imageId'), asyncH(async (req, res) => {
+// الصورة: المرفوعة يدويًا تُعرض من القاعدة، وإلا رسم توضيحي (بيانات العرض التجريبية).
+// المسار القديم بامتداد .svg يبقى يعمل للروابط المحفوظة
+const serveVehicleImage = asyncH(async (req, res) => {
   const { rows: [r] } = await query(
-    `SELECT v.stock_no, v.year, v.make, v.model, v.exterior_color, v.body_style, v.primary_damage, v.engine, v.title_state, i.sort_order
+    `SELECT v.stock_no, v.year, v.make, v.model, v.exterior_color, v.body_style, v.primary_damage, v.engine, v.title_state, i.sort_order, i.content, i.mime, i.sha256
        FROM vehicle_images i JOIN vehicles v ON v.id = i.vehicle_id WHERE i.id = $1 AND v.id = $2`, [req.params.imageId, req.params.id]);
   if (!r) throw new HttpError(404, 'NOT_FOUND', 'الصورة غير موجودة');
-  res.set('Content-Type', 'image/svg+xml; charset=utf-8');
   res.set('Cache-Control', 'private, max-age=86400, immutable');
   res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+  if (r.content && ['image/jpeg', 'image/png', 'image/webp'].includes(r.mime)) {
+    res.set('Content-Type', r.mime);
+    res.set('ETag', `"${r.sha256}"`);
+    return res.send(r.content);
+  }
+  res.set('Content-Type', 'image/svg+xml; charset=utf-8');
   res.send(renderVehicleSvg(r, r.sort_order));
+});
+api.get('/media/vehicles/:id/:imageId.svg', requireAuth, uuidParam('id'), uuidParam('imageId'), serveVehicleImage);
+api.get('/media/vehicles/:id/:imageId', requireAuth, uuidParam('id'), uuidParam('imageId'), serveVehicleImage);
+
+const imageLimiter = rateLimit({ windowMs: 60_000, max: 60, key: (req) => req.user.id, code: 'TOO_MANY_UPLOADS' });
+api.post('/vehicles/:id/images', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), imageLimiter, asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    data: t.string({ required: true, max: 7_200_000 }),
+    kind: t.enum(['EXTERIOR', 'INTERIOR', 'DAMAGE', 'ENGINE', 'UNDERCARRIAGE', 'DOCUMENT', 'OTHER']),
+    caption: t.string({ max: 200 }), width: t.int({ min: 1, max: 20000 }), height: t.int({ min: 1, max: 20000 }),
+  });
+  res.status(201).json(await addVehicleImage(req.params.id, b, actorOf(req)));
+}));
+api.delete('/vehicles/:id/images/:imageId', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), uuidParam('imageId'), asyncH(async (req, res) => {
+  res.json(await deleteVehicleImage(req.params.id, req.params.imageId, actorOf(req)));
+}));
+api.post('/vehicles/:id/images/:imageId/primary', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), uuidParam('imageId'), asyncH(async (req, res) => {
+  res.json(await setPrimaryImage(req.params.id, req.params.imageId, actorOf(req)));
 }));
 
 // ---------------------------------------------------------------- التكاليف
