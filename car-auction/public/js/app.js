@@ -118,15 +118,33 @@ function loginScreen() {
     </form></section></div>`);
   const form = $('[data-login]');
   $$('[data-demo]').forEach((b) => b.addEventListener('click', () => { form.email.value = b.dataset.demo; form.password.value = 'Demo@2026pass'; form.requestSubmit(); }));
+  const btn = $('button:not([type=button])', form);
+  let busy = false;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (busy) return; // منع الإرسال المزدوج (ضغط Enter والزر معًا، أو انتظار استيقاظ الخادم)
+    busy = true; btn.disabled = true; btn.textContent = 'جارٍ الدخول…';
     $('[data-err]').textContent = '';
     try {
       const { user } = await api('/auth/login', { method: 'POST', body: { email: form.email.value.trim(), password: form.password.value } });
+      document.removeEventListener('keydown', onEnter);
       state.user = user;
       await start();
-    } catch (err) { $('[data-err]').textContent = err.message; }
+    } catch (err) {
+      $('[data-err]').textContent = err.message;
+      busy = false; btn.disabled = false; btn.textContent = 'دخول';
+    }
   });
+  // المتصفح قد يملأ البريد وكلمة المرور تلقائيًا دون أن يكون المؤشر داخل أي حقل، فلا يعمل Enter.
+  // نضع المؤشر في أول حقل فارغ، ونقبل Enter من أي مكان في شاشة الدخول
+  (form.email.value ? form.password : form.email).focus();
+  const onEnter = (e) => {
+    if (e.key !== 'Enter' || e.isComposing || !document.body.contains(form)) return;
+    if (form.contains(e.target) && e.target.matches('input, button')) return; // سلوك المتصفح الطبيعي يكفي هنا
+    e.preventDefault();
+    form.requestSubmit();
+  };
+  document.addEventListener('keydown', onEnter);
 }
 
 async function start() {
