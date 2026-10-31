@@ -139,7 +139,14 @@ async function start() {
   navigate();
 }
 
-window.addEventListener('auth:expired', () => { toast('انتهت الجلسة — سجل الدخول مجددًا', 'err'); setTimeout(() => location.reload(), 1200); });
+// فقط لمن كان داخلًا فعلًا: فحص /auth/me الأول بلا جلسة يعيد 401 طبيعيًا، وإعادة التحميل عندها تصنع حلقة لا تنتهي
+let expiring = false;
+window.addEventListener('auth:expired', () => {
+  if (!state.user || expiring) return;
+  expiring = true;
+  toast('انتهت الجلسة — سجل الدخول مجددًا', 'err');
+  setTimeout(() => location.reload(), 1200);
+});
 
 (async () => {
   try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* */ }
