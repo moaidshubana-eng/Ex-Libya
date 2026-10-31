@@ -4,6 +4,8 @@ import { auctionsView, lotView } from './views-auctions.js';
 import { settingsView, changePasswordDialog } from './views-settings.js';
 import { customersView } from './views-manage.js';
 import { shipmentsView, customsView, reportsView, integrationsView, auditView } from './views-ops.js';
+// الحسابات التجريبية لا وجود لها في الإنتاج: لا تُعرض إلا عند التشغيل المحلي
+const isLocal = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
 
 const STAFF = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER'];
 const ROUTES = [
@@ -111,8 +113,8 @@ function loginScreen() {
       <label class="field">كلمة المرور<input class="input" name="password" type="password" autocomplete="current-password" required></label>
       <button class="btn btn-primary" style="min-height:44px">دخول</button>
       <div data-err role="alert" style="color:var(--danger);min-height:1.4em"></div>
-      <div class="demo">حسابات تجريبية (كلمة المرور <span class="mono">Demo@2026pass</span>):<br>
-        ${[['admin', 'مدير'], ['ops', 'عمليات'], ['accountant', 'محاسب'], ['sales', 'مبيعات'], ['bidder1', 'مزايد']].map(([e, l]) => html`<button type="button" data-demo="${e}@auction.ly">${l}</button> `)}</div>
+      ${isLocal ? html`<div class="demo">حسابات تجريبية (كلمة المرور <span class="mono">Demo@2026pass</span>):<br>
+        ${[['admin', 'مدير'], ['ops', 'عمليات'], ['accountant', 'محاسب'], ['sales', 'مبيعات'], ['bidder1', 'مزايد']].map(([e, l]) => html`<button type="button" data-demo="${e}@auction.ly">${l}</button> `)}</div>` : ''}
     </form></section></div>`);
   const form = $('[data-login]');
   $$('[data-demo]').forEach((b) => b.addEventListener('click', () => { form.email.value = b.dataset.demo; form.password.value = 'Demo@2026pass'; form.requestSubmit(); }));
