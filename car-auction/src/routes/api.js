@@ -14,6 +14,7 @@ import { ops } from './ops.js';
 import { costReportXlsx, costReportCsv } from '../services/export.js';
 import { renderVehicleSvg } from '../services/media.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
+import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal } from '../services/accounts.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
 export const api = express.Router();
@@ -225,7 +226,9 @@ api.post('/vehicles', requireRole(ROLES.LOGISTICS_WRITERS), asyncH(async (req, r
     year: { ...vehicleFields.year, required: true }, make: { ...vehicleFields.make, required: true }, model: { ...vehicleFields.model, required: true },
     source: t.enum(['COPART', 'IAAI', 'OTHER']), lotNumber: t.string({ max: 20, pattern: /^\d{4,12}$/ }), purchaseDate: t.date(),
     purchasePriceUsd: t.decimal({ positive: true }), buyerFeeUsd: t.decimal(), otherFeesUsd: t.decimal(), destinationPort: t.string({ max: 10 }),
+    customerId: t.uuid(), customerPrice: t.decimal({ positive: true }), customerCurrency: t.enum(['USD', 'LYD', 'EUR']), vendorId: t.uuid(),
   });
+  if (b.customerPrice && !b.customerId) throw new HttpError(422, 'PRICE_WITHOUT_CUSTOMER', 'اختر العميل قبل إدخال السعر المتفق عليه');
   res.status(201).json(await createVehicle(b, actorOf(req)));
 }));
 
@@ -239,7 +242,12 @@ api.patch('/vehicles/:id', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id')
 
 api.post('/vehicles/:id/status', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   const b = validate(req.body, { to: t.enum(STATUS_CODES, { required: true }), reason: t.string({ max: 500 }), version: t.int({ min: 1 }) });
-  if (['IN_AUCTION', 'SOLD'].includes(b.to)) throw new HttpError(422, 'SYSTEM_ONLY', 'هذه الحالة تُضبط تلقائيًا عبر المزاد أو البيع');
+  if (b.to === 'IN_AUCTION') throw new HttpError(422, 'SYSTEM_ONLY', 'هذه الحالة تُضبط تلقائيًا عبر المزاد');
+  if (b.to === 'SOLD') {
+    // سيارة مشتراة لعميل (طلب مسبق) تُعلَّم مباعة يدويًا عند تسليمها؛ غيرها تُباع عبر المزاد أو البيع المباشر فقط
+    const { rows: [r] } = await query('SELECT customer_id FROM vehicles WHERE id = $1', [req.params.id]);
+    if (!r?.customer_id) throw new HttpError(422, 'SYSTEM_ONLY', 'هذه الحالة تُضبط تلقائيًا عبر المزاد أو البيع');
+  }
   const r = await tx((c) => changeStatus(c, req.params.id, b.to, { actorId: req.user.id, reason: b.reason, expectedVersion: b.version, ip: req.ip }));
   res.json(r);
 }));
@@ -445,7 +453,7 @@ api.post('/auctions/:id/lots', requireRole(ROLES.AUCTION_MANAGERS), uuidParam('i
 }));
 
 // ---------------------------------------------------------------- العملاء (بيانات حساسة مقنّعة)
-api.get('/customers', requireRole(['ADMIN', 'SALES', 'ACCOUNTANT']), asyncH(async (req, res) => {
+api.get('/customers', requireRole(['ADMIN', 'SALES', 'ACCOUNTANT', 'OPERATIONS']), asyncH(async (req, res) => {
   const { rows } = await query(
     `SELECT c.id, c.code, c.full_name, c.customer_type, c.city, c.kyc_status, c.phone_enc,
             (SELECT count(*)::int FROM sales s WHERE s.customer_id = c.id) AS purchases
@@ -453,6 +461,45 @@ api.get('/customers', requireRole(['ADMIN', 'SALES', 'ACCOUNTANT']), asyncH(asyn
       WHERE ($1::text IS NULL OR c.full_name ILIKE '%' || $1 || '%' OR c.code ILIKE '%' || $1 || '%')
       ORDER BY c.code LIMIT 200`, [req.query.q ? String(req.query.q).slice(0, 60) : null]);
   res.json({ items: rows.map(({ phone_enc, ...c }) => ({ ...c, phone: mask(decrypt(phone_enc)) })) });
+}));
+
+// ---------------------------------------------------------------- حسابات العملاء والموردين
+const DEAL_WRITERS = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES'];
+const CUSTOMER_ACC_READERS = ['ADMIN', 'ACCOUNTANT', 'SALES', 'VIEWER'];
+const VENDOR_ACC_READERS = ['ADMIN', 'ACCOUNTANT', 'OPERATIONS', 'VIEWER'];
+const ACC_WRITERS = ['ADMIN', 'ACCOUNTANT'];
+const paymentSchema = {
+  amount: t.decimal({ required: true, positive: true }), currency: t.enum(['USD', 'LYD', 'EUR'], { required: true }),
+  settleCurrency: t.enum(['USD', 'LYD', 'EUR']), fxRate: t.decimal({ positive: true }), vehicleId: t.uuid(),
+  method: t.enum(['CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'OTHER'], { required: true }), reference: t.string({ max: 80 }),
+  note: t.string({ max: 300 }), paidAt: t.date(),
+};
+api.put('/vehicles/:id/deal', requireRole(DEAL_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { customerId: t.uuid({ nullable: true }), customerPrice: t.decimal({ positive: true, nullable: true }), customerCurrency: t.enum(['USD', 'LYD', 'EUR']), vendorId: t.uuid({ nullable: true }) });
+  if (b.customerPrice && b.customerId === null) throw new HttpError(422, 'PRICE_WITHOUT_CUSTOMER', 'اختر العميل قبل إدخال السعر المتفق عليه');
+  res.json(await setVehicleDeal(req.params.id, b, actorOf(req)));
+}));
+api.get('/vehicles/:id/deal', requireRole(ROLES.STAFF), uuidParam('id'), asyncH(async (req, res) => {
+  const d = await vehicleDeal(req.params.id);
+  if (!d) throw new HttpError(404, 'NOT_FOUND', 'السيارة غير موجودة');
+  // كل دور يرى الجانب الذي يخصه فقط
+  if (!CUSTOMER_ACC_READERS.includes(req.user.role) && d.customer) d.customer = { id: d.customer.id, code: d.customer.code, name: d.customer.name };
+  if (!VENDOR_ACC_READERS.includes(req.user.role) && d.vendor) d.vendor = { id: d.vendor.id, name: d.vendor.name };
+  res.json(d);
+}));
+api.get('/accounts/customers', requireRole(CUSTOMER_ACC_READERS), asyncH(async (req, res) => res.json({ items: await customerBalances(req.query.q ? String(req.query.q).slice(0, 60) : null) })));
+api.get('/accounts/vendors', requireRole(VENDOR_ACC_READERS), asyncH(async (req, res) => res.json({ items: await vendorBalances(req.query.q ? String(req.query.q).slice(0, 60) : null) })));
+api.get('/accounts/customers/:id', requireRole(CUSTOMER_ACC_READERS), uuidParam('id'), asyncH(async (req, res) => res.json(await customerAccount(req.params.id))));
+api.get('/accounts/vendors/:id', requireRole(VENDOR_ACC_READERS), uuidParam('id'), asyncH(async (req, res) => res.json(await vendorAccount(req.params.id))));
+api.post('/accounts/customers/:id/payments', requireRole([...ACC_WRITERS, 'SALES']), uuidParam('id'), asyncH(async (req, res) => {
+  res.status(201).json(await addAccountPayment('CUSTOMER', req.params.id, validate(req.body, paymentSchema), actorOf(req)));
+}));
+api.post('/accounts/vendors/:id/payments', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  res.status(201).json(await addAccountPayment('VENDOR', req.params.id, validate(req.body, paymentSchema), actorOf(req)));
+}));
+api.post('/account-payments/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
+  res.json(await voidAccountPayment(req.params.id, b.reason, actorOf(req)));
 }));
 
 // ---------------------------------------------------------------- التكامل والمزامنة

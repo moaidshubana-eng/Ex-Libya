@@ -2,6 +2,7 @@ import { query, tx, audit } from '../db.js';
 import { rateToLyd } from './costs.js';
 import { vinError } from '../domain/vin.js';
 import { canTransition, manualNextStatuses, STATUS_LABEL } from '../domain/status.js';
+import { applyDeal } from './accounts.js';
 import { HttpError } from '../security/middleware.js';
 
 /**
@@ -148,10 +149,14 @@ export async function getVehicle(id, { includeCosts, includeInternal }) {
     lot: lot.rows[0] || null,
     sale: sale.rows[0] || null,
     costs,
-    next_statuses: includeInternal ? manualNextStatuses(v.status, v.hold_return_status) : [],
+    next_statuses: includeInternal ? [
+      ...manualNextStatuses(v.status, v.hold_return_status),
+      // سيارة مشتراة لعميل: «مباعة» تُعلَّم يدويًا عند التسليم (بلا فاتورة بيع)
+      ...(v.customer_id && canTransition(v.status, 'SOLD') ? ['SOLD'] : []),
+    ] : [],
   };
   if (!includeInternal) {
-    for (const k of ['notes', 'locked_fields', 'hold_reason', 'hold_return_status', 'version']) delete out[k];
+    for (const k of ['notes', 'locked_fields', 'hold_reason', 'hold_return_status', 'version', 'customer_id', 'customer_price', 'customer_currency', 'customer_assigned_at', 'vendor_id']) delete out[k];
   }
   return out;
 }
@@ -228,6 +233,10 @@ export async function createVehicle(b, actor) {
       }
     }
     await audit(c, { actorId: actor.id, action: 'VEHICLE_CREATED', entity: 'vehicle', entityId: v.id, after: { stock_no: v.stock_no, vin, manual: true }, ip: actor.ip });
+    // العميل الذي اشتُريت له والمورد الذي اشتُريت منه (اختياريان)
+    if (b.customerId || b.vendorId) {
+      await applyDeal(c, v.id, { customerId: b.customerId || null, customerPrice: b.customerPrice || null, customerCurrency: b.customerCurrency, vendorId: b.vendorId || null }, actor);
+    }
     return v;
   });
 }

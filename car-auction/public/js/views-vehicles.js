@@ -1,5 +1,6 @@
 import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, imgUrl, toast, modal, icon } from './core.js';
 import { photosBar, mountPhotos } from './photos.js';
+import { dealFields, dealCard, mountDeal, loadCustomers } from './views-accounts.js';
 import { galleryTemplate, mountGallery, openLightbox } from './gallery.js';
 import { sellDialog, paymentDialog, openCustomsDialog } from './views-manage.js';
 const PRESALE = ['IN_TRANSIT_SEA', 'AT_PORT_LIBYA', 'IN_CUSTOMS', 'CUSTOMS_CLEARED', 'IN_STOCK'];
@@ -40,6 +41,8 @@ const toBody = (r) => {
 
 export async function addVehicleDialog() {
   const today = new Date().toISOString().slice(0, 10);
+  let customers = [];
+  try { customers = await loadCustomers(true); } catch { /* دور بلا صلاحية قراءة العملاء */ }
   const r = await modal({
     title: 'إضافة سيارة', submitLabel: 'حفظ السيارة', body: html`
       <label class="field">رقم الهيكل (VIN) — 17 خانة<input class="input mono" name="vin" required minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase"></label>
@@ -51,9 +54,13 @@ export async function addVehicleDialog() {
       <div class="grid g3"><label class="field">سعر الشراء ($)<input class="input num" name="purchasePriceUsd" inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label>
         <label class="field">رسوم المشتري ($)<input class="input num" name="buyerFeeUsd" inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label>
         <label class="field">رسوم أخرى ($)<input class="input num" name="otherFeesUsd" inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label></div>
+      <div class="alert" style="font-size:13px">العميل والمورد (اختياريان). إن كانت السيارة مطلوبة لعميل فاختره واكتب السعر المتفق عليه، فتظهر في كشف حسابه. وتكاليف الشراء أعلاه تُسجَّل في حساب المورد.</div>
+      ${dealFields(customers)}
       <label class="field">ميناء الوصول${sel('destinationPort', state.meta.ports.filter((p) => p.country === 'LY').map((p) => [p.code, p.name_ar]), 'LYMRA', false)}</label>
       <label class="field">ملاحظات<input class="input" name="notes" maxlength="1000"></label>` });
   if (!r) return;
+  if (!r.customerId) { delete r.customerPrice; delete r.customerCurrency; }
+  if (!r.customerPrice) delete r.customerCurrency;
   try {
     const v = await api('/vehicles', { method: 'POST', body: toBody(r) });
     toast(`أُضيفت السيارة ${v.stock_no}`, 'ok');
@@ -246,6 +253,7 @@ function bindCompare(el) {
 // ======================================================================= تفاصيل السيارة
 export async function vehicleDetailView(el, { params, setTitle }) {
   const v = await api(`/vehicles/${params.id}`);
+  const deal = state.user.role !== 'BIDDER' ? await api(`/vehicles/${params.id}/deal`).catch(() => null) : null;
   const title = `${v.year} ${v.make} ${v.model} ${v.trim || ''}`.trim();
   setTitle(title, v.stock_no);
   const urlOf = (im) => imgUrl(v.id, im.id);
@@ -280,14 +288,15 @@ export async function vehicleDetailView(el, { params, setTitle }) {
           </div>
           ${v.lot && ['OPEN', 'PENDING'].includes(v.lot.status) ? html`<a class="btn btn-accent" href="#/lots/${v.lot.id}">${icon('gavel')} المزايدة الحية — ${fmt.lyd(v.lot.current_price)}</a>` : ''}
           ${v.costs ? html`<div class="row" style="justify-content:space-between;border-top:1px dashed var(--border);padding-top:10px"><span class="muted">التكلفة الواصلة حتى الآن</span><b class="num" style="font-size:18px">${fmt.lyd(v.costs.summary.total_cost_lyd)}</b></div>` : ''}
-          ${can('ADMIN', 'SALES') && PRESALE.includes(v.status) ? html`<button class="btn btn-primary" data-sell>بيع مباشر</button>` : ''}
+          ${can('ADMIN', 'SALES') && PRESALE.includes(v.status) && !v.customer_id ? html`<button class="btn btn-primary" data-sell>بيع مباشر</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') && v.status === 'AT_PORT_LIBYA' && !v.customs ? html`<button class="btn" data-customs>${icon('customs')} فتح بيان جمركي</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') ? html`<button class="btn" data-edit>تعديل بيانات السيارة</button>` : ''}
-          ${can('ADMIN', 'SALES') && v.status === 'IN_STOCK' ? html`<button class="btn btn-accent" data-list>${icon('gavel')} إدراج في مزاد</button>` : ''}
+          ${can('ADMIN', 'SALES') && v.status === 'IN_STOCK' && !v.customer_id ? html`<button class="btn btn-accent" data-list>${icon('gavel')} إدراج في مزاد</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') && v.next_statuses.length ? html`<div class="row" style="border-top:1px dashed var(--border);padding-top:10px">
             <select class="input" data-next style="flex:1">${v.next_statuses.map((s) => html`<option value="${s}">${label(s)}</option>`)}</select>
             <button class="btn btn-primary" data-move>تحديث الحالة</button></div>` : ''}
         </div>
+        ${staff ? dealCard(v, deal) : ''}
         ${v.sale ? salePanel(v.sale) : ''}
         ${v.shipment && staff ? html`<div class="card card-b stack" style="gap:8px">
           <div class="row" style="justify-content:space-between"><b>${icon('ship')} ${v.shipment.shipment_no}</b><span class="badge">${LABELS.shipment[v.shipment.status]}</span></div>
@@ -301,6 +310,7 @@ export async function vehicleDetailView(el, { params, setTitle }) {
 
   mountGallery(el, v.images, urlOf, title);
   mountPhotos(el, v, () => vehicleDetailView(el, { params, setTitle }));
+  mountDeal(el, v, deal, () => vehicleDetailView(el, { params, setTitle }));
   $('[data-copy]', el)?.addEventListener('click', (e) => navigator.clipboard?.writeText(e.target.dataset.copy).then(() => toast('تم نسخ VIN', 'ok')));
   $('[data-move]', el)?.addEventListener('click', async () => {
     const to = $('[data-next]', el).value;

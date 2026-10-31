@@ -198,6 +198,8 @@ export async function createLot(eventId, { vehicleId, startingPrice, reservePric
     const { rows: ev } = await c.query('SELECT * FROM auction_events WHERE id = $1 FOR UPDATE', [eventId]);
     if (!ev[0]) throw new HttpError(404, 'NOT_FOUND', 'المزاد غير موجود');
     if (!['DRAFT', 'SCHEDULED', 'LIVE'].includes(ev[0].status)) throw new HttpError(422, 'EVENT_CLOSED', 'المزاد مغلق');
+    const { rows: [res] } = await c.query('SELECT customer_id FROM vehicles WHERE id = $1', [vehicleId]);
+    if (res?.customer_id) throw new HttpError(422, 'RESERVED', 'السيارة مشتراة لعميل — لا تُدرج في مزاد. أزل العميل من السيارة أولًا إن تغيّر الاتفاق');
     await changeStatus(c, vehicleId, 'IN_AUCTION', { actorId: actor.id, source: 'SYSTEM', reason: `إدراج في مزاد: ${ev[0].title}` });
     const { rows: n } = await c.query('SELECT COALESCE(max(lot_no),0) + 1 AS n FROM auction_lots WHERE auction_event_id = $1', [eventId]);
     const { rows } = await c.query(

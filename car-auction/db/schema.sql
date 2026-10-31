@@ -214,13 +214,22 @@ CREATE TABLE vehicles (
   hold_return_status vehicle_status,               -- الحالة التي تعود إليها بعد رفع التعليق
   destination_port_id INT REFERENCES ports(id),
   list_price_lyd    NUMERIC(14,3),                 -- سعر العرض المقترح بالدينار
+  customer_id       UUID REFERENCES customers(id), -- العميل الذي اشتُريت له السيارة (طلب مسبق)
+  customer_price    NUMERIC(14,3),                 -- السعر المتفق عليه مع العميل
+  customer_currency CHAR(3),                       -- USD | LYD | EUR
+  customer_assigned_at TIMESTAMPTZ,
+  vendor_id         UUID REFERENCES vendors(id),   -- المورد الذي اشتُريت منه
   locked_fields     TEXT[] NOT NULL DEFAULT '{}',  -- حقول عدّلها المستخدم يدويًا فلا تكتب فوقها المزامنة
   notes             TEXT,
   version           INT NOT NULL DEFAULT 1,        -- تزامن متفائل (Optimistic locking)
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT hold_requires_reason CHECK (status <> 'ON_HOLD' OR (hold_reason IS NOT NULL AND hold_return_status IS NOT NULL))
+  CONSTRAINT hold_requires_reason CHECK (status <> 'ON_HOLD' OR (hold_reason IS NOT NULL AND hold_return_status IS NOT NULL)),
+  CONSTRAINT vehicle_customer_price_ok CHECK (
+    customer_price IS NULL OR (customer_id IS NOT NULL AND customer_price > 0 AND customer_currency IN ('USD','LYD','EUR')))
 );
+CREATE INDEX idx_vehicles_customer ON vehicles(customer_id) WHERE customer_id IS NOT NULL;
+CREATE INDEX idx_vehicles_vendor ON vehicles(vendor_id) WHERE vendor_id IS NOT NULL;
 CREATE INDEX idx_vehicles_status ON vehicles(status);
 CREATE INDEX idx_vehicles_created ON vehicles(created_at DESC, id);
 CREATE INDEX idx_vehicles_make_model ON vehicles(make, model, year);
@@ -590,6 +599,37 @@ CREATE TABLE vehicle_costs (
 );
 CREATE INDEX idx_costs_vehicle ON vehicle_costs(vehicle_id) WHERE voided_at IS NULL;
 CREATE INDEX idx_costs_category ON vehicle_costs(category_code, incurred_at);
+CREATE INDEX idx_costs_vendor ON vehicle_costs(vendor_id) WHERE vendor_id IS NOT NULL AND voided_at IS NULL;
+
+-- حسابات العملاء والموردين: الدفعات على الحساب (انظر services/accounts.js)
+CREATE TABLE account_payments (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  party_type      TEXT NOT NULL CHECK (party_type IN ('CUSTOMER','VENDOR')),  -- CUSTOMER: قبض من العميل · VENDOR: دفع للمورد
+  customer_id     UUID REFERENCES customers(id),
+  vendor_id       UUID REFERENCES vendors(id),
+  vehicle_id      UUID REFERENCES vehicles(id),                -- اختياري: الدفعة مخصصة لسيارة
+  amount          NUMERIC(14,3) NOT NULL CHECK (amount > 0),   -- المبلغ المستلم/المدفوع فعلًا
+  currency        CHAR(3) NOT NULL CHECK (currency IN ('USD','LYD','EUR')),
+  settle_currency CHAR(3) NOT NULL CHECK (settle_currency IN ('USD','LYD','EUR')), -- الرصيد الذي تُخصم منه
+  fx_rate         NUMERIC(14,6),                               -- دينار لكل وحدة أجنبية، عند اختلاف العملتين
+  settle_amount   NUMERIC(14,3) NOT NULL CHECK (settle_amount > 0),
+  method          payment_method NOT NULL,
+  reference       TEXT,
+  note            TEXT,
+  paid_at         DATE NOT NULL DEFAULT current_date,
+  created_by      UUID REFERENCES users(id),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  voided_at       TIMESTAMPTZ,                                  -- لا حذف فعلي: الإلغاء يُسجَّل مع السبب
+  voided_by       UUID REFERENCES users(id),
+  void_reason     TEXT,
+  CHECK ((party_type = 'CUSTOMER') = (customer_id IS NOT NULL)),
+  CHECK ((party_type = 'VENDOR') = (vendor_id IS NOT NULL)),
+  CHECK (currency <> settle_currency OR (settle_amount = amount AND fx_rate IS NULL)),
+  CHECK (currency = settle_currency OR (fx_rate > 0 AND 'LYD' IN (currency, settle_currency))),
+  CHECK ((voided_at IS NULL) = (void_reason IS NULL))
+);
+CREATE INDEX idx_accpay_customer ON account_payments(customer_id, paid_at) WHERE customer_id IS NOT NULL;
+CREATE INDEX idx_accpay_vendor ON account_payments(vendor_id, paid_at) WHERE vendor_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------
 -- 9) التكامل والمزامنة

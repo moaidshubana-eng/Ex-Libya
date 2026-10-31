@@ -115,8 +115,10 @@ export async function setDeposit(regId, status, amount, actor) {
 const PRESALE = ['IN_TRANSIT_SEA', 'AT_PORT_LIBYA', 'IN_CUSTOMS', 'CUSTOMS_CLEARED', 'IN_STOCK'];
 export async function directSale(vehicleId, { customerId, priceLyd, dueDays }, actor) {
   return tx(async (c) => {
-    const { rows: [v] } = await c.query('SELECT id, status FROM vehicles WHERE id = $1 FOR UPDATE', [vehicleId]);
+    const { rows: [v] } = await c.query('SELECT id, status, customer_id FROM vehicles WHERE id = $1 FOR UPDATE', [vehicleId]);
     if (!v) throw new HttpError(404, 'NOT_FOUND', 'السيارة غير موجودة');
+    // سيارة مشتراة لعميل: حسابها في كشف العميل بالسعر المتفق عليه، فلا تُصدر لها فاتورة بيع ثانية
+    if (v.customer_id) throw new HttpError(422, 'RESERVED', 'السيارة مشتراة لعميل — تُتابع من حسابه. أزل العميل من السيارة أولًا إن تغيّر الاتفاق');
     if (!PRESALE.includes(v.status)) throw new HttpError(422, 'NOT_SELLABLE', 'لا تُباع السيارة في حالتها الحالية');
     const { rows: [cu] } = await c.query('SELECT id, kyc_status FROM customers WHERE id = $1', [customerId]);
     if (!cu) throw new HttpError(404, 'NO_CUSTOMER', 'العميل غير موجود');

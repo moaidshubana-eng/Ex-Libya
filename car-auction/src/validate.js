@@ -73,6 +73,8 @@ export function validate(body, schema) {
   for (const key of Object.keys(body)) if (!(key in schema)) errors.push(`${key}: حقل غير معروف`);
   for (const [key, spec] of Object.entries(schema)) {
     const v = body[key];
+    // nullable: القيمة null أو '' تعني «إفراغ الحقل» صراحةً (تختلف عن عدم إرساله)
+    if (spec.nullable && key in body && (v === null || v === '')) { out[key] = null; continue; }
     if (v === undefined || v === null || v === '') {
       if (spec.required) errors.push(`${key}: مطلوب`);
       continue;
