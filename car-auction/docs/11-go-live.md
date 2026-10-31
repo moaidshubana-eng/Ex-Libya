@@ -37,3 +37,9 @@
 
 ## بدائل أخرى
 الملفات نفسها تعمل على **Railway** أو **Fly.io** أو أي خادم عليه Docker: أنشئ قاعدة PostgreSQL 16، واضبط نفس المتغيرات، وشغّل الحاوية. على خادم بلا بروكسي ضع Nginx أمامه (08 القسم 8) واضبط `TRUST_PROXY=loopback`.
+
+## خيار مجاني للتجربة (بلا بطاقة)
+`render-free.yaml`: خدمة Render المجانية + قاعدة مجانية من **Neon** (neon.tech، لا تنتهي بعد 30 يومًا مثل قاعدة Render المجانية).
+1. Neon: سجّل ← أنشئ مشروعًا (المنطقة: Frankfurt، إصدار 16) ← انسخ Connection string.
+2. Render ← Blueprints ← New Blueprint Instance ← المستودع والفرع ← **Blueprint Path:** `car-auction/render-free.yaml` ← الصق الرابط في `DATABASE_URL` ← Apply.
+الحدود: الخدمة تنام بعد 15 دقيقة خمول وتستيقظ في نحو دقيقة، فلا تصلح لمزاد حي فعلي. للإطلاق الفعلي انتقل إلى الخطة المدفوعة.

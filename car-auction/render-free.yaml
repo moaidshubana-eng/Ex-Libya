@@ -1,0 +1,34 @@
+# نشر مجاني للتجربة (بلا بطاقة): خدمة ويب Render المجانية + قاعدة PostgreSQL مجانية من Neon (neon.tech).
+# الاستخدام: Render ← Blueprints ← New Blueprint Instance ← المستودع والفرع ← Blueprint Path: car-auction/render-free.yaml
+# ثم الصق رابط قاعدة Neon في DATABASE_URL عند الطلب.
+# حدود المجاني: الخدمة تنام بعد 15 دقيقة خمول، وأول فتح بعدها يأخذ قرابة دقيقة. مناسب للتجربة والعرض، لا لمزاد حي فعلي.
+# للإنتاج الفعلي استخدم render.yaml (خطط مدفوعة).
+services:
+  - type: web
+    name: golden-gate-motors
+    runtime: docker
+    rootDir: car-auction
+    plan: free
+    healthCheckPath: /readyz
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        sync: false          # رابط Neon: يبدأ بـ postgresql:// وينتهي بـ ?sslmode=require
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true  # احفظ نسخة منه خارج Render، فبدونه تضيع بيانات العملاء المشفرة
+      - key: LOOKUP_HMAC_KEY
+        generateValue: true
+      - key: INTEGRATIONS_ENABLED
+        value: "false"
+      - key: INITIAL_ADMIN_EMAIL
+        value: admin@goldengate.ly
+      - key: INITIAL_ADMIN_PASSWORD
+        generateValue: true  # كلمة مؤقتة: تجدها في Environment. غيّرها بعد أول دخول ثم احذف هذا المتغير
+      - key: INITIAL_ADMIN_NAME
+        value: مدير النظام
