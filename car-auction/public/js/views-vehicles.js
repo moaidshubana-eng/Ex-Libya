@@ -1,6 +1,7 @@
 import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, imgUrl, toast, modal, icon } from './core.js';
 import { photosBar, mountPhotos } from './photos.js';
 import { dealFields, dealCard, mountDeal, loadCustomers } from './views-accounts.js';
+import { overviewSection } from './views-finance.js';
 import { galleryTemplate, mountGallery, openLightbox } from './gallery.js';
 import { sellDialog, paymentDialog, openCustomsDialog } from './views-manage.js';
 const PRESALE = ['IN_TRANSIT_SEA', 'AT_PORT_LIBYA', 'IN_CUSTOMS', 'CUSTOMS_CLEARED', 'IN_STOCK'];
@@ -82,7 +83,7 @@ async function editVehicleDialog(v, reload) {
 
 // ======================================================================= لوحة المؤشرات
 export async function dashboardView(el) {
-  const d = await api('/dashboard');
+  const [d, overview] = await Promise.all([api('/dashboard'), overviewSection()]);
   const count = Object.fromEntries(d.byStatus.map((s) => [s.status, s.n]));
   const total = d.byStatus.reduce((a, s) => a + s.n, 0);
   const st = state.meta.statuses;
@@ -99,6 +100,7 @@ export async function dashboardView(el) {
       ${kpi('customs', 'في الميناء والجمارك', fmt.n(atPort), d.aging.find((a) => a.status === 'IN_CUSTOMS') ? `متوسط ${d.aging.find((a) => a.status === 'IN_CUSTOMS').avg_days} يوم في الجمارك` : '', '#f97316')}
       ${kpi('gavel', 'مزايدات حية', fmt.n(d.auctions.open_lots), `${d.auctions.open_bids} مزايدة على اللوتات المفتوحة`, '#e11d48')}
     </div>
+    ${overview}
 
     <div class="card" style="margin-top:16px">
       <div class="card-h"><h2>دورة حياة الأسطول</h2><span class="faint">${total} سيارة · انقر أي حالة لعرض سياراتها</span></div>

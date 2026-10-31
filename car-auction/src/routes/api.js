@@ -14,7 +14,8 @@ import { ops } from './ops.js';
 import { costReportXlsx, costReportCsv } from '../services/export.js';
 import { renderVehicleSvg } from '../services/media.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
-import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal } from '../services/accounts.js';
+import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
+import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
 export const api = express.Router();
@@ -497,6 +498,35 @@ api.post('/accounts/customers/:id/payments', requireRole([...ACC_WRITERS, 'SALES
 api.post('/accounts/vendors/:id/payments', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   res.status(201).json(await addAccountPayment('VENDOR', req.params.id, validate(req.body, paymentSchema), actorOf(req)));
 }));
+api.get('/account-payments/:id/receipt', requireRole(ROLES.STAFF), uuidParam('id'), asyncH(async (req, res) => {
+  const r = await paymentReceipt(req.params.id);
+  // الإيصال يتبع صلاحية قراءة حساب طرفه
+  const readers = r.payment.partyType === 'CUSTOMER' ? CUSTOMER_ACC_READERS : VENDOR_ACC_READERS;
+  if (!readers.includes(req.user.role)) throw new HttpError(403, 'FORBIDDEN', 'لا تملك صلاحية هذا الإجراء');
+  res.json(r);
+}));
+api.get('/accounts/overview', requireRole([...new Set([...CUSTOMER_ACC_READERS, ...VENDOR_ACC_READERS])]), asyncH(async (req, res) => {
+  res.json(await accountsOverview({ customers: CUSTOMER_ACC_READERS.includes(req.user.role), vendors: VENDOR_ACC_READERS.includes(req.user.role) }));
+}));
+
+// ---------------------------------------------------------------- مصاريف الشركة والربح الشهري
+const FIN_READERS = ['ADMIN', 'ACCOUNTANT', 'VIEWER'];
+const monthQ = (req) => (req.query.month ? String(req.query.month).slice(0, 7) : null);
+api.get('/expenses', requireRole(FIN_READERS), asyncH(async (req, res) => res.json(await listExpenses(monthQ(req)))));
+api.post('/expenses', requireRole(ACC_WRITERS), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    category: t.enum(Object.keys(EXPENSE_CATEGORIES), { required: true }), description: t.string({ required: true, min: 2, max: 300 }),
+    amount: t.decimal({ required: true, positive: true }), currency: t.enum(['USD', 'LYD', 'EUR'], { required: true }), fxRateToLyd: t.decimal({ positive: true }),
+    expenseDate: t.date(), method: t.enum(['CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'OTHER']), reference: t.string({ max: 80 }),
+  });
+  res.status(201).json(await addExpense(b, actorOf(req)));
+}));
+api.post('/expenses/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
+  res.json(await voidExpense(req.params.id, b.reason, actorOf(req)));
+}));
+api.get('/reports/profit', requireRole(FIN_READERS), asyncH(async (req, res) => res.json(await profitReport(monthQ(req)))));
+
 api.post('/account-payments/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
   res.json(await voidAccountPayment(req.params.id, b.reason, actorOf(req)));

@@ -604,6 +604,7 @@ CREATE INDEX idx_costs_vendor ON vehicle_costs(vendor_id) WHERE vendor_id IS NOT
 -- حسابات العملاء والموردين: الدفعات على الحساب (انظر services/accounts.js)
 CREATE TABLE account_payments (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  receipt_no      TEXT UNIQUE,                                 -- RC-YYYY-00001 قبض · PV-YYYY-00001 صرف
   party_type      TEXT NOT NULL CHECK (party_type IN ('CUSTOMER','VENDOR')),  -- CUSTOMER: قبض من العميل · VENDOR: دفع للمورد
   customer_id     UUID REFERENCES customers(id),
   vendor_id       UUID REFERENCES vendors(id),
@@ -630,6 +631,32 @@ CREATE TABLE account_payments (
 );
 CREATE INDEX idx_accpay_customer ON account_payments(customer_id, paid_at) WHERE customer_id IS NOT NULL;
 CREATE INDEX idx_accpay_vendor ON account_payments(vendor_id, paid_at) WHERE vendor_id IS NOT NULL;
+CREATE SEQUENCE receipt_seq;
+CREATE SEQUENCE voucher_seq;
+CREATE SEQUENCE expense_seq;
+
+-- مصاريف الشركة العامة (غير مرتبطة بسيارة)
+CREATE TABLE company_expenses (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  expense_no      TEXT NOT NULL UNIQUE,                 -- EX-2026-00001
+  category        TEXT NOT NULL CHECK (category IN ('RENT','SALARIES','UTILITIES','FUEL_TRANSPORT','MARKETING','GOVERNMENT_FEES','OFFICE','MAINTENANCE','BANK_FEES','OTHER')),
+  description     TEXT NOT NULL,
+  amount          NUMERIC(14,3) NOT NULL CHECK (amount > 0),
+  currency        CHAR(3) NOT NULL CHECK (currency IN ('USD','LYD','EUR')),
+  fx_rate_to_lyd  NUMERIC(14,6) NOT NULL CHECK (fx_rate_to_lyd > 0),  -- لقطة سعر الصرف يوم المصروف
+  amount_lyd      NUMERIC(14,3) GENERATED ALWAYS AS (round(amount * fx_rate_to_lyd, 3)) STORED,
+  expense_date    DATE NOT NULL,
+  method          payment_method NOT NULL DEFAULT 'CASH',
+  reference       TEXT,
+  created_by      UUID REFERENCES users(id),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  voided_at       TIMESTAMPTZ,                           -- لا حذف فعلي
+  voided_by       UUID REFERENCES users(id),
+  void_reason     TEXT,
+  CHECK (currency <> 'LYD' OR fx_rate_to_lyd = 1),
+  CHECK ((voided_at IS NULL) = (void_reason IS NULL))
+);
+CREATE INDEX idx_expenses_date ON company_expenses(expense_date) WHERE voided_at IS NULL;
 
 -- ---------------------------------------------------------------------
 -- 9) التكامل والمزامنة

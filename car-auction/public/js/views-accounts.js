@@ -97,7 +97,7 @@ export async function statementView(el, { params, setTitle }) {
           <td class="n">${Number(l.debit) ? money(l.debit, l.currency) : ''}</td>
           <td class="n">${Number(l.credit) ? money(l.credit, l.currency) : ''}</td>
           <td class="n">${money(l.balance, l.currency)}</td>
-          <td class="no-print">${l.paymentId && l.type === 'PAYMENT' && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${l.paymentId}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
+          <td class="no-print" style="white-space:nowrap">${l.paymentId ? html`<a class="btn btn-sm btn-ghost" href="#/receipts/${l.paymentId}" title="الإيصال">إيصال</a>` : ''}${l.paymentId && l.type === 'PAYMENT' && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${l.paymentId}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
         ${a.lines.length ? '' : html`<div class="empty">لا توجد حركات</div>`}</div></div>`);
 
   $('[data-print]', el).addEventListener('click', () => window.print());
@@ -173,10 +173,16 @@ export async function paymentDialog(type, partyId, { account, vehicleId } = {}) 
       const body = Object.fromEntries(Object.entries(r).filter(([k, v]) => v !== '' && !(k === 'fxRate' && r.currency === r.settleCurrency)));
       try {
         $('[data-save]', d).disabled = true;
-        await api(`/accounts/${type}s/${partyId}/payments`, { method: 'POST', body });
+        const pay = await api(`/accounts/${type}s/${partyId}/payments`, { method: 'POST', body });
         saved = true;
-        toast('سُجّلت الدفعة', 'ok');
-        d.close();
+        // بعد الحفظ: رقم الإيصال وزر طباعته مباشرة
+        render(d, html`<div class="m-h"><h3>سُجّلت الدفعة</h3></div>
+          <div class="m-b stack" style="text-align:center;gap:10px"><div style="font-size:40px;color:var(--success)">✓</div>
+            <div>${type === 'customer' ? 'إيصال قبض' : 'سند صرف'} رقم <b class="mono">${pay.receipt_no}</b></div>
+            <div class="num" style="font-size:22px;font-weight:700">${money(pay.amount, pay.currency)}</div></div>
+          <div class="m-f"><button class="btn" data-done>تم</button><a class="btn btn-primary" href="#/receipts/${pay.id}" data-rcpt>طباعة الإيصال</a></div>`);
+        $('[data-done]', d).onclick = () => d.close();
+        $('[data-rcpt]', d).onclick = () => d.close();
       } catch (err) { $('[data-err]', d).textContent = err.message; $('[data-save]', d).disabled = false; }
     });
     d.addEventListener('close', () => { d.remove(); resolve(saved); });

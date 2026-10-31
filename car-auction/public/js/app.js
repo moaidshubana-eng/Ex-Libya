@@ -5,6 +5,7 @@ import { settingsView, changePasswordDialog } from './views-settings.js';
 import { customersView } from './views-manage.js';
 import { shipmentsView, customsView, reportsView, integrationsView, auditView } from './views-ops.js';
 import { accountsView, statementView } from './views-accounts.js';
+import { financeView, receiptView } from './views-finance.js';
 // الحسابات التجريبية لا وجود لها في الإنتاج: لا تُعرض إلا عند التشغيل المحلي
 const isLocal = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
 
@@ -21,6 +22,8 @@ const ROUTES = [
   { path: '/customs', title: 'الجمارك', view: customsView, roles: STAFF, nav: ['customs'] },
   { path: '/accounts', title: 'حسابات العملاء والموردين', view: accountsView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'], nav: ['money', 'المالية'] },
   { path: '/accounts/:type/:id', title: 'كشف حساب', view: statementView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },
+  { path: '/finance', title: 'الأرباح والمصاريف', view: financeView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['report'] },
+  { path: '/receipts/:id', title: 'إيصال', view: receiptView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },
   { path: '/reports', title: 'تقرير التكاليف', view: reportsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS', 'VIEWER', 'SALES'], nav: ['report'] },
   { path: '/integrations', title: 'الربط مع Copart / IAAI', view: integrationsView, roles: STAFF, nav: ['sync', 'النظام'] },
   { path: '/settings', title: 'الإعدادات', view: settingsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS'], nav: ['money'] },

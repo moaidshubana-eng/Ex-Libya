@@ -78,7 +78,7 @@ async function vendorEntries(id) {
 function accountPaymentRow(r) {
   return { id: r.id, source: 'ACCOUNT', date: r.paid_at, createdAt: r.created_at, vehicleId: r.vehicle_id, stockNo: r.stock_no,
     amount: r.amount, currency: r.currency, settleCurrency: r.settle_currency, settleAmount: r.settle_amount, fxRate: r.fx_rate,
-    method: r.method, reference: r.reference, note: r.note, voided: !!r.voided_at, voidReason: r.void_reason };
+    method: r.method, reference: r.reference, note: r.note, voided: !!r.voided_at, voidReason: r.void_reason, receiptNo: r.receipt_no };
 }
 
 // ------------------------------------------------------------------ الحساب
@@ -115,7 +115,7 @@ export function buildAccount({ charges, payments }) {
     ...charges.map((ch) => ({ date: ch.date, at: ch.date, type: 'CHARGE', label: ch.label, vehicleId: ch.vehicleId, stockNo: ch.stockNo, currency: ch.currency, debit: toMil(ch.amount), credit: 0 })),
     ...payments.map((p) => ({ date: p.date, at: p.createdAt || p.date, type: p.voided ? 'VOID' : 'PAYMENT', paymentId: p.source === 'ACCOUNT' ? p.id : null, label: paymentLabel(p),
       vehicleId: p.vehicleId, stockNo: p.stockNo, currency: p.settleCurrency, debit: 0, credit: p.voided ? 0 : toMil(p.settleAmount),
-      method: p.method, reference: p.reference, voidReason: p.voidReason })),
+      method: p.method, reference: p.reference, voidReason: p.voidReason, receiptNo: p.receiptNo || null })),
   ].sort((a, b) => dayKey(a.date).localeCompare(dayKey(b.date)) || (a.type === 'CHARGE' ? 0 : 1) - (b.type === 'CHARGE' ? 0 : 1) || new Date(a.at) - new Date(b.at));
   const run = {};
   for (const l of lines) { run[l.currency] = (run[l.currency] || 0) + l.debit - l.credit; l.balance = run[l.currency]; }
@@ -135,7 +135,7 @@ const dayKey = (d) => { const x = new Date(d); return `${x.getFullYear()}-${Stri
 function paymentLabel(p) {
   const conv = p.currency !== p.settleCurrency ? ` (${Number(p.amount).toLocaleString('en-US')} ${p.currency} بسعر ${Number(p.fxRate)})` : '';
   if (p.source === 'COST_PAID') return `مسدد: ${p.note} · ${p.stockNo}`;
-  const base = p.source === 'SALE_PAYMENT' ? p.note : `دفعة${p.vehicleId ? ` على ${p.stockNo}` : ' على الحساب'}`;
+  const base = p.source === 'SALE_PAYMENT' ? p.note : `${p.receiptNo ? `${p.receiptNo} · ` : ''}دفعة${p.vehicleId ? ` على ${p.stockNo}` : ' على الحساب'}`;
   return `${base}${conv}${p.reference ? ` · مرجع ${p.reference}` : ''}${p.note && p.source === 'ACCOUNT' ? ` · ${p.note}` : ''}${p.voided ? ` · ملغاة: ${p.voidReason}` : ''}`;
 }
 
@@ -152,7 +152,7 @@ export async function vendorAccount(id) {
 }
 
 /** أرصدة كل الأطراف (لقائمة الحسابات) — تجميع في SQL لكل عملة */
-export async function customerBalances(q) {
+export async function customerBalances(q, limit = 300) {
   const { rows } = await query(
     `WITH ch AS (
        SELECT customer_id AS pid, customer_currency AS cur, customer_price AS amt FROM vehicles WHERE customer_id IS NOT NULL AND customer_price IS NOT NULL
@@ -169,11 +169,11 @@ export async function customerBalances(q) {
        FROM customers c
        LEFT JOIN (SELECT pid, cur, sum(charged)::numeric(14,3) AS charged, sum(paid)::numeric(14,3) AS paid FROM t GROUP BY 1,2) t ON t.pid = c.id
       WHERE ($1::text IS NULL OR c.full_name ILIKE '%' || $1 || '%' OR c.code ILIKE '%' || $1 || '%')
-      GROUP BY c.id ORDER BY c.code LIMIT 300`, [q || null]);
+      GROUP BY c.id ORDER BY c.code LIMIT $2`, [q || null, limit]);
   return rows;
 }
 
-export async function vendorBalances(q) {
+export async function vendorBalances(q, limit = 300) {
   const { rows } = await query(
     `WITH t AS (
        SELECT vendor_id AS pid, currency AS cur, sum(amount) AS charged, COALESCE(sum(amount) FILTER (WHERE is_paid), 0) AS paid FROM vehicle_costs
@@ -187,7 +187,7 @@ export async function vendorBalances(q) {
        FROM vendors d
        LEFT JOIN (SELECT pid, cur, sum(charged)::numeric(14,3) AS charged, sum(paid)::numeric(14,3) AS paid FROM t GROUP BY 1,2) t ON t.pid = d.id
       WHERE d.is_active AND ($1::text IS NULL OR d.name ILIKE '%' || $1 || '%')
-      GROUP BY d.id ORDER BY d.name LIMIT 300`, [q || null]);
+      GROUP BY d.id ORDER BY d.name LIMIT $2`, [q || null, limit]);
   return rows;
 }
 
@@ -222,9 +222,11 @@ export async function addAccountPayment(partyType, partyId, b, actor) {
       settleAmount = fromMil(mil);
     }
     const { rows: [p] } = await c.query(
-      `INSERT INTO account_payments (party_type, customer_id, vendor_id, vehicle_id, amount, currency, settle_currency, fx_rate, settle_amount,
+      `INSERT INTO account_payments (receipt_no, party_type, customer_id, vendor_id, vehicle_id, amount, currency, settle_currency, fx_rate, settle_amount,
                                      method, reference, note, paid_at, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+       VALUES (CASE WHEN $1 = 'CUSTOMER' THEN 'RC-' || to_char($13::date, 'YYYY') || '-' || lpad(nextval('receipt_seq')::text, 5, '0')
+                    ELSE 'PV-' || to_char($13::date, 'YYYY') || '-' || lpad(nextval('voucher_seq')::text, 5, '0') END,
+               $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [partyType, partyType === 'CUSTOMER' ? partyId : null, partyType === 'VENDOR' ? partyId : null, b.vehicleId || null,
         b.amount, b.currency, settleCurrency, fx, settleAmount, b.method, b.reference || null, b.note || null, date, actor.id]);
     await audit(c, { actorId: actor.id, action: partyType === 'CUSTOMER' ? 'CUSTOMER_PAYMENT' : 'VENDOR_PAYMENT', entity: partyType.toLowerCase(), entityId: partyId,
@@ -300,4 +302,51 @@ export async function vehicleDeal(vehicleId) {
     customer: custId ? { id: custId, code: ca.party.code, name: ca.party.name, price: v.customer_price, currency: v.customer_currency, lines: pick(ca) } : null,
     vendor: v.vendor_id ? { id: v.vendor_id, name: v.vendor_name, lines: pick(va) } : null,
   };
+}
+
+// ------------------------------------------------------------------ الإيصال
+/** إيصال قبض (عميل) أو سند صرف (مورد)، مع الرصيد بعد الدفعة لكل عملة */
+export async function paymentReceipt(id) {
+  const { rows: [p] } = await query(
+    `SELECT p.*, v.stock_no, v.year, v.make, v.model, v.vin, u.full_name AS created_by_name
+       FROM account_payments p LEFT JOIN vehicles v ON v.id = p.vehicle_id LEFT JOIN users u ON u.id = p.created_by WHERE p.id = $1`, [id]);
+  if (!p) throw new HttpError(404, 'NOT_FOUND', 'الدفعة غير موجودة');
+  const acc = p.party_type === 'CUSTOMER' ? await customerAccount(p.customer_id) : await vendorAccount(p.vendor_id);
+  const idx = acc.lines.findIndex((l) => l.paymentId === p.id);
+  const after = {};
+  for (const l of acc.lines.slice(0, idx + 1)) after[l.currency] = l.balance;
+  return {
+    payment: { id: p.id, receiptNo: p.receipt_no, partyType: p.party_type, amount: p.amount, currency: p.currency, settleCurrency: p.settle_currency,
+      settleAmount: p.settle_amount, fxRate: p.fx_rate, method: p.method, reference: p.reference, note: p.note, paidAt: p.paid_at,
+      createdAt: p.created_at, createdBy: p.created_by_name, voided: !!p.voided_at, voidReason: p.void_reason },
+    party: acc.party,
+    vehicle: p.vehicle_id ? { id: p.vehicle_id, stockNo: p.stock_no, title: `${p.year} ${p.make} ${p.model}`, vin: p.vin } : null,
+    vehicleRemaining: p.vehicle_id ? acc.vehicles.filter((v) => v.vehicleId === p.vehicle_id).map((v) => ({ currency: v.currency, remaining: v.remaining })) : [],
+    balancesAfter: Object.entries(after).map(([currency, balance]) => ({ currency, balance })),
+    balancesNow: acc.summary.map((s) => ({ currency: s.currency, balance: s.balance })),
+  };
+}
+
+// ------------------------------------------------------------------ لنا وعلينا
+/** مجموع ما لنا عند العملاء وما علينا للموردين لكل عملة، وأكبر الأرصدة */
+export async function accountsOverview({ customers = true, vendors = true } = {}) {
+  const fold = (rows) => {
+    const pos = {}, neg = {};
+    for (const r of rows) for (const b of r.balances) {
+      const m = toMil(b.balance);
+      if (m > 0) pos[b.currency] = (pos[b.currency] || 0) + m; else if (m < 0) neg[b.currency] = (neg[b.currency] || 0) - m;
+    }
+    const out = (o) => CURRENCIES.filter((c) => o[c]).map((c) => ({ currency: c, amount: fromMil(o[c]) }));
+    return { owed: out(pos), credit: out(neg), parties: rows.filter((r) => r.balances.some((b) => Number(b.balance) > 0.0005)).length };
+  };
+  // ترتيب «الأكبر» بالدينار تقريبيًا (آخر سعر صرف) فقط لاختيار القائمة؛ المبالغ تُعرض بعملاتها
+  const { rows: rates } = await query(`SELECT DISTINCT ON (currency) currency, rate_to_lyd FROM exchange_rates ORDER BY currency, effective_date DESC`);
+  const rate = Object.fromEntries([['LYD', 1], ...rates.map((r) => [r.currency, Number(r.rate_to_lyd)])]);
+  const top = (rows) => rows
+    .map((r) => ({ id: r.id, name: r.name, code: r.code, balances: r.balances.filter((b) => Number(b.balance) > 0.0005), weight: r.balances.reduce((a, b) => a + Math.max(0, Number(b.balance)) * (rate[b.currency] || 1), 0) }))
+    .filter((r) => r.weight > 0).sort((a, b) => b.weight - a.weight).slice(0, 5).map(({ weight, ...r }) => r);
+  const out = {};
+  if (customers) { const rows = await customerBalances(null, 100000); out.customers = { ...fold(rows), top: top(rows) }; }
+  if (vendors) { const rows = await vendorBalances(null, 100000); out.vendors = { ...fold(rows), top: top(rows) }; }
+  return out;
 }
