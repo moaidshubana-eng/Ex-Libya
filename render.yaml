@@ -1,6 +1,6 @@
 # (نسخة جذر المستودع لمنظومة المزاد داخل car-auction/ — Render يقرأ هذا الملف من الجذر)
 # نشر على Render بنقرة: خدمة ويب (Docker) + قاعدة PostgreSQL مُدارة.
-# الاستخدام: Render ← New ← Blueprint ← اختر المستودع. ثم أدخل INITIAL_ADMIN_EMAIL و INITIAL_ADMIN_PASSWORD عند الطلب.
+# الاستخدام: Render ← New ← Blueprint ← اختر المستودع والفرع ← Apply. لا شيء يُدخل يدويًا.
 # لا تستخدم الخطة المجانية للقاعدة: تُحذف بعد 30 يومًا.
 databases:
   - name: auction-db
@@ -31,8 +31,8 @@ services:
       - key: INTEGRATIONS_ENABLED
         value: "false"
       - key: INITIAL_ADMIN_EMAIL
-        sync: false          # يُطلب منك عند أول نشر
+        value: admin@goldengate.ly   # اسم دخول المدير الأول (يمكن تغييره قبل أول نشر)
       - key: INITIAL_ADMIN_PASSWORD
-        sync: false
+        generateValue: true  # كلمة مؤقتة عشوائية: تجدها في Environment. غيّرها بعد أول دخول ثم احذف هذا المتغير
       - key: INITIAL_ADMIN_NAME
         value: مدير النظام

@@ -6,15 +6,13 @@
 
 ## قبل البدء
 1. حساب على [render.com](https://render.com) مربوط بحساب GitHub.
-2. المستودع (فرع `claude/peaceful-rubin-2on2mb`) متاح لحساب Render. إن كان المشروع داخل مجلد `car-auction/` فالإعداد جاهز لذلك (`rootDir`).
+2. المستودع (فرع `claude/funny-knuth-jnhu9o`) متاح لحساب Render. إن كان المشروع داخل مجلد `car-auction/` فالإعداد جاهز لذلك (`rootDir`).
 
 ## الخطوات
 1. Render ← **New** ← **Blueprint** ← اختر المستودع والفرع. سيقرأ `render.yaml` وينشئ الخدمة والقاعدة.
-2. عند الطلب أدخل:
-   - `INITIAL_ADMIN_EMAIL`: بريدك (اسم الدخول).
-   - `INITIAL_ADMIN_PASSWORD`: كلمة مرور قوية مؤقتة (10 أحرف فأكثر بحروف وأرقام).
+2. لا يُطلب إدخال شيء: اسم دخول المدير الأول `admin@goldengate.ly`، وكلمة مروره المؤقتة يولّدها Render عشوائيًا (تجدها في الخدمة ← Environment ← `INITIAL_ADMIN_PASSWORD`). لتغيير اسم الدخول عدّل `INITIAL_ADMIN_EMAIL` في `render.yaml` قبل أول نشر.
 3. اضغط **Apply**. أول نشر يستغرق نحو 5 دقائق. عند الإقلاع تُنشأ الجداول تلقائيًا (`scripts/init-db.js`) وأول مدير.
-4. افتح رابط الخدمة (`https://golden-gate-motors.onrender.com` أو ما يعيّنه Render) وادخل بالمدير.
+4. افتح رابط الخدمة (`https://golden-gate-motors.onrender.com` أو ما يعيّنه Render) وادخل بـ `admin@goldengate.ly` وكلمة المرور من Environment.
 
 ## بعد أول دخول (إلزامي)
 1. **غيّر كلمة المرور:** زر "كلمة المرور" أسفل القائمة الجانبية. ثم احذف `INITIAL_ADMIN_PASSWORD` من إعدادات الخدمة في Render (لا يُستخدم بعد إنشاء أول مستخدم).
