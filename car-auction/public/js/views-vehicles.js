@@ -40,13 +40,48 @@ const toBody = (r) => {
   return b;
 };
 
+/** يراقب خانة الـVIN في النافذة المفتوحة: عند اكتمال 17 خانة سليمة يجلب المواصفات ويعبّئ الحقول الفارغة فقط */
+function watchVin() {
+  let last = '';
+  const onInput = async (e) => {
+    const input = e.target;
+    if (input?.name !== 'vin') return;
+    const dlg = input.closest('dialog');
+    const status = dlg && $('[data-vinstatus]', dlg);
+    if (!status) return;
+    const vin = input.value.trim().toUpperCase();
+    if (vin.length !== 17) { status.textContent = vin ? `${vin.length} من 17 خانة` : 'اكتب الرقم كاملًا وتُعبَّأ السنة والماركة والطراز تلقائيًا.'; status.className = 'faint'; last = ''; return; }
+    if (vin === last) return;
+    last = vin;
+    status.className = 'faint'; status.textContent = 'جارٍ جلب المواصفات…';
+    try {
+      const d = await api(`/vin/${vin}/decode`);
+      if (input.value.trim().toUpperCase() !== vin) return; // تغيّر الرقم أثناء الانتظار
+      const set = (name, val) => { const f = dlg.querySelector(`[name=${name}]`); if (f && val != null && !f.value) { f.value = val; return true; } return false; };
+      const filled = [set('year', d.year), set('make', d.make), set('model', d.model), set('trim', d.trim), set('bodyStyle', d.bodyStyle)].filter(Boolean).length;
+      if (!d.found) { status.className = 'neg'; status.textContent = 'رقم الهيكل سليم لكن لا توجد بيانات له في القاعدة. اكتب المواصفات من صفحة اللوت.'; return; }
+      status.className = 'pos';
+      status.textContent = `✓ ${[d.year, d.make, d.model, d.trim].filter(Boolean).join(' ')} — عُبّئ ${filled} حقل. راجعها قبل الحفظ.`;
+    } catch (err) {
+      if (input.value.trim().toUpperCase() !== vin) return;
+      status.className = 'neg'; status.textContent = err.message;
+      last = ''; // يسمح بإعادة المحاولة بتعديل الرقم
+    }
+  };
+  document.addEventListener('input', onInput);
+  return () => document.removeEventListener('input', onInput);
+}
+
 export async function addVehicleDialog() {
   const today = new Date().toISOString().slice(0, 10);
   let customers = [];
   try { customers = await loadCustomers(true); } catch { /* دور بلا صلاحية قراءة العملاء */ }
-  const r = await modal({
+  const stopWatching = watchVin();
+  let r;
+  try { r = await modal({
     title: 'إضافة سيارة', submitLabel: 'حفظ السيارة', body: html`
       <label class="field">رقم الهيكل (VIN) — 17 خانة<input class="input mono" name="vin" required minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase"></label>
+      <div class="faint" data-vinstatus aria-live="polite" style="min-height:1.4em;margin-top:-6px">اكتب الرقم كاملًا وتُعبَّأ السنة والماركة والطراز تلقائيًا.</div>
       ${fixedFields()}
       <div class="alert" style="font-size:13px">بيانات الشراء (اختيارية). تُسجَّل تكاليف الشراء تلقائيًا بالدولار بسعر صرف يوم الشراء، لذا يجب أن يكون سعر الدولار لذلك اليوم مُدخَلًا.</div>
       <div class="grid g3"><label class="field">المزاد${sel('source', [['COPART', 'Copart'], ['IAAI', 'IAAI'], ['OTHER', 'مصدر آخر']], '', true)}</label>
@@ -58,7 +93,7 @@ export async function addVehicleDialog() {
       <div class="alert" style="font-size:13px">العميل والمورد (اختياريان). إن كانت السيارة مطلوبة لعميل فاختره واكتب السعر المتفق عليه، فتظهر في كشف حسابه. وتكاليف الشراء أعلاه تُسجَّل في حساب المورد.</div>
       ${dealFields(customers)}
       <label class="field">ميناء الوصول${sel('destinationPort', state.meta.ports.filter((p) => p.country === 'LY').map((p) => [p.code, p.name_ar]), 'LYMRA', false)}</label>
-      <label class="field">ملاحظات<input class="input" name="notes" maxlength="1000"></label>` });
+      <label class="field">ملاحظات<input class="input" name="notes" maxlength="1000"></label>` }); } finally { stopWatching(); }
   if (!r) return;
   if (!r.customerId) { delete r.customerPrice; delete r.customerCurrency; }
   if (!r.customerPrice) delete r.customerCurrency;

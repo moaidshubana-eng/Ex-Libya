@@ -13,6 +13,7 @@ import { subscribe } from '../services/realtime.js';
 import { ops } from './ops.js';
 import { costReportXlsx, costReportCsv } from '../services/export.js';
 import { renderVehicleSvg } from '../services/media.js';
+import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
@@ -220,6 +221,9 @@ const vehicleFields = {
   bodyStyle: t.string({ max: 40 }), exteriorColor: t.string({ max: 40 }), odometer: t.int({ min: 0, max: 2_000_000 }), odometerUnit: t.enum(['mi', 'km']),
   titleType: t.enum(TITLES), primaryDamage: t.string({ max: 80 }), hasKeys: t.bool(), runAndDrive: t.bool(), notes: t.string({ max: 1000 }),
 };
+
+const vinLimiter = rateLimit({ windowMs: 60_000, max: 30, key: (req) => req.user.id, code: 'TOO_MANY_LOOKUPS' });
+api.get('/vin/:vin/decode', requireRole(ROLES.LOGISTICS_WRITERS), vinLimiter, asyncH(async (req, res) => res.json(await decodeVin(req.params.vin))));
 
 api.post('/vehicles', requireRole(ROLES.LOGISTICS_WRITERS), asyncH(async (req, res) => {
   const b = validate(req.body, {
