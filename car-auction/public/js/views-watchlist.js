@@ -3,6 +3,7 @@ import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core
 import { dealFields, loadCustomers } from './views-accounts.js';
 import { mountPhotos, compress } from './photos.js';
 import { openLightbox } from './gallery.js';
+import { estimateLot, loadSettings } from './calc.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const WRITERS = ['ADMIN', 'OPERATIONS', 'SALES'];
@@ -29,6 +30,7 @@ const ZONES = [['Africa/Tripoli', 'توقيت ليبيا'], ['America/Chicago', 
 const opts = (list, cur, blank = false) => html`${blank ? html`<option value="">—</option>` : ''}${list.map(([v, l]) => html`<option value="${v}" ${String(v) === String(cur ?? '') ? 'selected' : ''}>${l}</option>`)}`;
 const usd = (v) => (v == null ? '—' : `${fmt.n(v)} $`);
 const photoUrl = (w) => (im) => `/api/media/watch/${w.id}/${im.id}`;
+let settings = loadSettings(); // إعدادات الحاسبة (سعر الصرف وأسعار الشحن) لتقدير التكلفة في البطاقات
 const stateName = (c) => US_STATES.find(([k]) => k === c)?.[1] || c;
 
 /** فرق المنطقة الزمنية عن UTC بالدقائق في لحظة معينة */
@@ -176,6 +178,13 @@ function lotCard(w) {
       ${w.auction_at ? html`<div class="faint" style="font-size:12px;direction:ltr;text-align:end">${usTime(w.auction_at)}</div>` : ''}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px">${price('المزايدة الحالية', w.current_bid_usd, true)}${price('شراء فوري', w.buy_now_usd)}${price('القيمة التقديرية', w.est_value_usd)}${price('أقصى سعر لنا', w.max_bid_usd)}</div>
     ${over ? html`<div class="neg" style="font-size:12.5px">المزايدة الحالية تجاوزت أقصى سعر حطيناه</div>` : ''}
+    ${(() => {
+      const bid = Number(w.final_price_usd || w.current_bid_usd) || 0;
+      if (w.status === 'PURCHASED' || bid <= 0) return html`<a class="lot-cost" href="#/calculator?lot=${w.id}"><span>🧮 احسب التكلفة حتى ليبيا</span><span>←</span></a>`;
+      const e = estimateLot(w, bid, settings);
+      return html`<a class="lot-cost" href="#/calculator?lot=${w.id}" title="${e.yard ? `نقل من ${e.yard.name}: $${e.yard.towing}` : 'الساحة غير معروفة: النقل الداخلي غير محسوب'}">
+        <span>🧮 حتى ليبيا بسعر ${usd(bid)}: <b class="num">${Math.round(e.totalLYD).toLocaleString('en-US')} د.ل</b>${e.yard ? '' : ' *'}</span><span>←</span></a>`;
+    })()}
     ${w.final_price_usd ? html`<div style="font-size:13px">السعر النهائي: <b class="num">${usd(w.final_price_usd)}</b></div>` : ''}
     <div class="meta">${[w.primary_damage, RUN.find(([k]) => k === w.run_status)?.[1], w.title_doc, w.odometer != null && fmt.odo(w.odometer, w.odometer_unit),
       w.has_keys === true ? 'المفاتيح موجودة' : w.has_keys === false ? 'بدون مفاتيح' : null].filter(Boolean).map((x) => html`<span>${x}</span>`)}</div>
@@ -199,6 +208,7 @@ let pasteTarget = null; // اللوت الذي ضُغط على «لصق صورة
 export async function watchlistView(el, { query }) {
   clearInterval(timer); // إعادة التحميل بعد أي إجراء تستدعي العرض من جديد
   if (onPaste) document.removeEventListener('paste', onPaste);
+  settings = loadSettings();
   const status = query.status || 'WATCHING';
   const q = query.q || '';
   const data = await api(`/watchlist?status=${encodeURIComponent(status)}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
