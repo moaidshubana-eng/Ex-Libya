@@ -90,7 +90,12 @@ export async function listVehicles(f, { includeCosts }) {
             v.list_price_lyd, v.condition_grade, v.run_and_drive,
             es.code AS source, sl.lot_number, sh.shipment_no, sh.container_no, sh.eta, pod.name_ar AS pod_name,
             (SELECT id FROM vehicle_images i WHERE i.vehicle_id = v.id ORDER BY is_primary DESC, sort_order LIMIT 1) AS image_id,
-            ${includeCosts ? `(SELECT COALESCE(sum(c.amount_lyd), 0) FROM vehicle_costs c WHERE c.vehicle_id = v.id AND c.voided_at IS NULL)` : 'NULL::numeric'} AS total_cost_lyd
+            ${includeCosts ? `(SELECT COALESCE(sum(c.amount_lyd), 0) FROM vehicle_costs c WHERE c.vehicle_id = v.id AND c.voided_at IS NULL)` : 'NULL::numeric'} AS total_cost_lyd,
+            -- نفس التكلفة بالدولار: بنود الدولار كما هي، وغيرها يُحوَّل بسعر الدولار يوم البند (أو آخر سعر مسجل)
+            ${includeCosts ? `(SELECT round(COALESCE(sum(CASE WHEN c.currency = 'USD' THEN c.amount ELSE c.amount_lyd / NULLIF(COALESCE(
+                 (SELECT r.rate_to_lyd FROM exchange_rates r WHERE r.currency = 'USD' AND r.effective_date <= c.incurred_at ORDER BY r.effective_date DESC LIMIT 1),
+                 (SELECT r.rate_to_lyd FROM exchange_rates r WHERE r.currency = 'USD' ORDER BY r.effective_date DESC LIMIT 1)), 0) END), 0), 2)
+               FROM vehicle_costs c WHERE c.vehicle_id = v.id AND c.voided_at IS NULL)` : 'NULL::numeric'} AS total_cost_usd
        FROM vehicles v
        LEFT JOIN LATERAL (SELECT * FROM source_listings s WHERE s.vehicle_id = v.id ORDER BY first_seen_at DESC LIMIT 1) sl ON TRUE
        LEFT JOIN external_sources es ON es.id = sl.source_id

@@ -254,7 +254,7 @@ function vehicleCard(v) {
       ${staff && v.container_no ? html`<div class="meta">${icon('ship')}<span class="mono">${v.container_no}</span><span>وصول ${fmt.date(v.eta)}</span></div>` : ''}
       <div class="foot">
         <span class="faint">${v.stock_no}${staff && v.source ? ` · ${v.source} ${v.lot_number}` : ''}</span>
-        ${v.total_cost_lyd != null ? html`<b class="num" title="التكلفة الواصلة حتى الآن">${fmt.lyd(v.total_cost_lyd)}</b>` : v.list_price_lyd ? html`<b class="num">${fmt.lyd(v.list_price_lyd)}</b>` : ''}
+        ${v.total_cost_usd != null ? html`<b class="num" title="التكلفة الواصلة حتى الآن: ${fmt.lyd(v.total_cost_lyd)}">${fmt.money(v.total_cost_usd, 'USD')}</b>` : v.list_price_lyd ? html`<b class="num">${fmt.lyd(v.list_price_lyd)}</b>` : ''}
       </div>
     </div>
   </article>`;
@@ -267,7 +267,7 @@ function vehiclesTable(items) {
       <td><input type="checkbox" data-compare="${v.id}" ${state.compare.has(v.id) ? 'checked' : ''} aria-label="مقارنة"></td>
       <td><a href="#/vehicles/${v.id}"><b>${v.stock_no}</b></a></td><td>${v.year} ${v.make} ${v.model}</td><td class="mono">${v.vin}</td>
       <td>${statusBadge(v.status)}</td><td>${v.source ? `${v.source} ${v.lot_number}` : '—'}</td><td class="mono">${v.container_no || '—'}</td><td>${fmt.date(v.eta)}</td>
-      <td class="n">${v.total_cost_lyd != null ? fmt.lyd(v.total_cost_lyd) : '—'}</td></tr>`)}</tbody></table></div>`;
+      <td class="n" title="${v.total_cost_lyd != null ? fmt.lyd(v.total_cost_lyd) : ''}">${v.total_cost_usd != null ? fmt.money(v.total_cost_usd, 'USD') : '—'}</td></tr>`)}</tbody></table></div>`;
 }
 
 function bindCompare(el) {

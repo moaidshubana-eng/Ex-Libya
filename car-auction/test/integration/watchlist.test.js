@@ -6,6 +6,7 @@ resetDb();
 const { query } = await import('../../src/db.js');
 const { server, base } = await startApp();
 after(() => stopApp(server));
+const near = (a, b) => assert.ok(Math.abs(a - b) < 0.02, `${a} ≠ ${b}`);
 const asRole = async (email) => { const c = client(base); assert.equal((await c.login(email)).status, 200); return c; };
 
 let ops, sales, viewer, bidder;
@@ -130,6 +131,17 @@ describe('مزادات أمريكا (لوتات قبل الشراء)', () => {
     assert.equal((await ops.post(`/api/watchlist/${id}/images`, { data: 'iVBORw0KGgo=' })).status, 422);
     assert.equal((await ops.patch(`/api/watchlist/${id}`, { city: 'X' })).status, 422);
     assert.equal((await ops.post(`/api/watchlist/${id}/convert`, { vin: '3KPF24AD0KE132747' })).status, 422);
+  });
+
+  test('قائمة السيارات تعرض التكلفة بالدولار: بنود الدولار كما هي، والدينار بسعر الدولار يوم البند', async () => {
+    const { rows: [r] } = await query(`SELECT effective_date::text AS d, rate_to_lyd FROM exchange_rates WHERE currency = 'USD' ORDER BY effective_date DESC LIMIT 1`);
+    const v = await ops.post('/api/vehicles', { vin: '1HGCM82633A004352', year: 2003, make: 'HONDA', model: 'ACCORD', purchaseDate: r.d, purchasePriceUsd: '1000', buyerFeeUsd: '250' });
+    assert.equal(v.status, 201, JSON.stringify(v.data));
+    const c = await ops.post(`/api/vehicles/${v.data.id}/costs`, { categoryCode: 'LY_TRANSPORT', amount: '1000', currency: 'LYD', incurredAt: r.d });
+    assert.equal(c.status, 201, JSON.stringify(c.data));
+    const item = (await ops.get('/api/vehicles?q=1HGCM82633A004352')).data.items[0];
+    near(Number(item.total_cost_usd), 1250 + 1000 / Number(r.rate_to_lyd));
+    near(Number(item.total_cost_lyd), 1250 * Number(r.rate_to_lyd) + 1000);
   });
 
   test('فشل إنشاء السيارة (VIN مكرر) لا يغيّر حالة اللوت', async () => {
