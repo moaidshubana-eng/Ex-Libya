@@ -159,6 +159,15 @@ describe('مزادات أمريكا (لوتات قبل الشراء)', () => {
     near(Number(item.total_cost_lyd), 1250 * Number(r.rate_to_lyd) + 1000);
   });
 
+  test('الحاسبة العامة /calc تفتح لأي زائر بلا تسجيل دخول، وبمسارات ذات بصمة', async () => {
+    const r = await fetch(`${base}/calc`);
+    assert.equal(r.status, 200);
+    const page = await r.text();
+    assert.match(page, /src="\/v\/[0-9a-f]{12}\/js\/calc-page\.js"/);
+    assert.match(page, /href="\/v\/[0-9a-f]{12}\/styles\.css"/);
+    assert.match(page, /حاسبة تكلفة الاستيراد/);
+  });
+
   test('فشل إنشاء السيارة (VIN مكرر) لا يغيّر حالة اللوت', async () => {
     const r = await ops.post('/api/watchlist', { source: 'COPART', lotNumber: '73729736', year: 2019, make: 'KIA', model: 'FORTE' });
     assert.equal(r.status, 201);

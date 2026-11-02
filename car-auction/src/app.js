@@ -46,6 +46,14 @@ export function createApp() {
     res.set('Cache-Control', 'no-cache');
     res.type('html').send(indexHtml);
   });
+  // الحاسبة العامة: صفحة مستقلة بلا تسجيل دخول لأي زائر (الحساب كله في المتصفح، لا تلمس الـAPI)
+  const calcHtml = readFileSync(join(pub, 'calc.html'), 'utf8')
+    .replace('src="/js/calc-page.js"', `src="/v/${build}/js/calc-page.js"`)
+    .replace('href="/styles.css"', `href="/v/${build}/styles.css"`);
+  app.get(['/calc', '/calc/', '/calc.html'], (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.type('html').send(calcHtml);
+  });
   app.use('/v/:build', express.static(pub, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }));
   // الكود (html/js/css) بلا ذاكرة مؤقتة ثابتة: المتصفح يتحقق كل مرة (304 سريع بـ ETag)،
   // فيصل أي تحديث للمستخدمين فورًا. الصور والخطوط فقط تُخزَّن يومًا

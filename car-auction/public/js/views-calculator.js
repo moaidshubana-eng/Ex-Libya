@@ -1,17 +1,18 @@
 // حاسبة التكلفة: من سعر المزايدة في أمريكا إلى التكلفة الواصلة في ليبيا، مع عرض سعر قابل للطباعة.
 // تُفتح فارغة، أو من لوت في «مزادات أمريكا» (#/calculator?lot=<id>) فتُعبّأ ببياناته.
 import { html, render, $, $$, api, fmt, toast } from './core.js';
-import { estimate, loadSettings, saveSettings, YARDS, findYard, isCleanTitle, PORTS, SHIP_TYPES, CUSTOMS, defaultCustomsIdx } from './calc.js';
+import { estimate, loadSettings, saveSettings, defaultSettings, YARDS, findYard, isCleanTitle, PORTS, SHIP_TYPES, CUSTOMS, defaultCustomsIdx } from './calc.js';
 
 const usd = (v) => `$${Math.round(v).toLocaleString('en-US')}`;
 const lyd = (v) => `${Math.round(v).toLocaleString('en-US')} د.ل`;
 const seg = (name, opts, cur) => html`<div class="seg" role="radiogroup">${opts.map(([v, l]) => html`<label><input type="radio" name="${name}" value="${v}" ${v === cur ? 'checked' : ''}><span>${l}</span></label>`)}</div>`;
 
-export async function calculatorView(el, { query, setTitle }) {
-  const s = loadSettings();
+/** publicMode: الصفحة العامة (/calc) — بلا تسجيل دخول، والإعدادات ثابتة على أسعار الشركة لا يغيّرها الزائر */
+export async function calculatorView(el, { query = {}, setTitle = () => {}, publicMode = false }) {
+  const s = publicMode ? defaultSettings() : loadSettings();
   const st = { platform: 'COPART', clean: false, live: false, bid: '', yard: null, towing: '', port: 'NJ', shipType: 'quad', customsIdx: 0,
     sublot: '', titleIssue: '', customer: '', title: '' };
-  if (query.lot) {
+  if (query.lot && !publicMode) {
     try {
       const w = await api(`/watchlist/${query.lot}`);
       st.platform = w.source === 'COPART' ? 'COPART' : 'IAAI';
@@ -59,7 +60,7 @@ export async function calculatorView(el, { query, setTitle }) {
             <label class="field">إصدار تايتل ($) — اختياري<input class="input num" name="titleIssue" inputmode="decimal" placeholder="0"></label>
           </div>
         </div>
-        <details class="card card-b">
+        <details class="card card-b" ${publicMode ? 'hidden' : ''}>
           <summary><b>الإعدادات</b> <span class="faint">— سعر الصرف، فرق الحوالة، أسعار الشحن (تُحفظ في متصفحك)</span></summary>
           <div class="grid g3" style="margin-top:10px">
             <label class="field">سعر الصرف (د.ل للدولار)<input class="input num" name="exchange" inputmode="decimal" value="${s.exchange}"></label>
@@ -155,7 +156,8 @@ export async function calculatorView(el, { query, setTitle }) {
     s.transferPct = Number(f('transferPct').value) || 0;
     s.wire = Number(f('wire').value) || 0;
     $$('[data-ship]', el).forEach((i) => { const [k, t] = i.dataset.ship.split(':'); s.ports[k] = { ...s.ports[k], [t]: Number(i.value) || 0 }; });
-    saveSettings(s); drawShips(); compute();
+    if (!publicMode) saveSettings(s);
+    drawShips(); compute();
   };
 
   el.addEventListener('input', (e) => {
@@ -172,7 +174,7 @@ export async function calculatorView(el, { query, setTitle }) {
     compute();
   });
   $('[data-reset]', el).addEventListener('click', () => {
-    s.ports = structuredClone(PORTS); saveSettings(s);
+    s.ports = structuredClone(PORTS); if (!publicMode) saveSettings(s);
     $$('[data-ship]', el).forEach((i) => { const [k, t] = i.dataset.ship.split(':'); i.value = PORTS[k][t]; });
     drawShips(); compute();
   });
