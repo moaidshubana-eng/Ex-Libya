@@ -49,7 +49,11 @@ export async function calculatorView(el, { query, setTitle }) {
           <h3 class="calc-h">3 · الشحن البحري والجمرك</h3>
           <label class="field">ميناء الشحن<select class="input" name="port">${Object.entries(PORTS).map(([k, p]) => html`<option value="${k}" ${k === st.port ? 'selected' : ''}>${p.label}</option>`)}</select></label>
           <div class="field">نوع الحاوية<div data-ships></div></div>
-          <label class="field">الجمرك في ليبيا (دينار)<select class="input" name="customs">${CUSTOMS.map(([l, v], i) => html`<option value="${i}" ${i === st.customsIdx ? 'selected' : ''}>${l} — ${v.toLocaleString('en-US')} د.ل</option>`)}</select></label>
+          <label class="calc-check"><input type="checkbox" name="customsOn"> <span><b>إضافة الجمرك</b> <span class="faint">— اختياري؛ بدونه الفاتورة بدون جمرك</span></span></label>
+          <div class="grid g2" data-customs hidden>
+            <label class="field">نوع الجمرك<select class="input" name="customs">${CUSTOMS.map(([l, v], i) => html`<option value="${i}" ${i === st.customsIdx ? 'selected' : ''}>${l} — ${v.toLocaleString('en-US')}</option>`)}<option value="custom">مبلغ آخر</option></select></label>
+            <label class="field">مبلغ الجمرك (د.ل) — تقدر تعدّله<input class="input num" name="customsLYD" inputmode="decimal" value="${CUSTOMS[st.customsIdx][1]}"></label>
+          </div>
           <div class="grid g2">
             <label class="field">سابلت ($) — اختياري<input class="input num" name="sublot" inputmode="decimal" placeholder="0"></label>
             <label class="field">إصدار تايتل ($) — اختياري<input class="input num" name="titleIssue" inputmode="decimal" placeholder="0"></label>
@@ -103,7 +107,8 @@ export async function calculatorView(el, { query, setTitle }) {
     st.shipType = radio('shipType') || st.shipType;
     const towing = f('towing').value !== '' ? Number(f('towing').value) : st.yard?.towing || 0;
     const e = estimate({ platform: radio('platform'), clean: radio('clean') === '1', live: radio('live') === '1', bid: f('bid').value,
-      towing, port: f('port').value, shipType: st.shipType, customsLYD: CUSTOMS[f('customs').value][1], sublot: f('sublot').value, titleIssue: f('titleIssue').value }, s);
+      towing, port: f('port').value, shipType: st.shipType, customsLYD: f('customsOn').checked ? f('customsLYD').value : 0, sublot: f('sublot').value, titleIssue: f('titleIssue').value }, s);
+    const withCustoms = f('customsOn').checked;
     const out = $('[data-out]', el);
     if (!e.bid) { render(out, html`<div class="card card-b calc-empty"><div style="font-size:40px">🧮</div>اكتب سعر المزايدة باش تطلع التكلفة الكاملة</div>`); return; }
     const row = (l, v, cls = '') => html`<div class="calc-row ${cls}"><span>${l}</span><b class="num">${v}</b></div>`;
@@ -112,9 +117,10 @@ export async function calculatorView(el, { query, setTitle }) {
     render(out, html`<div class="card calc-res">
       <div class="calc-total">
         <img src="/brand/ggm-logo-light.svg" alt="Golden Gate Motors" class="calc-logo">
-        <div class="faint" style="color:#c6d3e3">التكلفة الكاملة حتى ليبيا</div>
+        <div class="faint" style="color:#c6d3e3">التكلفة حتى ليبيا</div>
         <div class="calc-big">${lyd(e.totalLYD)}</div>
-        <div style="color:#c6d3e3">${usd(e.totalUSD)} + جمرك ${lyd(e.customsLYD)} · صرف ${e.exchange}</div>
+        <div class="calc-badge ${withCustoms ? 'on' : ''}">${withCustoms ? `شامل الجمرك ${lyd(e.customsLYD)}` : 'الفاتورة بدون جمرك'}</div>
+        <div style="color:#c6d3e3">${usd(e.totalUSD)}${withCustoms ? ` + جمرك ${lyd(e.customsLYD)}` : ''} · صرف ${e.exchange}</div>
       </div>
       <div class="card-b">
         ${customer || title ? html`<div class="calc-meta">${title ? html`<div><span class="faint">السيارة:</span> <b>${title}</b></div>` : ''}${customer ? html`<div><span class="faint">الزبون:</span> <b>${customer}</b></div>` : ''}
@@ -135,9 +141,10 @@ export async function calculatorView(el, { query, setTitle }) {
         ${row(`الشحن البحري (${(s.ports[f('port').value] || PORTS[f('port').value]).label} · ${SHIP_TYPES[st.shipType].split(' ')[0]})`, usd(e.shipping))}
         ${e.sublot ? row('سابلت', usd(e.sublot)) : ''}${e.titleIssue ? row('إصدار تايتل', usd(e.titleIssue)) : ''}
         ${row(`فرق حوالة الشحن (${s.transferPct}%)`, usd(e.shipTransfer))}
-        ${row('الجمرك', lyd(e.customsLYD))}
-        ${row('المجموع عند الوصول', lyd(e.onArrivalLYD), 'tot')}
+        ${withCustoms ? row('الجمرك', lyd(e.customsLYD)) : row('الجمرك', html`<span class="faint">غير محسوب</span>`)}
+        ${row(`المجموع عند الوصول${withCustoms ? '' : ' (بدون جمرك)'}`, lyd(e.onArrivalLYD), 'tot')}
         <div class="row no-print" style="gap:8px;margin-top:12px"><button type="button" class="btn btn-primary" data-print>طباعة عرض السعر / PDF</button></div>
+        ${withCustoms ? '' : html`<p style="font-size:12.5px;margin:10px 0 0"><b>ملاحظة:</b> هذه الفاتورة <b>بدون جمرك</b>؛ الجمرك يُدفع منفصلًا في ليبيا.</p>`}
         <p class="faint" style="font-size:12px;margin:10px 0 0">تقدير حسب جداول رسوم المزادات وأسعار الوسيط الحالية؛ قد يختلف المبلغ النهائي.</p>
       </div></div>`);
     $('[data-print]', out).addEventListener('click', () => window.print());
@@ -154,9 +161,12 @@ export async function calculatorView(el, { query, setTitle }) {
   el.addEventListener('input', (e) => {
     if (e.target.name === 'yardq') { st.yard = null; f('towing').placeholder = '0'; drawYards(); compute(); return; }
     if (e.target.matches('[data-ship], [name=exchange], [name=transferPct], [name=wire]')) return saveAndCompute();
+    if (e.target.name === 'customsLYD') f('customs').value = CUSTOMS.findIndex(([, v]) => v === Number(e.target.value)) >= 0 ? String(CUSTOMS.findIndex(([, v]) => v === Number(e.target.value))) : 'custom';
     compute();
   });
   el.addEventListener('change', (e) => {
+    if (e.target.name === 'customsOn') $('[data-customs]', el).hidden = !e.target.checked;
+    if (e.target.name === 'customs' && e.target.value !== 'custom') f('customsLYD').value = CUSTOMS[e.target.value][1];
     if (e.target.name === 'platform') { st.yard = null; f('yardq').value = ''; f('towing').placeholder = '0'; drawYards(); }
     if (e.target.name === 'port') drawShips();
     compute();

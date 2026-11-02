@@ -99,11 +99,10 @@ export function estimate(i, s) {
   };
 }
 
-/** تقدير سريع للوت في «مزادات أمريكا» بسعر معيّن (الافتراضيات: مزايدة مسبقة، حاوية رباعية، جمرك حسب الموديل) */
+/** تقدير سريع للوت في «مزادات أمريكا» بسعر معيّن، بدون جمرك (الافتراضيات: مزايدة مسبقة، حاوية رباعية) */
 export function estimateLot(w, bid, s = loadSettings()) {
   const platform = w.source === 'COPART' ? 'COPART' : 'IAAI';
   const yard = findYard(platform, { usState: w.us_state, city: w.city, branch: w.branch });
-  const e = estimate({ platform, clean: isCleanTitle(w.title_doc), live: false, bid, towing: yard?.towing || 0, port: yard?.port || 'NJ', shipType: 'quad',
-    customsLYD: CUSTOMS[defaultCustomsIdx(w.year)][1] }, s);
+  const e = estimate({ platform, clean: isCleanTitle(w.title_doc), live: false, bid, towing: yard?.towing || 0, port: yard?.port || 'NJ', shipType: 'quad', customsLYD: 0 }, s);
   return { ...e, yard };
 }

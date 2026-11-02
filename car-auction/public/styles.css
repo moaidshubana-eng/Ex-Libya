@@ -296,6 +296,10 @@ dialog.modal::backdrop { background: rgb(2 6 23 / .55); }
 .calc-total { background: linear-gradient(135deg, #0b1628, #13294a); color: #fff; padding: 18px 20px; text-align: center; border-bottom: 3px solid var(--accent); }
 .calc-logo { height: 34px; width: auto; margin-bottom: 8px; }
 .calc-big { font-size: 34px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; margin: 4px 0; }
+.calc-badge { display: inline-block; margin: 2px 0 6px; padding: 3px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 700; background: rgb(255 255 255 / .12); color: #fff; border: 1px dashed rgb(255 255 255 / .45); }
+.calc-badge.on { background: var(--accent); color: #1b1200; border-style: solid; border-color: var(--accent); }
+.calc-check { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; margin-bottom: 10px; background: var(--surface-2); }
+.calc-check input { width: 18px; height: 18px; accent-color: var(--brand); }
 .calc-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px dashed var(--border); font-size: 13px; }
 .calc-stage { margin: 12px 0 4px; font-weight: 700; font-size: 13px; color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 16%, transparent); padding: 5px 10px; border-radius: 8px; }
 .calc-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 4px; font-size: 13.5px; border-bottom: 1px dashed var(--border); }

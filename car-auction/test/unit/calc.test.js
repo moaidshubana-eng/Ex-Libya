@@ -45,7 +45,8 @@ describe('حاسبة التكلفة حتى ليبيا', () => {
     assert.equal(isCleanTitle('REBUILDABLE (FL)'), false);
     const e = estimateLot({ source: 'COPART', us_state: 'IN', city: 'Fort Wayne', branch: 'IN - Fort Wayne', title_doc: 'CLEAN - CERTIFICATE OF TITLE (MI)', year: 2023 }, 2150, S);
     assert.equal(e.yard.name, 'Fort Wayne Copart');
-    assert.equal(e.customsLYD, 2800);
+    assert.equal(e.customsLYD, 0); // تقدير البطاقات بدون جمرك
+    near(e.totalLYD, e.totalUSD * 8.4);
     assert.equal(e.gateFee, 79);
   });
 });

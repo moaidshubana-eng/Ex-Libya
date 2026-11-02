@@ -183,7 +183,7 @@ function lotCard(w) {
       if (w.status === 'PURCHASED' || bid <= 0) return html`<a class="lot-cost" href="#/calculator?lot=${w.id}"><span>🧮 احسب التكلفة حتى ليبيا</span><span>←</span></a>`;
       const e = estimateLot(w, bid, settings);
       return html`<a class="lot-cost" href="#/calculator?lot=${w.id}" title="${e.yard ? `نقل من ${e.yard.name}: $${e.yard.towing}` : 'الساحة غير معروفة: النقل الداخلي غير محسوب'}">
-        <span>🧮 حتى ليبيا بسعر ${usd(bid)}: <b class="num">${Math.round(e.totalLYD).toLocaleString('en-US')} د.ل</b>${e.yard ? '' : ' *'}</span><span>←</span></a>`;
+        <span>🧮 حتى ليبيا بسعر ${usd(bid)}: <b class="num">${Math.round(e.totalLYD).toLocaleString('en-US')} د.ل</b> <span class="faint">بدون جمرك</span>${e.yard ? '' : ' *'}</span><span>←</span></a>`;
     })()}
     ${w.final_price_usd ? html`<div style="font-size:13px">السعر النهائي: <b class="num">${usd(w.final_price_usd)}</b></div>` : ''}
     <div class="meta">${[w.primary_damage, RUN.find(([k]) => k === w.run_status)?.[1], w.title_doc, w.odometer != null && fmt.odo(w.odometer, w.odometer_unit),
