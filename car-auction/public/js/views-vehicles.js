@@ -40,8 +40,16 @@ const toBody = (r) => {
   return b;
 };
 
+/** مواصفات vPIC → قيم الحقول بصيغة المنظومة (أحرف كبيرة مثل المزادات، وفئة غامضة «L/LE/SE» لا تُعبّأ) */
+const vinFields = (d) => ({
+  year: d.year, make: d.make?.toUpperCase(), model: d.model?.toUpperCase(), trim: d.trim && !d.trim.includes('/') ? d.trim.toUpperCase().slice(0, 80) : null,
+  bodyStyle: d.bodyStyle, engine: d.engine?.slice(0, 60), fuelType: d.fuelType?.slice(0, 30),
+  transmission: d.transmission ? (/cvt|continuously/i.test(d.transmission) ? 'CVT' : /manual/i.test(d.transmission) ? 'MANUAL' : /auto/i.test(d.transmission) ? 'AUTOMATIC' : d.transmission.slice(0, 40)) : null,
+  driveType: d.driveType ? d.driveType.split('/')[0].trim().slice(0, 20) : null,
+});
+
 /** يراقب خانة الـVIN في النافذة المفتوحة: عند اكتمال 17 خانة سليمة يجلب المواصفات ويعبّئ الحقول الفارغة فقط */
-function watchVin() {
+export function watchVin() {
   let last = '';
   const onInput = async (e) => {
     const input = e.target;
@@ -58,10 +66,11 @@ function watchVin() {
       const d = await api(`/vin/${vin}/decode`);
       if (input.value.trim().toUpperCase() !== vin) return; // تغيّر الرقم أثناء الانتظار
       const set = (name, val) => { const f = dlg.querySelector(`[name=${name}]`); if (f && val != null && !f.value) { f.value = val; return true; } return false; };
-      const filled = [set('year', d.year), set('make', d.make), set('model', d.model), set('trim', d.trim), set('bodyStyle', d.bodyStyle)].filter(Boolean).length;
+      const filled = Object.entries(vinFields(d)).map(([k, v]) => set(k, v)).filter(Boolean).length;
       if (!d.found) { status.className = 'neg'; status.textContent = 'رقم الهيكل سليم لكن لا توجد بيانات له في القاعدة. اكتب المواصفات من صفحة اللوت.'; return; }
       status.className = 'pos';
-      status.textContent = `✓ ${[d.year, d.make, d.model, d.trim].filter(Boolean).join(' ')} — عُبّئ ${filled} حقل. راجعها قبل الحفظ.`;
+      const f = vinFields(d);
+      status.textContent = `✓ ${[f.year, f.make, f.model, f.trim, f.engine].filter(Boolean).join(' · ')} — عُبّئ ${filled} حقل. راجعها قبل الحفظ.`;
     } catch (err) {
       if (input.value.trim().toUpperCase() !== vin) return;
       status.className = 'neg'; status.textContent = err.message;
@@ -83,6 +92,10 @@ export async function addVehicleDialog() {
       <label class="field">رقم الهيكل (VIN) — 17 خانة<input class="input mono" name="vin" required minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase"></label>
       <div class="faint" data-vinstatus aria-live="polite" style="min-height:1.4em;margin-top:-6px">اكتب الرقم كاملًا وتُعبَّأ السنة والماركة والطراز تلقائيًا.</div>
       ${fixedFields()}
+      <div class="grid g4"><label class="field">المحرك<input class="input" name="engine" maxlength="60" placeholder="2.0L 4 cyl"></label>
+        <label class="field">ناقل الحركة<input class="input" name="transmission" maxlength="40" placeholder="AUTOMATIC"></label>
+        <label class="field">الدفع<input class="input" name="driveType" maxlength="20" placeholder="FWD / AWD"></label>
+        <label class="field">الوقود<input class="input" name="fuelType" maxlength="30" placeholder="Gasoline"></label></div>
       <div class="alert" style="font-size:13px">بيانات الشراء (اختيارية). تُسجَّل تكاليف الشراء تلقائيًا بالدولار بسعر صرف يوم الشراء، لذا يجب أن يكون سعر الدولار لذلك اليوم مُدخَلًا.</div>
       <div class="grid g3"><label class="field">المزاد${sel('source', [['COPART', 'Copart'], ['IAAI', 'IAAI'], ['OTHER', 'مصدر آخر']], '', true)}</label>
         <label class="field">رقم اللوت<input class="input num" name="lotNumber" inputmode="numeric" pattern="\\d{4,12}"></label>

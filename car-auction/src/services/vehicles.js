@@ -214,11 +214,12 @@ export async function createVehicle(b, actor, inTx = null) {
     const port = (await c.query('SELECT id FROM ports WHERE code = $1', [b.destinationPort || 'LYMRA'])).rows[0];
     const { rows: [v] } = await c.query(
       `INSERT INTO vehicles (stock_no, vin, year, make, model, trim, body_style, exterior_color, odometer, odometer_unit, title_type, primary_damage,
-                             has_keys, run_and_drive, destination_port_id, notes)
-       VALUES ('LY-' || to_char(now(),'YYYY') || '-' || lpad(nextval('stock_seq')::text, 4, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                             has_keys, run_and_drive, destination_port_id, notes, engine, transmission, drive_type, fuel_type)
+       VALUES ('LY-' || to_char(now(),'YYYY') || '-' || lpad(nextval('stock_seq')::text, 4, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING id, stock_no`,
       [vin, b.year, b.make, b.model, b.trim || null, b.bodyStyle || null, b.exteriorColor || null, b.odometer ?? null, b.odometerUnit || 'mi',
-        b.titleType || 'OTHER', b.primaryDamage || null, b.hasKeys ?? null, b.runAndDrive ?? null, port?.id || null, b.notes || null]);
+        b.titleType || 'OTHER', b.primaryDamage || null, b.hasKeys ?? null, b.runAndDrive ?? null, port?.id || null, b.notes || null,
+        b.engine || null, b.transmission || null, b.driveType || null, b.fuelType || null]);
     await c.query(`INSERT INTO vehicle_status_history (vehicle_id, from_status, to_status, source, reason, changed_by) VALUES ($1, NULL, 'PURCHASED', 'MANUAL', 'إدخال يدوي', $2)`, [v.id, actor.id]);
     const date = b.purchaseDate || new Date().toISOString().slice(0, 10);
     if (b.source && b.source !== 'OTHER' && b.lotNumber) {

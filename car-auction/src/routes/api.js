@@ -233,6 +233,7 @@ api.post('/vehicles', requireRole(ROLES.LOGISTICS_WRITERS), asyncH(async (req, r
     source: t.enum(['COPART', 'IAAI', 'OTHER']), lotNumber: t.string({ max: 20, pattern: /^\d{4,12}$/ }), purchaseDate: t.date(),
     purchasePriceUsd: t.decimal({ positive: true }), buyerFeeUsd: t.decimal(), otherFeesUsd: t.decimal(), destinationPort: t.string({ max: 10 }),
     customerId: t.uuid(), customerPrice: t.decimal({ positive: true }), customerCurrency: t.enum(['USD', 'LYD', 'EUR']), vendorId: t.uuid(),
+    engine: t.string({ max: 60 }), transmission: t.string({ max: 40 }), driveType: t.string({ max: 20 }), fuelType: t.string({ max: 30 }),
   });
   if (b.customerPrice && !b.customerId) throw new HttpError(422, 'PRICE_WITHOUT_CUSTOMER', 'اختر العميل قبل إدخال السعر المتفق عليه');
   res.status(201).json(await createVehicle(b, actorOf(req)));

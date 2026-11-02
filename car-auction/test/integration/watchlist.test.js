@@ -135,8 +135,12 @@ describe('مزادات أمريكا (لوتات قبل الشراء)', () => {
 
   test('قائمة السيارات تعرض التكلفة بالدولار: بنود الدولار كما هي، والدينار بسعر الدولار يوم البند', async () => {
     const { rows: [r] } = await query(`SELECT effective_date::text AS d, rate_to_lyd FROM exchange_rates WHERE currency = 'USD' ORDER BY effective_date DESC LIMIT 1`);
-    const v = await ops.post('/api/vehicles', { vin: '1HGCM82633A004352', year: 2003, make: 'HONDA', model: 'ACCORD', purchaseDate: r.d, purchasePriceUsd: '1000', buyerFeeUsd: '250' });
+    const v = await ops.post('/api/vehicles', { vin: '1HGCM82633A004352', year: 2003, make: 'HONDA', model: 'ACCORD', purchaseDate: r.d, purchasePriceUsd: '1000', buyerFeeUsd: '250',
+      engine: '2.4L 4 cyl', transmission: 'AUTOMATIC', driveType: 'FWD', fuelType: 'Gasoline' });
     assert.equal(v.status, 201, JSON.stringify(v.data));
+    // مواصفات فك الـVIN تُحفظ من نموذج الإضافة مباشرة
+    const { rows: [spec] } = await query('SELECT engine, transmission, drive_type, fuel_type FROM vehicles WHERE id = $1', [v.data.id]);
+    assert.deepEqual(spec, { engine: '2.4L 4 cyl', transmission: 'AUTOMATIC', drive_type: 'FWD', fuel_type: 'Gasoline' });
     const c = await ops.post(`/api/vehicles/${v.data.id}/costs`, { categoryCode: 'LY_TRANSPORT', amount: '1000', currency: 'LYD', incurredAt: r.d });
     assert.equal(c.status, 201, JSON.stringify(c.data));
     const item = (await ops.get('/api/vehicles?q=1HGCM82633A004352')).data.items[0];

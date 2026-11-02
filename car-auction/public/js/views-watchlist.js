@@ -4,6 +4,7 @@ import { dealFields, loadCustomers } from './views-accounts.js';
 import { mountPhotos, compress } from './photos.js';
 import { openLightbox } from './gallery.js';
 import { estimateLot, loadSettings } from './calc.js';
+import { watchVin } from './views-vehicles.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const WRITERS = ['ADMIN', 'OPERATIONS', 'SALES'];
@@ -76,6 +77,7 @@ function lotForm(w = {}) {
     <div class="grid g3"><label class="field">المزاد<select class="input" name="source" required>${opts(SOURCES, w.source || 'IAAI')}</select></label>
       <label class="field">رقم اللوت / المخزون<input class="input num" name="lotNumber" required minlength="3" maxlength="20" pattern="[0-9A-Za-z\\-]+" value="${w.lot_number || ''}"></label>
       <label class="field">رقم الهيكل (VIN)<input class="input mono" name="vin" maxlength="17" style="text-transform:uppercase" placeholder="ولو ناقص" value="${w.vin || ''}"></label></div>
+    <div class="faint" data-vinstatus aria-live="polite" style="min-height:1.4em;margin-top:-6px">اكتب رقم الهيكل كاملًا (17 خانة) وتُعبَّأ السنة والماركة والطراز تلقائيًا.</div>
     <label class="field">رابط صفحة اللوت<input class="input" name="lotUrl" type="url" maxlength="500" placeholder="https://www.iaai.com/..." value="${w.lot_url || ''}"></label>
     <div class="grid g3"><label class="field">سنة الصنع<input class="input num" name="year" inputmode="numeric" pattern="\\d{4}" value="${w.year || ''}"></label>
       <label class="field">الماركة<input class="input" name="make" maxlength="60" list="makes-list" value="${w.make || ''}"></label>
@@ -117,7 +119,9 @@ function toBody(r, editing) {
 }
 
 async function lotDialog(w, reload) {
-  const r = await modal({ title: w ? `تعديل اللوت ${w.lot_number}` : 'إضافة لوت من مزاد أمريكي', submitLabel: w ? 'حفظ التعديل' : 'إضافة', body: lotForm(w || {}) });
+  const stopWatching = watchVin();
+  let r;
+  try { r = await modal({ title: w ? `تعديل اللوت ${w.lot_number}` : 'إضافة لوت من مزاد أمريكي', submitLabel: w ? 'حفظ التعديل' : 'إضافة', body: lotForm(w || {}) }); } finally { stopWatching(); }
   if (!r) return;
   try {
     if (w) await api(`/watchlist/${w.id}`, { method: 'PATCH', body: toBody(r, true) });
