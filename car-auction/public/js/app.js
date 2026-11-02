@@ -6,6 +6,7 @@ import { customersView } from './views-manage.js';
 import { shipmentsView, customsView, reportsView, integrationsView, auditView } from './views-ops.js';
 import { accountsView, statementView } from './views-accounts.js';
 import { financeView, receiptView } from './views-finance.js';
+import { watchlistView } from './views-watchlist.js';
 // الحسابات التجريبية لا وجود لها في الإنتاج: لا تُعرض إلا عند التشغيل المحلي
 const isLocal = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
 
@@ -13,6 +14,7 @@ const STAFF = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER'];
 const ROUTES = [
   { path: '/dashboard', title: 'لوحة المؤشرات', view: dashboardView, roles: STAFF, nav: ['dash', 'التشغيل'] },
   { path: '/vehicles', title: 'السيارات', view: vehiclesView, nav: ['car'] },
+  { path: '/watchlist', title: 'مزادات أمريكا', view: watchlistView, roles: STAFF, nav: ['clock'] },
   { path: '/vehicles/:id', title: 'تفاصيل السيارة', view: vehicleDetailView },
   { path: '/compare', title: 'مقارنة السيارات', view: compareView },
   { path: '/auctions', title: 'المزادات', view: auctionsView, nav: ['gavel'] },

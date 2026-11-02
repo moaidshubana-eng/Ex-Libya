@@ -17,6 +17,7 @@ import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
+import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES } from '../services/watchlist.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
 export const api = express.Router();
@@ -530,6 +531,44 @@ api.post('/expenses/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH
   res.json(await voidExpense(req.params.id, b.reason, actorOf(req)));
 }));
 api.get('/reports/profit', requireRole(FIN_READERS), asyncH(async (req, res) => res.json(await profitReport(monthQ(req)))));
+
+// ---------------------------------------------------------------- مزادات أمريكا (لوتات نتابعها قبل الشراء)
+const WATCH_WRITERS = ['ADMIN', 'OPERATIONS', 'SALES'];
+const usd = (o = {}) => t.decimal({ nullable: true, ...o });
+const watchFields = {
+  lotUrl: t.string({ max: 500, pattern: /^https?:\/\/\S+$/, nullable: true }), vin: t.string({ max: 17, pattern: /^[A-HJ-NPR-Za-hj-npr-z0-9*]{6,17}$/, nullable: true }),
+  year: t.int({ min: 1950, max: new Date().getFullYear() + 1, nullable: true }), make: t.string({ max: 60, nullable: true }), model: t.string({ max: 80, nullable: true }),
+  trim: t.string({ max: 80, nullable: true }), odometer: t.int({ min: 0, max: 2_000_000, nullable: true }), odometerUnit: t.enum(['mi', 'km']),
+  primaryDamage: t.string({ max: 80, nullable: true }), titleDoc: t.string({ max: 80, nullable: true }), runStatus: t.enum(['RUN_DRIVE', 'STARTS', 'STATIONARY', 'UNKNOWN'], { nullable: true }),
+  hasKeys: t.bool({ nullable: true }), usState: t.string({ pattern: /^[A-Za-z]{2}$/, nullable: true }), city: t.string({ max: 80, nullable: true }),
+  branch: t.string({ max: 80, nullable: true }), auctionAt: t.datetime({ nullable: true }), currentBidUsd: usd(), buyNowUsd: usd({ positive: true }),
+  estValueUsd: usd({ positive: true }), maxBidUsd: usd({ positive: true }), notes: t.string({ max: 1000, nullable: true }),
+};
+const lotKey = { source: t.enum(['COPART', 'IAAI', 'OTHER']), lotNumber: t.string({ min: 3, max: 20, pattern: /^[0-9A-Za-z-]+$/ }) };
+api.get('/watchlist', requireRole(ROLES.STAFF), asyncH(async (req, res) => {
+  const status = WATCH_STATUSES.includes(req.query.status) ? req.query.status : req.query.status === 'ALL' ? 'ALL' : null;
+  res.json(await listWatch({ status, q: req.query.q ? String(req.query.q).slice(0, 60) : null }));
+}));
+api.get('/watchlist/:id', requireRole(ROLES.STAFF), uuidParam('id'), asyncH(async (req, res) => res.json(await getWatch(req.params.id))));
+api.post('/watchlist', requireRole(WATCH_WRITERS), asyncH(async (req, res) => {
+  const b = validate(req.body, { ...watchFields, source: { ...lotKey.source, required: true }, lotNumber: { ...lotKey.lotNumber, required: true } });
+  res.status(201).json(await addWatch(b, actorOf(req)));
+}));
+api.patch('/watchlist/:id', requireRole(WATCH_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  res.json(await updateWatch(req.params.id, validate(req.body, { ...watchFields, ...lotKey }), actorOf(req)));
+}));
+api.post('/watchlist/:id/status', requireRole(WATCH_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { to: t.enum(['WATCHING', 'WON', 'LOST', 'DROPPED'], { required: true }), finalPriceUsd: t.decimal({ positive: true }) });
+  res.json(await setWatchStatus(req.params.id, b.to, actorOf(req), b.finalPriceUsd || null));
+}));
+api.post('/watchlist/:id/convert', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    vin: t.string({ min: 17, max: 17 }), purchaseDate: t.date(), purchasePriceUsd: t.decimal({ positive: true }), buyerFeeUsd: t.decimal(), otherFeesUsd: t.decimal(),
+    destinationPort: t.string({ max: 10 }), customerId: t.uuid(), customerPrice: t.decimal({ positive: true }), customerCurrency: t.enum(['USD', 'LYD', 'EUR']), vendorId: t.uuid(),
+  });
+  if (b.customerPrice && !b.customerId) throw new HttpError(422, 'PRICE_WITHOUT_CUSTOMER', 'اختر العميل قبل إدخال السعر المتفق عليه');
+  res.status(201).json(await convertWatch(req.params.id, b, actorOf(req)));
+}));
 
 api.post('/account-payments/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });

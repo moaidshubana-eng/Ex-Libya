@@ -190,7 +190,8 @@ const EDITABLE = {
  * بسعر صرف يوم الشراء، ويُحفظ رقم اللوت في المصدر إن وُجد. إن فُعِّل الربط لاحقًا فسيُطابَق اللوت/VIN
  * مع هذا السجل نفسه فلا يتكرر.
  */
-export async function createVehicle(b, actor) {
+/** inTx (اختياري): يُستدعى داخل نفس المعاملة بعد الإنشاء، فإن فشل لا تُنشأ السيارة */
+export async function createVehicle(b, actor, inTx = null) {
   const ve = vinError(b.vin);
   if (ve) throw new HttpError(422, 'BAD_VIN', ve);
   const vin = b.vin.trim().toUpperCase();
@@ -237,6 +238,7 @@ export async function createVehicle(b, actor) {
     if (b.customerId || b.vendorId) {
       await applyDeal(c, v.id, { customerId: b.customerId || null, customerPrice: b.customerPrice || null, customerCurrency: b.customerCurrency, vendorId: b.vendorId || null }, actor);
     }
+    if (inTx) await inTx(c, v);
     return v;
   });
 }
