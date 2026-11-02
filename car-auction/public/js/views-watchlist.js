@@ -1,7 +1,7 @@
 // مزادات أمريكا: لوتات Copart/IAAI نتابعها قبل الشراء (السعر، موعد المزاد، الولاية والمدينة)، ثم «اشتريناها» تحوّلها لسيارة.
 import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
 import { dealFields, loadCustomers } from './views-accounts.js';
-import { mountPhotos } from './photos.js';
+import { mountPhotos, compress } from './photos.js';
 import { openLightbox } from './gallery.js';
 
 const can = (...roles) => roles.includes(state.user.role);
@@ -188,13 +188,17 @@ function lotCard(w) {
       ${write && ['LOST', 'DROPPED'].includes(w.status) ? act('WATCHING', 'إعادة للمتابعة') : ''}
       ${write && w.status !== 'PURCHASED' ? html`<label class="btn btn-sm btn-ghost" style="cursor:pointer">📷 إضافة صور
         <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/*" multiple hidden data-photo-input></label>
+        ${act('paste', '📋 لصق صورة')}
         ${imgs.length ? html`<button type="button" class="btn btn-sm btn-ghost" data-photo-manage>إدارة الصور</button>` : ''}` : ''}
     </div></div></div>`;
 }
 
 let timer = null;
+let onPaste = null;
+let pasteTarget = null; // اللوت الذي ضُغط على «لصق صورة» فيه
 export async function watchlistView(el, { query }) {
   clearInterval(timer); // إعادة التحميل بعد أي إجراء تستدعي العرض من جديد
+  if (onPaste) document.removeEventListener('paste', onPaste);
   const status = query.status || 'WATCHING';
   const q = query.q || '';
   const data = await api(`/watchlist?status=${encodeURIComponent(status)}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
@@ -228,6 +232,12 @@ export async function watchlistView(el, { query }) {
     const a = b.dataset.act;
     if (a === 'edit') return lotDialog(w, reload);
     if (a === 'convert') return convertDialog(w);
+    if (a === 'paste') {
+      pasteTarget = w;
+      $$('.vcard', el).forEach((c) => { c.style.outline = c.dataset.lot === w.id ? '3px solid var(--brand)' : ''; });
+      toast('انسخ الصورة من صفحة المزاد (زر يمين ← Copy image) ثم اضغط Ctrl+V هنا');
+      return;
+    }
     if (a === 'bid') {
       const r = await modal({ title: `تحديث سعر اللوت ${w.lot_number}`, body: html`
         <div class="grid g2"><label class="field">المزايدة الحالية ($)<input class="input num" name="currentBidUsd" required inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?" value="${w.current_bid_usd ? Number(w.current_bid_usd) : ''}"></label>
@@ -248,10 +258,28 @@ export async function watchlistView(el, { query }) {
       reload();
     } catch (e) { toast(e.message, 'err'); }
   }));
+  // لصق صورة (Ctrl+V) على اللوت المختار: تُرفع وتصير الصورة الرئيسية
+  onPaste = async (e) => {
+    if (e.target.closest?.('input, textarea, dialog')) return;
+    const file = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    const w = pasteTarget && data.items.find((x) => x.id === pasteTarget.id);
+    if (!w) { toast('اضغط «📋 لصق صورة» على السيارة أولًا، ثم Ctrl+V', 'err'); return; }
+    toast('جارٍ رفع الصورة…');
+    try {
+      const im = await api(`/watchlist/${w.id}/images`, { method: 'POST', body: await compress(file) });
+      if (!im.is_primary) await api(`/watchlist/${w.id}/images/${im.id}/primary`, { method: 'POST', body: {} });
+      pasteTarget = null;
+      toast('أُضيفت الصورة الرئيسية', 'ok');
+      reload();
+    } catch (err) { toast(err.message, 'err'); }
+  };
+  document.addEventListener('paste', onPaste);
   // العدّ التنازلي يتحدث كل 30 ثانية دون إعادة تحميل الصفحة
   timer = setInterval(() => $$('[data-until]', el).forEach((s) => {
     const u = until(s.dataset.until || null);
     s.textContent = u.text; s.className = u.cls;
   }), 30_000);
-  return () => clearInterval(timer);
+  return () => { clearInterval(timer); document.removeEventListener('paste', onPaste); pasteTarget = null; };
 }

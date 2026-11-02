@@ -40,7 +40,7 @@ export function mountPhotos(el, v, reload, { path = `/vehicles/${v.id}/images`, 
 }
 
 /** يقرأ الصورة ويصغّرها ويعيدها JPEG بترميز base64 */
-async function compress(file) {
+export async function compress(file) {
   if (file.size > 40 * 1024 * 1024) throw new Error('الملف كبير جدًا');
   let bmp;
   try {
