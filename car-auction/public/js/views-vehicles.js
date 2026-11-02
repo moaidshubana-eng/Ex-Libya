@@ -48,6 +48,17 @@ const vinFields = (d) => ({
   driveType: d.driveType ? d.driveType.split('/')[0].trim().slice(0, 20) : null,
 });
 
+/** نص الملكية كما في المزاد (SALVAGE (TX)، CLEAR…) → نوع الملكية في المنظومة */
+function titleFromDoc(doc) {
+  const s = String(doc || '').toUpperCase();
+  if (/SALVAGE|REBUILDABLE|\bSV\b|\bST\b|\bSC\b/.test(s)) return 'SALVAGE';
+  if (/REBUILT|\bRB\b/.test(s)) return 'REBUILT';
+  if (/PARTS/.test(s)) return 'PARTS_ONLY';
+  if (/DESTRUCT|JUNK/.test(s)) return 'CERTIFICATE_OF_DESTRUCTION';
+  if (/CLEAN|CLEAR|ORIGINAL|CERTIFICATE OF TITLE/.test(s)) return 'CLEAN';
+  return 'OTHER';
+}
+
 /** يراقب خانة الـVIN في النافذة المفتوحة: عند اكتمال 17 خانة سليمة يجلب المواصفات ويعبّئ الحقول الفارغة فقط */
 export function watchVin() {
   let last = '';
@@ -62,15 +73,32 @@ export function watchVin() {
     if (vin === last) return;
     last = vin;
     status.className = 'faint'; status.textContent = 'جارٍ جلب المواصفات…';
+    // نموذج «إضافة سيارة» وحده (فيه تاريخ الشراء) يُعبَّأ أيضًا من لوت مسجل بنفس الرقم في مزادات أمريكا
+    const fromLots = !!dlg.querySelector('[name=purchaseDate]');
     try {
-      const d = await api(`/vin/${vin}/decode`);
+      const [dec, lot] = await Promise.allSettled([api(`/vin/${vin}/decode`), fromLots ? api(`/watchlist/by-vin/${vin}`) : Promise.resolve({ lot: null })]);
       if (input.value.trim().toUpperCase() !== vin) return; // تغيّر الرقم أثناء الانتظار
       const set = (name, val) => { const f = dlg.querySelector(`[name=${name}]`); if (f && val != null && !f.value) { f.value = val; return true; } return false; };
-      const filled = Object.entries(vinFields(d)).map(([k, v]) => set(k, v)).filter(Boolean).length;
-      if (!d.found) { status.className = 'neg'; status.textContent = 'رقم الهيكل سليم لكن لا توجد بيانات له في القاعدة. اكتب المواصفات من صفحة اللوت.'; return; }
+      let filled = 0;
+      const w = lot.status === 'fulfilled' ? lot.value.lot : null;
+      if (w) {
+        // العداد والحالة لا يعرفها vPIC؛ نأخذها من اللوت. الملكية «أخرى» الافتراضية تُستبدل
+        const t = dlg.querySelector('[name=titleType]');
+        const tt = titleFromDoc(w.title_doc);
+        if (t && t.value === 'OTHER' && tt !== 'OTHER') { t.value = tt; filled++; }
+        filled += [set('odometer', w.odometer), set('primaryDamage', w.primary_damage), set('hasKeys', w.has_keys == null ? null : String(w.has_keys)),
+          set('runAndDrive', w.run_status === 'RUN_DRIVE' ? 'true' : ['STARTS', 'STATIONARY'].includes(w.run_status) ? 'false' : null),
+          set('source', w.source), set('lotNumber', /^\d{4,12}$/.test(w.lot_number) ? w.lot_number : null)].filter(Boolean).length;
+        const u = dlg.querySelector('[name=odometerUnit]'); if (u && w.odometer_unit) u.value = w.odometer_unit;
+      }
+      if (dec.status === 'rejected' && !w) throw dec.reason;
+      const d = dec.status === 'fulfilled' ? dec.value : { found: false };
+      if (d.found) filled += Object.entries(vinFields(d)).map(([k, v]) => set(k, v)).filter(Boolean).length;
+      const lotNote = w ? ` العداد والحالة من لوت ${w.source} ${w.lot_number} في مزادات أمريكا.` : fromLots ? ' العداد والحالة اكتبهم من صفحة المزاد.' : '';
+      if (!d.found && !w) { status.className = 'neg'; status.textContent = 'رقم الهيكل سليم لكن لا توجد بيانات له في القاعدة. اكتب المواصفات من صفحة اللوت.'; return; }
       status.className = 'pos';
-      const f = vinFields(d);
-      status.textContent = `✓ ${[f.year, f.make, f.model, f.trim, f.engine].filter(Boolean).join(' · ')} — عُبّئ ${filled} حقل. راجعها قبل الحفظ.`;
+      const f = d.found ? vinFields(d) : {};
+      status.textContent = `✓ ${[f.year, f.make, f.model, f.trim, f.engine].filter(Boolean).join(' · ')} — عُبّئ ${filled} حقل.${lotNote} راجعها قبل الحفظ.`;
     } catch (err) {
       if (input.value.trim().toUpperCase() !== vin) return;
       status.className = 'neg'; status.textContent = err.message;

@@ -550,6 +550,15 @@ api.get('/watchlist', requireRole(ROLES.STAFF), asyncH(async (req, res) => {
   const status = WATCH_STATUSES.includes(req.query.status) ? req.query.status : req.query.status === 'ALL' ? 'ALL' : null;
   res.json(await listWatch({ status, q: req.query.q ? String(req.query.q).slice(0, 60) : null }));
 }));
+// آخر لوت مسجل بنفس رقم الهيكل: تعبّئ منه «إضافة سيارة» العداد والضرر والملكية… (vPIC لا يعرف حالة السيارة)
+api.get('/watchlist/by-vin/:vin', requireRole(ROLES.STAFF), asyncH(async (req, res) => {
+  const vin = String(req.params.vin).trim().toUpperCase();
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) throw new HttpError(422, 'BAD_VIN', 'رقم هيكل غير صالح');
+  const { rows: [w] } = await query(
+    `SELECT id, source, lot_number, odometer, odometer_unit, primary_damage, title_doc, run_status, has_keys, notes
+       FROM watch_lots WHERE vin = $1 ORDER BY updated_at DESC LIMIT 1`, [vin]);
+  res.json({ lot: w || null });
+}));
 api.get('/watchlist/:id', requireRole(ROLES.STAFF), uuidParam('id'), asyncH(async (req, res) => res.json(await getWatch(req.params.id))));
 api.post('/watchlist', requireRole(WATCH_WRITERS), asyncH(async (req, res) => {
   const b = validate(req.body, { ...watchFields, source: { ...lotKey.source, required: true }, lotNumber: { ...lotKey.lotNumber, required: true } });

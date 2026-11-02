@@ -103,11 +103,11 @@ export async function setWatchStatus(id, to, actor, finalPriceUsd = null) {
 const RUN_TO_BOOL = { RUN_DRIVE: true, STARTS: false, STATIONARY: false };
 function titleType(doc) {
   const s = String(doc || '').toUpperCase();
-  if (/SALVAGE|\bSV\b|\bST\b|\bSC\b/.test(s)) return 'SALVAGE';
+  if (/SALVAGE|REBUILDABLE|\bSV\b|\bST\b|\bSC\b/.test(s)) return 'SALVAGE';
   if (/REBUILT|\bRB\b/.test(s)) return 'REBUILT';
   if (/PARTS/.test(s)) return 'PARTS_ONLY';
   if (/DESTRUCT|JUNK/.test(s)) return 'CERTIFICATE_OF_DESTRUCTION';
-  if (/CLEAN|CLEAR|ORIGINAL/.test(s)) return 'CLEAN';
+  if (/CLEAN|CLEAR|ORIGINAL|CERTIFICATE OF TITLE/.test(s)) return 'CLEAN';
   return 'OTHER';
 }
 
