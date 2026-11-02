@@ -17,7 +17,7 @@ import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
-import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES } from '../services/watchlist.js';
+import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
 export const api = express.Router();
@@ -568,6 +568,24 @@ api.post('/watchlist/:id/convert', requireRole(ROLES.LOGISTICS_WRITERS), uuidPar
   });
   if (b.customerPrice && !b.customerId) throw new HttpError(422, 'PRICE_WITHOUT_CUSTOMER', 'اختر العميل قبل إدخال السعر المتفق عليه');
   res.status(201).json(await convertWatch(req.params.id, b, actorOf(req)));
+}));
+api.get('/media/watch/:id/:imageId', requireRole(ROLES.STAFF), uuidParam('id'), uuidParam('imageId'), asyncH(async (req, res) => {
+  const r = await getWatchImage(req.params.id, req.params.imageId);
+  res.set('Cache-Control', 'private, max-age=86400, immutable');
+  res.set('Content-Security-Policy', "default-src 'none'");
+  res.set('Content-Type', r.mime);
+  res.set('ETag', `"${r.sha256}"`);
+  res.send(r.content);
+}));
+api.post('/watchlist/:id/images', requireRole(WATCH_WRITERS), uuidParam('id'), imageLimiter, asyncH(async (req, res) => {
+  const b = validate(req.body, { data: t.string({ required: true, max: 7_200_000 }), width: t.int({ min: 1, max: 20000 }), height: t.int({ min: 1, max: 20000 }) });
+  res.status(201).json(await addWatchImage(req.params.id, b, actorOf(req)));
+}));
+api.delete('/watchlist/:id/images/:imageId', requireRole(WATCH_WRITERS), uuidParam('id'), uuidParam('imageId'), asyncH(async (req, res) => {
+  res.json(await deleteWatchImage(req.params.id, req.params.imageId, actorOf(req)));
+}));
+api.post('/watchlist/:id/images/:imageId/primary', requireRole(WATCH_WRITERS), uuidParam('id'), uuidParam('imageId'), asyncH(async (req, res) => {
+  res.json(await setWatchPrimaryImage(req.params.id, req.params.imageId, actorOf(req)));
 }));
 
 api.post('/account-payments/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {

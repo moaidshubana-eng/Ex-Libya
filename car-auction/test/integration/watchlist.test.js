@@ -82,6 +82,27 @@ describe('مزادات أمريكا (لوتات قبل الشراء)', () => {
     assert.equal((await sales.post(`/api/watchlist/${id}/convert`, { vin: '3KPF24AD0KE132747' })).status, 403);
   });
 
+  test('الصور: رفع وعرض، الأولى رئيسية، التكرار مرفوض، والاطلاع لا يرفع', async () => {
+    const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]).toString('base64');
+    const a = await sales.post(`/api/watchlist/${id}/images`, { data: `data:image/png;base64,${PNG}`, width: 1, height: 1 });
+    assert.equal(a.status, 201, JSON.stringify(a.data));
+    assert.equal(a.data.is_primary, true);
+    assert.equal((await sales.post(`/api/watchlist/${id}/images`, { data: PNG })).status, 409);
+    const b = await sales.post(`/api/watchlist/${id}/images`, { data: JPEG });
+    assert.equal(b.status, 201);
+    assert.equal((await viewer.post(`/api/watchlist/${id}/images`, { data: JPEG })).status, 403);
+    assert.equal((await ops.post(`/api/watchlist/${id}/images`, { data: Buffer.from('<svg/>').toString('base64') })).status, 415);
+    const img = await viewer.get(`/api/media/watch/${id}/${a.data.id}`);
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get('content-type'), 'image/png');
+    assert.equal((await bidder.get(`/api/media/watch/${id}/${a.data.id}`)).status, 403);
+    assert.equal((await sales.post(`/api/watchlist/${id}/images/${b.data.id}/primary`)).status, 200);
+    const w = (await ops.get(`/api/watchlist/${id}`)).data;
+    assert.deepEqual(w.images.map((i) => i.id), [b.data.id, a.data.id]);
+    assert.equal((await ops.get('/api/watchlist')).data.items[0].images.length, 2);
+  });
+
   test('اشتريناها: تُنشأ سيارة ببيانات اللوت، ويُربط اللوت بها ويُقفل', async () => {
     const r = await ops.post(`/api/watchlist/${id}/status`, { to: 'WON', finalPriceUsd: '2100' });
     assert.equal(r.status, 200);
@@ -100,6 +121,13 @@ describe('مزادات أمريكا (لوتات قبل الشراء)', () => {
     assert.equal(w.vehicle_id, v.id);
     assert.equal(w.stock_no, v.stock_no);
     assert.equal(Number(w.final_price_usd), 2100);
+    // الصور انتقلت للسيارة (والرئيسية بقيت رئيسية) ولم تبقَ نسخة في اللوت
+    assert.equal(w.images.length, 0);
+    const { rows: imgs } = await query('SELECT is_primary, mime FROM vehicle_images WHERE vehicle_id = $1 ORDER BY is_primary DESC', [v.id]);
+    assert.equal(imgs.length, 2);
+    assert.equal(imgs[0].is_primary, true);
+    assert.equal(imgs[0].mime, 'image/jpeg');
+    assert.equal((await ops.post(`/api/watchlist/${id}/images`, { data: 'iVBORw0KGgo=' })).status, 422);
     assert.equal((await ops.patch(`/api/watchlist/${id}`, { city: 'X' })).status, 422);
     assert.equal((await ops.post(`/api/watchlist/${id}/convert`, { vin: '3KPF24AD0KE132747' })).status, 422);
   });

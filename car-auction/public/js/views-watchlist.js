@@ -1,6 +1,8 @@
 // مزادات أمريكا: لوتات Copart/IAAI نتابعها قبل الشراء (السعر، موعد المزاد، الولاية والمدينة)، ثم «اشتريناها» تحوّلها لسيارة.
 import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
 import { dealFields, loadCustomers } from './views-accounts.js';
+import { mountPhotos } from './photos.js';
+import { openLightbox } from './gallery.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const WRITERS = ['ADMIN', 'OPERATIONS', 'SALES'];
@@ -26,6 +28,7 @@ const ZONES = [['Africa/Tripoli', 'توقيت ليبيا'], ['America/Chicago', 
 
 const opts = (list, cur, blank = false) => html`${blank ? html`<option value="">—</option>` : ''}${list.map(([v, l]) => html`<option value="${v}" ${String(v) === String(cur ?? '') ? 'selected' : ''}>${l}</option>`)}`;
 const usd = (v) => (v == null ? '—' : `${fmt.n(v)} $`);
+const photoUrl = (w) => (im) => `/api/media/watch/${w.id}/${im.id}`;
 const stateName = (c) => US_STATES.find(([k]) => k === c)?.[1] || c;
 
 /** فرق المنطقة الزمنية عن UTC بالدقائق في لحظة معينة */
@@ -129,7 +132,7 @@ async function convertDialog(w) {
   const price = w.final_price_usd || w.current_bid_usd;
   const full = /^[A-HJ-NPR-Z0-9]{17}$/.test(w.vin || '');
   const r = await modal({ title: `اشتريناها: ${w.year || ''} ${w.make || ''} ${w.model || ''}`, submitLabel: 'تحويل لسيارة', body: html`
-    <p class="faint" style="margin-top:0">تُنشأ سيارة جديدة في «السيارات» ببيانات اللوت، وتُسجَّل تكاليف الشراء بالدولار بسعر صرف يوم الشراء.</p>
+    <p class="faint" style="margin-top:0">تُنشأ سيارة جديدة في «السيارات» ببيانات اللوت${w.images?.length ? ` وصوره (${w.images.length})` : ''}، وتُسجَّل تكاليف الشراء بالدولار بسعر صرف يوم الشراء.</p>
     <label class="field">رقم الهيكل (VIN) كامل — 17 خانة<input class="input mono" name="vin" required minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" style="text-transform:uppercase" value="${full ? w.vin : ''}" placeholder="${full ? '' : w.vin || ''}"></label>
     <div class="grid g2"><label class="field">تاريخ الشراء<input class="input" type="date" name="purchaseDate" value="${today}" max="${today}"></label>
       <label class="field">ميناء الوصول<select class="input" name="destinationPort">${opts(state.meta.ports.filter((p) => p.country === 'LY').map((p) => [p.code, p.name_ar]), 'LYMRA')}</select></label></div>
@@ -156,7 +159,11 @@ function lotCard(w) {
   const over = w.max_bid_usd && w.current_bid_usd && Number(w.current_bid_usd) > Number(w.max_bid_usd);
   const write = can(...WRITERS);
   const act = (key, label, cls = 'btn-ghost') => html`<button class="btn btn-sm ${cls}" data-act="${key}" data-id="${w.id}">${label}</button>`;
-  return html`<div class="card vcard" style="${w.status === 'WATCHING' ? '' : 'opacity:.85'}"><div class="body">
+  const imgs = w.images || [];
+  return html`<div class="card vcard" data-lot="${w.id}" style="${w.status === 'WATCHING' ? '' : 'opacity:.85'}">
+    ${imgs.length ? html`<button type="button" class="img" data-view style="display:block;width:100%;border:0;padding:0;cursor:zoom-in" aria-label="عرض صور ${title}">
+      <img src="${photoUrl(w)(imgs[0])}" alt="${title}" loading="lazy"><span class="badge">📷 ${imgs.length}</span></button>` : ''}
+    <div class="body">
     <div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start">
       <h3>${title}</h3>${badge(w.status)}</div>
     <div class="meta"><span><b>${w.source === 'OTHER' ? 'مزاد' : w.source}</b> <span class="mono">${w.lot_number}</span></span>
@@ -179,6 +186,9 @@ function lotCard(w) {
       ${write && w.status === 'WATCHING' ? html`${act('bid', 'تحديث السعر')}${act('edit', 'تعديل')}${act('WON', 'فزنا')}${act('LOST', 'خسرنا')}${act('DROPPED', 'استبعاد')}` : ''}
       ${write && w.status === 'WON' ? html`${act('edit', 'تعديل')}${act('LOST', 'خسرنا')}${act('WATCHING', 'رجوع للمتابعة')}` : ''}
       ${write && ['LOST', 'DROPPED'].includes(w.status) ? act('WATCHING', 'إعادة للمتابعة') : ''}
+      ${write && w.status !== 'PURCHASED' ? html`<label class="btn btn-sm btn-ghost" style="cursor:pointer">📷 إضافة صور
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/*" multiple hidden data-photo-input></label>
+        ${imgs.length ? html`<button type="button" class="btn btn-sm btn-ghost" data-photo-manage>إدارة الصور</button>` : ''}` : ''}
     </div></div></div>`;
 }
 
@@ -206,6 +216,13 @@ export async function watchlistView(el, { query }) {
   $('[data-search]', el).addEventListener('submit', (e) => { e.preventDefault(); go(status, e.target.q.value.trim()); });
   $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
   $('[data-add]', el)?.addEventListener('click', () => lotDialog(null, reload));
+  for (const w of data.items) {
+    const card = $(`[data-lot="${w.id}"]`, el);
+    if (!card) continue;
+    const urlOf = photoUrl(w);
+    mountPhotos(card, w, reload, { path: `/watchlist/${w.id}/images`, urlOf });
+    $('[data-view]', card)?.addEventListener('click', () => openLightbox(w.images, urlOf, 0, [w.year, w.make, w.model].filter(Boolean).join(' ')));
+  }
   $$('[data-act]', el).forEach((b) => b.addEventListener('click', async () => {
     const w = data.items.find((x) => x.id === b.dataset.id);
     const a = b.dataset.act;

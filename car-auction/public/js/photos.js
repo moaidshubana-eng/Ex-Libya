@@ -17,7 +17,8 @@ export function photosBar(v) {
   </div>`;
 }
 
-export function mountPhotos(el, v, reload) {
+/** opts: path (مسار API للصور) و urlOf (رابط عرض الصورة) — الافتراضي صور السيارة؛ يُستعمل أيضًا للوتات مزادات أمريكا */
+export function mountPhotos(el, v, reload, { path = `/vehicles/${v.id}/images`, urlOf = (im) => imgUrl(v.id, im.id) } = {}) {
   $('[data-photo-input]', el)?.addEventListener('change', async (e) => {
     const files = [...e.target.files];
     e.target.value = '';
@@ -27,7 +28,7 @@ export function mountPhotos(el, v, reload) {
       toast(`جارٍ رفع الصورة ${i + 1} من ${files.length}…`);
       try {
         const img = await compress(f);
-        await api(`/vehicles/${v.id}/images`, { method: 'POST', body: img });
+        await api(path, { method: 'POST', body: img });
         ok++;
       } catch (err) {
         toast(`${f.name}: ${err.message}`, 'err');
@@ -35,7 +36,7 @@ export function mountPhotos(el, v, reload) {
     }
     if (ok) { toast(`رُفعت ${ok} صورة`, 'ok'); reload(); }
   });
-  $('[data-photo-manage]', el)?.addEventListener('click', () => manageDialog(v, reload));
+  $('[data-photo-manage]', el)?.addEventListener('click', () => manageDialog(v, reload, path, urlOf));
 }
 
 /** يقرأ الصورة ويصغّرها ويعيدها JPEG بترميز base64 */
@@ -67,7 +68,7 @@ async function compress(file) {
   return { data, width: w, height: h };
 }
 
-function manageDialog(v, reload) {
+function manageDialog(v, reload, path, urlOf) {
   const d = document.createElement('dialog');
   d.className = 'modal';
   let changed = false;
@@ -75,7 +76,7 @@ function manageDialog(v, reload) {
     <div class="m-h"><h3>إدارة الصور</h3><button class="btn btn-ghost btn-sm" value="close" aria-label="إغلاق">✕</button></div>
     <div class="m-b"><div class="photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
       ${v.images.map((im) => html`<div class="card" style="overflow:hidden">
-        <img src="${imgUrl(v.id, im.id)}" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block">
+        <img src="${urlOf(im)}" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block">
         <div class="row" style="gap:6px;padding:8px;justify-content:space-between">
           ${im.is_primary ? html`<span class="badge">الرئيسية</span>` : html`<button type="button" class="btn btn-sm" data-primary="${im.id}">اجعلها الرئيسية</button>`}
           <button type="button" class="btn btn-sm btn-danger" data-del="${im.id}" aria-label="حذف">حذف</button>
@@ -92,11 +93,11 @@ function manageDialog(v, reload) {
     if (!p && !del) return;
     try {
       if (p) {
-        await api(`/vehicles/${v.id}/images/${p.dataset.primary}/primary`, { method: 'POST', body: {} });
+        await api(`${path}/${p.dataset.primary}/primary`, { method: 'POST', body: {} });
         v.images.forEach((im) => { im.is_primary = im.id === p.dataset.primary; });
       } else {
         if (!confirm('حذف هذه الصورة نهائيًا؟')) return;
-        await api(`/vehicles/${v.id}/images/${del.dataset.del}`, { method: 'DELETE' });
+        await api(`${path}/${del.dataset.del}`, { method: 'DELETE' });
         const wasPrimary = v.images.find((im) => im.id === del.dataset.del)?.is_primary;
         v.images = v.images.filter((im) => im.id !== del.dataset.del);
         if (wasPrimary && v.images[0]) v.images[0].is_primary = true;
