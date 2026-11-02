@@ -10,7 +10,7 @@ services:
     rootDir: car-auction
     plan: free
     healthCheckPath: /readyz
-    autoDeploy: false
+    autoDeploy: true         # طلب المستخدم: كل تعديل يُرفع للفرع ينزل فورًا
     envVars:
       - key: NODE_ENV
         value: production
