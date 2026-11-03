@@ -46,6 +46,9 @@ export const config = {
     IAAI: { baseUrl: env.IAAI_FEED_URL || null, token: env.IAAI_API_TOKEN || null },
     TRACKING: { baseUrl: env.TRACKING_API_URL || null, token: env.TRACKING_API_TOKEN || null },
   },
+  // بيانات المزادات بالـVIN عبر مزوّد خارجي (apicar.store). المفتاح من متغير البيئة فقط — لا يُكتب في الكود.
+  // تفعيله: ضع APICAR_KEY في إعدادات Render. بدونه يبقى بحث البوابة على سيارات المنظومة فقط.
+  apicar: { key: env.APICAR_KEY || null, base: (env.APICAR_BASE || 'https://api.apicar.store/api').replace(/\/+$/, '') },
   // عدد البروكسيات الموثوقة أمام التطبيق (Render/Railway/Nginx = 1) أو 'loopback'. ضروري لصحة عنوان IP وحد المعدل وHTTPS.
   trustProxy: /^\d+$/.test(env.TRUST_PROXY || '') ? Number(env.TRUST_PROXY) : (env.TRUST_PROXY || 'loopback'),
   bootstrapAdmin: { email: env.INITIAL_ADMIN_EMAIL || null, password: env.INITIAL_ADMIN_PASSWORD || null, name: env.INITIAL_ADMIN_NAME || 'مدير النظام' },

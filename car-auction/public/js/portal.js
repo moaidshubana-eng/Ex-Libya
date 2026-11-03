@@ -6,6 +6,7 @@ import { openLightbox } from './gallery.js';
 const main = $('[data-main]');
 const nav = $('[data-nav]');
 let me = null;
+let auctionSearch = false; // هل بحث المزادات مفعّل (خدمة apicar)
 
 const STAGES = [
   ['تم الشراء', '<path d="M6 7h12l-1 13H7zM9 7a3 3 0 0 1 6 0"/>'],
@@ -97,10 +98,12 @@ function bindSearch(root) {
 }
 
 function landing() {
+  const sub = auctionSearch
+    ? 'ابحث برقم الهيكل عن أي سيارة في مزادات أمريكا، أو تابع سيارتك عندنا حتى الوصول.'
+    : 'تابع سيارتك من المزاد حتى الوصول — برقم الهيكل أو كود التتبّع.';
   render(main, html`
     <section class="pt-landing">
-      <div class="pt-intro"><h1>تابع سيارتك من المزاد في أمريكا<br>حتى استلامها في ليبيا</h1>
-        <p>مراحل الشحن، الحاوية وموعد الوصول، وصور السيارة — برقم الهيكل بس.</p></div>
+      <div class="pt-intro"><h1>سيارتك من المزادات الأمريكية<br>بين يديك</h1><p>${sub}</p></div>
       ${searchBox()}
       <div style="text-align:center"><a class="btn btn-ghost" href="/calc">🧮 حاسبة تكلفة الاستيراد</a></div>
     </section>`);
@@ -110,10 +113,48 @@ function landing() {
 
 /** صفحة التتبّع (بالكود أو برقم الهيكل): بلا مبالغ */
 async function trackPage(c, again = '') {
+  if (c.source === 'auction') return auctionPage(c, again);
   const urlOf = (id) => `/api/portal/track/${c.trackCode}/media/${c.id}/${id}`;
   render(main, html`<div class="no-print" style="margin-bottom:14px">${searchBox(again)}</div>${carDetails(c, { urlOf, withMoney: false })}`);
   bindSearch(main);
   bindPhotos(main, c, urlOf);
+}
+
+// ----------------------------------------- سيارة من المزاد (غير مسجلة عندنا)
+const RUN = { 'Run and Drive': 'تمشي', 'RUN AND DRIVE': 'تمشي', Stationary: 'واقفة', STATIONARY: 'واقفة', Starts: 'تشتغل', Enhanced: 'محسّنة' };
+const usd = (v) => (v == null ? null : `$${Number(v).toLocaleString('en-US')}`);
+const yesno = (v) => (v == null ? null : /^(yes|y|true|1)$/i.test(v) ? 'نعم' : /^(no|n|false|0)$/i.test(v) ? 'لا' : v);
+
+function auctionPage(c, again) {
+  const t = [c.year, c.make, c.model, c.series].filter(Boolean).join(' ') || `سيارة ${c.vin}`;
+  const imgs = Array.from({ length: c.imageCount || 0 }, (_, i) => i);
+  const urlOf = (i) => `/api/portal/auction/${c.vin}/image/${i}`;
+  const wa = encodeURIComponent(`مرحبا، نبي أسأل عن استيراد هذي السيارة: ${t}\nرقم الهيكل: ${c.vin}${c.lotId ? `\nاللوت: ${c.auction} ${c.lotId}` : ''}`);
+  render(main, html`
+    <div class="no-print" style="margin-bottom:14px">${searchBox(again)}</div>
+    <div class="alert" style="margin-bottom:14px"><b>هذي السيارة من المزاد، مش مسجّلة عندنا بعد.</b> البيانات من ${c.auction || 'المزاد'} للاطلاع. نقدر نستوردها لك — تواصل معنا.</div>
+    <div class="card card-b">
+      <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">
+        <div><h2 style="margin:0">${t}</h2><div class="mono faint">${c.vin}</div></div>
+        <div class="row" style="gap:6px">${c.auction ? html`<span class="pt-status">${c.auction}${c.lotId ? ` · ${c.lotId}` : ''}</span>` : ''}</div>
+      </div>
+      ${imgs.length ? html`<div class="pt-photos" style="margin-top:14px">${imgs.map((i) => html`<button type="button" data-photo="${i}" aria-label="صورة ${i + 1}"><img src="${urlOf(i)}" alt="" loading="lazy"></button>`)}</div>` : ''}
+    </div>
+    <div class="grid g2" style="margin-top:14px;align-items:start">
+      <div class="card"><div class="card-h"><h3 style="margin:0">بيانات المزاد</h3></div><div class="card-b"><dl class="pt-kv">
+        ${kv('المزاد', c.auction)}${kv('رقم اللوت', c.lotId)}${kv('موعد المزاد', c.auctionDate ? fmt.date(c.auctionDate) : null)}
+        ${kv('الولاية', c.state)}${kv('المكان', c.location)}${kv('شراء فوري', usd(c.priceBuyNow))}${kv('القيمة التقديرية', usd(c.estRetail))}
+        ${kv('تقدير الإصلاح', usd(c.estRepair))}${kv('البائع', c.seller)}</dl></div></div>
+      <div class="card"><div class="card-h"><h3 style="margin:0">تفاصيل السيارة</h3></div><div class="card-b"><dl class="pt-kv">
+        ${kv('رقم الهيكل', html`<span class="mono">${c.vin}</span>`)}${kv('العداد', c.odometer != null ? `${c.odometer.toLocaleString('en-US')} ميل${c.odometerBrand && !/actual/i.test(c.odometerBrand) ? ' (غير مؤكد)' : ''}` : null)}
+        ${kv('الضرر', c.damage)}${kv('نوع الخسارة', c.loss)}${kv('الملكية', c.titleDoc)}${kv('المفتاح', yesno(c.keys))}${kv('الحالة', RUN[c.status] || c.status)}
+        ${kv('اللون', c.color)}${kv('المحرك', c.engine)}${kv('الوقود', c.fuel)}${kv('الدفع', c.drive)}${kv('ناقل الحركة', c.transmission)}</dl></div></div>
+    </div>
+    <div class="row no-print" style="gap:8px;margin-top:16px;flex-wrap:wrap">
+      <a class="btn btn-accent" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${wa}">تواصل واتساب للاستيراد</a>
+      <a class="btn btn-ghost" href="/calc">🧮 احسب التكلفة حتى ليبيا</a></div>`);
+  bindSearch(main);
+  $$('[data-photo]', main).forEach((b) => b.addEventListener('click', () => openLightbox(imgs.map((i) => ({ i })), (im) => urlOf(im.i), Number(b.dataset.photo), t)));
 }
 async function notFound(msg, again) {
   render(main, html`<div class="no-print" style="margin-bottom:14px">${searchBox(again)}</div><div class="card empty">${msg}</div>`);
@@ -222,6 +263,7 @@ async function route() {
   // رابط التتبّع ?track=CODE يفتح صفحة التتبّع مباشرة
   const tc = new URLSearchParams(location.search).get('track');
   if (tc) { history.replaceState(null, '', `/portal#/track/${tc.toLowerCase()}`); }
+  try { auctionSearch = !!(await api('/portal/stages')).auctionSearch; } catch { /* */ }
   try { me = (await api('/portal/me')).customer; } catch { me = null; }
   window.addEventListener('hashchange', route);
   route();

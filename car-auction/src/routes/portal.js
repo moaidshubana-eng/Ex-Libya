@@ -4,6 +4,7 @@ import { asyncH, rateLimit, HttpError } from '../security/middleware.js';
 import { validate, t, isUuid } from '../validate.js';
 import { config } from '../config.js';
 import { portalLogin, portalSession, portalLogout, portalChangePassword, myCars, myCar, myStatement, trackByCode, trackByVin, portalImage, PORTAL_SESSION_HOURS, PORTAL_STAGES } from '../services/portal.js';
+import { apicarEnabled, lookupVin, auctionImage, publicCar } from '../services/apicar.js';
 
 export const portal = express.Router();
 
@@ -31,7 +32,7 @@ const sendImage = (res, r) => {
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, max: 10, key: (req) => `p|${req.ip}|${String(req.body?.phone || '').replace(/\D/g, '')}`, code: 'TOO_MANY_LOGINS' });
 const trackLimiter = rateLimit({ windowMs: 60_000, max: 30, key: (req) => `t|${req.ip}`, code: 'TOO_MANY_LOOKUPS' });
 
-portal.get('/stages', (_req, res) => res.json({ stages: PORTAL_STAGES.map(({ key, label }) => ({ key, label })) }));
+portal.get('/stages', (_req, res) => res.json({ stages: PORTAL_STAGES.map(({ key, label }) => ({ key, label })), auctionSearch: apicarEnabled() }));
 
 portal.post('/login', loginLimiter, asyncH(async (req, res) => {
   const b = validate(req.body, { phone: t.string({ required: true, min: 6, max: 30 }), password: t.string({ required: true, max: 100 }) });
@@ -67,7 +68,26 @@ portal.get('/media/:vehicleId/:imageId', needCustomer, asyncH(async (req, res) =
 }));
 
 // التتبّع العام بلا دخول
-portal.get('/vin/:vin', trackLimiter, asyncH(async (req, res) => res.json(await trackByVin(req.params.vin))));
+portal.get('/vin/:vin', trackLimiter, asyncH(async (req, res) => {
+  try {
+    // أولًا: سيارة مسجّلة عندنا (تتبّع كامل بمراحلها)
+    return res.json({ ...await trackByVin(req.params.vin), source: 'ours' });
+  } catch (e) {
+    if (e.status !== 404 || !apicarEnabled()) throw e;
+    // غير مسجّلة عندنا: نجيبها من المزاد للعرض (إن كانت الخدمة مفعّلة)
+    const car = publicCar(await lookupVin(req.params.vin));
+    if (!car) throw new HttpError(404, 'NOT_FOUND', 'ما لقيناش سيارة بهذا الرقم، لا عندنا ولا في المزادات');
+    res.json(car);
+  }
+}));
+portal.get('/auction/:vin/image/:idx', trackLimiter, asyncH(async (req, res) => {
+  if (!/^[A-HJ-NPR-Za-hj-npr-z0-9]{17}$/.test(req.params.vin) || !/^\d{1,2}$/.test(req.params.idx)) throw new HttpError(404, 'NOT_FOUND', 'الصورة غير موجودة');
+  const im = await auctionImage(req.params.vin, req.params.idx);
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.set('Content-Security-Policy', "default-src 'none'");
+  res.set('Content-Type', im.mime);
+  res.send(im.buf);
+}));
 portal.get('/track/:code', trackLimiter, asyncH(async (req, res) => res.json(await trackByCode(req.params.code))));
 portal.get('/track/:code/media/:vehicleId/:imageId', trackLimiter, asyncH(async (req, res) => {
   const code = String(req.params.code).toLowerCase();
