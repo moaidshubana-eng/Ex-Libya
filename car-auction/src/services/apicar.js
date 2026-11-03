@@ -36,39 +36,48 @@ export function mapApicar(raw) {
   };
 }
 
-async function callApi(path, params = {}) {
+/**
+ * طلب JSON من apicar. يعيد الـbody عند النجاح، و null عند «غير موجود» (404 أو ردّ فارغ).
+ * يرمي فقط الأخطاء الحقيقية: مفتاح غير صالح (401/403)، ضغط (429)، أو تعذّر الاتصال.
+ */
+async function getJson(path, params = {}) {
   const u = new URL(config.apicar.base + path);
-  for (const [k, v] of Object.entries(params)) if (v != null) u.searchParams.set(k, v);
+  for (const [k, v] of Object.entries(params)) if (v != null && v !== '') u.searchParams.set(k, v);
   let res;
   try {
     res = await fetch(u, { headers: { 'api-key': config.apicar.key, Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
   } catch {
     throw new HttpError(502, 'AUCTION_UNAVAILABLE', 'تعذّر الاتصال بخدمة بيانات المزادات الآن، حاول بعد قليل');
   }
-  if (res.status === 401 || res.status === 403) throw new HttpError(502, 'AUCTION_UNAVAILABLE', 'مفتاح خدمة بيانات المزادات غير صالح أو منتهي');
+  if (res.status === 404) return null;                                   // غير موجود عند هذا المسار
+  if (res.status === 401 || res.status === 403) throw new HttpError(502, 'AUCTION_KEY', 'مفتاح خدمة بيانات المزادات غير صالح أو منتهي');
   if (res.status === 429) throw new HttpError(429, 'AUCTION_RATE', 'ضغط كبير على خدمة المزادات، حاول بعد قليل');
   if (!res.ok) throw new HttpError(502, 'AUCTION_UNAVAILABLE', 'خدمة بيانات المزادات لم تردّ، حاول بعد قليل');
-  try { return await res.json(); } catch { throw new HttpError(502, 'AUCTION_UNAVAILABLE', 'ردّ غير مفهوم من خدمة المزادات'); }
+  try { return await res.json(); } catch { return null; }
 }
 
-/** يأخذ أول كائن سيارة من أي شكل ردّ محتمل */
+/** يأخذ أول كائن سيارة من أي شكل ردّ محتمل (data كائن/مصفوفة، أو الكائن نفسه) */
 function pickCar(body) {
   if (!body) return null;
-  if (Array.isArray(body)) return body[0] || null;
-  if (body.data) return Array.isArray(body.data) ? body.data[0] || null : body.data;
+  if (Array.isArray(body)) return body.find((x) => x && (x.vin || x.lot_id)) || null;
+  if (body.data) return Array.isArray(body.data) ? (body.data.find((x) => x && (x.vin || x.lot_id)) || null) : body.data;
   if (body.vin || body.lot_id) return body;
   return null;
 }
 
-/** بحث بالـVIN عبر apicar (أحدث سجل). يعيد null إن لم يوجد. */
+/**
+ * بحث بالـVIN عبر apicar (نفس مسارات بوابات الوسطاء): /cars/vin ثم /sale-histories/vin.
+ * يعيد null إن لم توجد السيارة في أي منهما. يرمي فقط الأخطاء الحقيقية.
+ */
 export async function lookupVin(rawVin) {
   if (!apicarEnabled()) return null;
   const vin = String(rawVin || '').trim().toUpperCase();
   if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) throw new HttpError(422, 'BAD_VIN', 'اكتب رقم الهيكل كاملًا (17 خانة)');
   const hit = cache.get(vin);
   if (hit && Date.now() - hit.at < (hit.data ? TTL_MS : NEG_TTL_MS)) return hit.data;
-  const body = await callApi('/cars-histories', { vin });
-  const data = mapApicar(pickCar(body));
+  let car = pickCar(await getJson('/cars/vin', { vin }));             // اللوتات الحالية أولًا
+  if (!car) car = pickCar(await getJson('/sale-histories/vin', { vin })); // ثم سجل المبيعات
+  const data = mapApicar(car);
   cache.set(vin, { at: Date.now(), data });
   return data;
 }

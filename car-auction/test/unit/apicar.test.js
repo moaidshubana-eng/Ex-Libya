@@ -86,11 +86,34 @@ describe('lookupVin: بناء الطلب والمفتاح والذاكرة ال�
     assert.equal(a.auction, 'IAAI');
     assert.equal(a.vin, 'WAUFFAFL7GN004606');
     assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /\/cars-histories\?vin=WAUFFAFL7GN004606$/);
+    assert.match(calls[0].url, /\/cars\/vin\?vin=WAUFFAFL7GN004606$/);
     assert.equal(calls[0].key, 'test-key-123');
     await lookupVin('WAUFFAFL7GN004606'); // من الذاكرة، بلا طلب جديد
     assert.equal(calls.length, 1);
     assert.equal(apicarEnabled(), true);
+  });
+
+  test('يسقط إلى sale-histories/vin لو cars/vin رجع 404، و«غير موجود» يرجع null بلا خطأ', async () => {
+    config.apicar.key = 'k';
+    const paths = [];
+    globalThis.fetch = async (u) => {
+      const p = new URL(String(u)).pathname; paths.push(p);
+      if (p.endsWith('/cars/vin')) return { ok: false, status: 404, json: async () => null };
+      if (p.endsWith('/sale-histories/vin')) return { ok: true, status: 200, json: async () => ({ data: HIST }) };
+      return { ok: false, status: 404, json: async () => null };
+    };
+    const a = await lookupVin('JH4KA8260MC000111');
+    assert.equal(a.make, 'Audi');
+    assert.deepEqual(paths.map((p) => p.split('/api')[1] || p), ['/cars/vin', '/sale-histories/vin']);
+    // سيارة غير موجودة في الاثنين → null (لا 502)
+    globalThis.fetch = async () => ({ ok: false, status: 404, json: async () => null });
+    assert.equal(await lookupVin('WBA3A5C50DF000222'), null);
+  });
+
+  test('مفتاح غير صالح (401) يرمي خطأ واضح', async () => {
+    config.apicar.key = 'bad';
+    globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => null });
+    await assert.rejects(() => lookupVin('WBA3A5C50DF000333'), (e) => e.code === 'AUCTION_KEY');
   });
 
   test('رقم هيكل غير صالح يُرفض', async () => {
