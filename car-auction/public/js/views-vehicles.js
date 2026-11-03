@@ -375,6 +375,13 @@ export async function vehicleDetailView(el, { params, setTitle }) {
             <button class="btn btn-primary" data-move>تحديث الحالة</button></div>` : ''}
         </div>
         ${staff ? dealCard(v, deal) : ''}
+        ${staff && v.track_code ? html`<div class="card card-b stack" style="gap:8px">
+          <b>📍 رابط التتبّع للزبون</b>
+          <div class="faint" style="font-size:12.5px">يفتح صفحة تتبّع بلا تسجيل دخول: المراحل والحاوية والصور، بدون أي مبالغ.</div>
+          <input class="input mono" readonly value="${location.origin}/portal?track=${v.track_code}" data-track-link style="direction:ltr">
+          <div class="row" style="gap:6px"><button class="btn btn-sm" data-copy-track>نسخ الرابط</button>
+            <a class="btn btn-sm btn-accent" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${encodeURIComponent(`تتبّع سيارتك ${title} من Golden Gate Motors: ${location.origin}/portal?track=${v.track_code}`)}">مشاركة واتساب</a></div>
+        </div>` : ''}
         ${v.sale ? salePanel(v.sale) : ''}
         ${v.shipment && staff ? html`<div class="card card-b stack" style="gap:8px">
           <div class="row" style="justify-content:space-between"><b>${icon('ship')} ${v.shipment.shipment_no}</b><span class="badge">${LABELS.shipment[v.shipment.status]}</span></div>
@@ -390,6 +397,10 @@ export async function vehicleDetailView(el, { params, setTitle }) {
   mountPhotos(el, v, () => vehicleDetailView(el, { params, setTitle }));
   mountDeal(el, v, deal, () => vehicleDetailView(el, { params, setTitle }));
   $('[data-copy]', el)?.addEventListener('click', (e) => navigator.clipboard?.writeText(e.target.dataset.copy).then(() => toast('تم نسخ VIN', 'ok')));
+  $('[data-copy-track]', el)?.addEventListener('click', () => {
+    const inp = $('[data-track-link]', el);
+    navigator.clipboard?.writeText(inp.value).then(() => toast('نُسخ رابط التتبّع', 'ok'), () => inp.select());
+  });
   $('[data-move]', el)?.addEventListener('click', async () => {
     const to = $('[data-next]', el).value;
     let reason = null;

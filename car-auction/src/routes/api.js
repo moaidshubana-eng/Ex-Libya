@@ -18,6 +18,7 @@ import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../service
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
+import { setPortalAccount, disablePortalAccount, portalAccountInfo } from '../services/portal.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
 export const api = express.Router();
@@ -463,11 +464,28 @@ api.post('/auctions/:id/lots', requireRole(ROLES.AUCTION_MANAGERS), uuidParam('i
 api.get('/customers', requireRole(['ADMIN', 'SALES', 'ACCOUNTANT', 'OPERATIONS']), asyncH(async (req, res) => {
   const { rows } = await query(
     `SELECT c.id, c.code, c.full_name, c.customer_type, c.city, c.kyc_status, c.phone_enc,
-            (SELECT count(*)::int FROM sales s WHERE s.customer_id = c.id) AS purchases
-       FROM customers c
+            (SELECT count(*)::int FROM sales s WHERE s.customer_id = c.id) AS purchases,
+            (SELECT count(*)::int FROM vehicles v WHERE v.customer_id = c.id) AS cars,
+            pa.is_active AS portal_active, pa.last_login_at AS portal_last_login, pa.must_change AS portal_must_change
+       FROM customers c LEFT JOIN portal_accounts pa ON pa.customer_id = c.id
       WHERE ($1::text IS NULL OR c.full_name ILIKE '%' || $1 || '%' OR c.code ILIKE '%' || $1 || '%')
       ORDER BY c.code LIMIT 200`, [req.query.q ? String(req.query.q).slice(0, 60) : null]);
   res.json({ items: rows.map(({ phone_enc, ...c }) => ({ ...c, phone: mask(decrypt(phone_enc)) })) });
+}));
+
+// ---------------------------------------------------------------- حسابات بوابة العملاء
+const PORTAL_MANAGERS = ['ADMIN', 'SALES'];
+api.get('/customers/:id/portal', requireRole(PORTAL_MANAGERS), uuidParam('id'), asyncH(async (req, res) => {
+  const { rows: [c] } = await query('SELECT phone_enc FROM customers WHERE id = $1', [req.params.id]);
+  if (!c) throw new HttpError(404, 'NOT_FOUND', 'العميل غير موجود');
+  // الهاتف كاملًا للموظف المخوّل فقط: هو اسم الدخول الذي يُبلَّغ به العميل
+  res.json({ account: await portalAccountInfo(req.params.id), phone: decrypt(c.phone_enc) });
+}));
+api.post('/customers/:id/portal', requireRole(PORTAL_MANAGERS), uuidParam('id'), asyncH(async (req, res) => {
+  res.status(201).json(await setPortalAccount(req.params.id, actorOf(req)));
+}));
+api.delete('/customers/:id/portal', requireRole(PORTAL_MANAGERS), uuidParam('id'), asyncH(async (req, res) => {
+  res.json(await disablePortalAccount(req.params.id, actorOf(req)));
 }));
 
 // ---------------------------------------------------------------- حسابات العملاء والموردين

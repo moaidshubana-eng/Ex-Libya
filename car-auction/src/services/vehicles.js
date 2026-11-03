@@ -161,7 +161,7 @@ export async function getVehicle(id, { includeCosts, includeInternal }) {
     ] : [],
   };
   if (!includeInternal) {
-    for (const k of ['notes', 'locked_fields', 'hold_reason', 'hold_return_status', 'version', 'customer_id', 'customer_price', 'customer_currency', 'customer_assigned_at', 'vendor_id']) delete out[k];
+    for (const k of ['notes', 'locked_fields', 'hold_reason', 'hold_return_status', 'version', 'customer_id', 'customer_price', 'customer_currency', 'customer_assigned_at', 'vendor_id', 'track_code']) delete out[k];
   }
   return out;
 }

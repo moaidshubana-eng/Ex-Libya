@@ -715,6 +715,34 @@ CREATE TABLE watch_lot_images (
 CREATE UNIQUE INDEX uq_watch_lot_primary_image ON watch_lot_images(watch_lot_id) WHERE is_primary;
 CREATE INDEX idx_watch_lot_images ON watch_lot_images(watch_lot_id, sort_order);
 
+-- بوابة العملاء: دخول العميل برقم هاتفه وكلمة سر يضعها الموظف، بجلسات منفصلة عن الموظفين
+CREATE TABLE portal_accounts (
+  customer_id    UUID PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+  password_hash  TEXT NOT NULL,
+  must_change    BOOLEAN NOT NULL DEFAULT TRUE,     -- كلمة سر مؤقتة من الموظف: يغيّرها العميل عند أول دخول
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  failed_logins  INT NOT NULL DEFAULT 0,
+  locked_until   TIMESTAMPTZ,
+  last_login_at  TIMESTAMPTZ,
+  created_by     UUID REFERENCES users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE portal_sessions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id  UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  token_hash   TEXT NOT NULL UNIQUE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at   TIMESTAMPTZ NOT NULL,
+  revoked_at   TIMESTAMPTZ,
+  ip           INET,
+  user_agent   TEXT
+);
+CREATE INDEX idx_portal_sessions_customer ON portal_sessions(customer_id) WHERE revoked_at IS NULL;
+-- كود تتبّع عشوائي لكل سيارة: صفحة تتبّع عامة بلا دخول (بلا مبالغ)
+ALTER TABLE vehicles ADD COLUMN track_code TEXT NOT NULL DEFAULT substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
+CREATE UNIQUE INDEX uq_vehicles_track_code ON vehicles(track_code);
+
 -- ---------------------------------------------------------------------
 -- 9) التكامل والمزامنة
 -- ---------------------------------------------------------------------

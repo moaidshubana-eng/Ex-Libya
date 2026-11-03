@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { query } from './db.js';
 import { securityHeaders, csrfGuard, authenticate, errorHandler, HttpError } from './security/middleware.js';
 import { api } from './routes/api.js';
+import { portal } from './routes/portal.js';
 import { mockFeedsRouter } from './sync/mock-feeds.js';
 
 export function createApp() {
@@ -31,6 +32,7 @@ export function createApp() {
   // رفع الصور وحده يقبل جسمًا أكبر (صورة مضغوطة بترميز base64)؛ بقية المسارات تبقى بحد 200kb
   app.use(/^\/api\/(vehicles|watchlist)\/[^/]+\/images\/?$/, express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
+  app.use('/api/portal', csrfGuard, portal); // بوابة العملاء: جلسات منفصلة عن الموظفين
   app.use('/api', csrfGuard, authenticate, api);
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'NOT_FOUND', 'المسار غير موجود')));
 
@@ -53,6 +55,14 @@ export function createApp() {
   app.get(['/calc', '/calc/', '/calc.html'], (_req, res) => {
     res.set('Cache-Control', 'no-cache');
     res.type('html').send(calcHtml);
+  });
+  // بوابة العملاء: صفحة مستقلة بهوية الشركة (دخول العميل + التتبّع العام بالكود)
+  const portalHtml = readFileSync(join(pub, 'portal.html'), 'utf8')
+    .replace('src="/js/portal.js"', `src="/v/${build}/js/portal.js"`)
+    .replace('href="/styles.css"', `href="/v/${build}/styles.css"`);
+  app.get(['/portal', '/portal/', '/portal.html'], (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.type('html').send(portalHtml);
   });
   app.use('/v/:build', express.static(pub, { index: false, setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }));
   // الكود (html/js/css) بلا ذاكرة مؤقتة ثابتة: المتصفح يتحقق كل مرة (304 سريع بـ ETag)،
