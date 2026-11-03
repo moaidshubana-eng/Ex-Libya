@@ -338,6 +338,10 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .pt-intro p { margin: 0; color: var(--text-2); }
 .pt-box { display: flex; flex-direction: column; gap: 10px; border-top: 3px solid var(--accent); }
 .pt-box h2 { margin: 0 0 4px; font-size: 19px; }
+.pt-search { max-width: 640px; width: 100%; margin: 0 auto; }
+.pt-search-row { display: flex; gap: 8px; }
+.pt-search-row .input { flex: 1; min-width: 0; font-size: 17px; letter-spacing: 1px; min-height: 48px; }
+.pt-search-row .btn { min-height: 48px; padding-inline: 22px; }
 .pt-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .pt-title h1 { margin: 0; font-size: 22px; }
 .pt-cars { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }

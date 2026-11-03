@@ -3,7 +3,7 @@ import express from 'express';
 import { asyncH, rateLimit, HttpError } from '../security/middleware.js';
 import { validate, t, isUuid } from '../validate.js';
 import { config } from '../config.js';
-import { portalLogin, portalSession, portalLogout, portalChangePassword, myCars, myCar, myStatement, trackByCode, portalImage, PORTAL_SESSION_HOURS, PORTAL_STAGES } from '../services/portal.js';
+import { portalLogin, portalSession, portalLogout, portalChangePassword, myCars, myCar, myStatement, trackByCode, trackByVin, portalImage, PORTAL_SESSION_HOURS, PORTAL_STAGES } from '../services/portal.js';
 
 export const portal = express.Router();
 
@@ -67,6 +67,7 @@ portal.get('/media/:vehicleId/:imageId', needCustomer, asyncH(async (req, res) =
 }));
 
 // التتبّع العام بلا دخول
+portal.get('/vin/:vin', trackLimiter, asyncH(async (req, res) => res.json(await trackByVin(req.params.vin))));
 portal.get('/track/:code', trackLimiter, asyncH(async (req, res) => res.json(await trackByCode(req.params.code))));
 portal.get('/track/:code/media/:vehicleId/:imageId', trackLimiter, asyncH(async (req, res) => {
   const code = String(req.params.code).toLowerCase();

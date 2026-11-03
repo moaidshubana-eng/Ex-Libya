@@ -74,46 +74,50 @@ function carDetails(c, { urlOf, withMoney }) {
 const trackUrl = (code) => `${location.origin}/portal?track=${code}`;
 
 // ======================================================================= الصفحات
+/** خانة البحث: رقم الهيكل (17 خانة) أو كود التتبّع (12 خانة) */
+function searchBox(value = '') {
+  return html`<form class="card card-b pt-box pt-search" data-search novalidate>
+    <h2>تتبّع سيارتك</h2>
+    <div class="pt-search-row"><input class="input mono" name="q" maxlength="17" required dir="ltr" autocomplete="off" autocapitalize="characters"
+        placeholder="1HGCM82633A004352" value="${value}" style="text-transform:uppercase" aria-label="رقم الهيكل VIN">
+      <button class="btn btn-primary">بحث</button></div>
+    <div data-err role="alert" class="neg" style="min-height:1.4em"></div>
+    <p class="faint" style="margin:0;font-size:13px">اكتب رقم الهيكل (الشاصي) كاملًا كما في ورقة الشراء، أو كود التتبّع اللي وصلك من الشركة.</p>
+  </form>`;
+}
+function bindSearch(root) {
+  $('[data-search]', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = e.target.q.value.trim().replace(/\s+/g, '');
+    const err = $('[data-err]', e.target);
+    if (/^[0-9a-f]{12}$/i.test(q)) location.hash = `#/track/${q.toLowerCase()}`;
+    else if (/^[A-HJ-NPR-Za-hj-npr-z0-9]{17}$/.test(q)) location.hash = `#/vin/${q.toUpperCase()}`;
+    else err.textContent = q.length && q.length !== 17 ? `رقم الهيكل 17 خانة، وأنت كتبت ${q.length}` : 'اكتب رقم الهيكل كاملًا (17 خانة)';
+  });
+}
+
 function landing() {
   render(main, html`
     <section class="pt-landing">
       <div class="pt-intro"><h1>تابع سيارتك من المزاد في أمريكا<br>حتى استلامها في ليبيا</h1>
-        <p>مراحل الشحن، الحاوية وموعد الوصول، صور السيارة، وكشف حسابك — في مكان واحد.</p></div>
-      <div class="grid g2" style="align-items:start">
-        <form class="card card-b pt-box" data-login novalidate>
-          <h2>دخول العملاء</h2>
-          <label class="field">رقم الهاتف<input class="input num" name="phone" type="tel" autocomplete="username" inputmode="tel" required placeholder="09xxxxxxxx"></label>
-          <label class="field">كلمة السر<input class="input" name="password" type="password" autocomplete="current-password" required></label>
-          <button class="btn btn-primary" style="min-height:44px">دخول</button>
-          <div data-err role="alert" class="neg" style="min-height:1.4em"></div>
-          <p class="faint" style="margin:0;font-size:13px">ما عندكش حساب؟ اطلبه من موظف المبيعات، يعطيك كلمة سر مؤقتة.</p>
-        </form>
-        <form class="card card-b pt-box" data-track novalidate>
-          <h2>تتبّع سيارة</h2>
-          <label class="field">كود التتبّع<input class="input mono" name="code" maxlength="12" required placeholder="3f9a1c0b7e24" dir="ltr" autocomplete="off"></label>
-          <button class="btn btn-accent" style="min-height:44px">تتبّع</button>
-          <p class="faint" style="margin:0;font-size:13px">الكود يجيك في رسالة من الشركة، أو في رابط التتبّع.</p>
-          <a class="btn btn-ghost" href="/calc">🧮 حاسبة تكلفة الاستيراد</a>
-        </form>
-      </div>
+        <p>مراحل الشحن، الحاوية وموعد الوصول، وصور السيارة — برقم الهيكل بس.</p></div>
+      ${searchBox()}
+      <div style="text-align:center"><a class="btn btn-ghost" href="/calc">🧮 حاسبة تكلفة الاستيراد</a></div>
     </section>`);
-  const form = $('[data-login]', main);
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('button', form); btn.disabled = true; $('[data-err]', form).textContent = '';
-    try {
-      const r = await api('/portal/login', { method: 'POST', body: { phone: form.phone.value.trim(), password: form.password.value } });
-      me = r.customer; location.hash = me.mustChange ? '#/password' : '#/cars'; route();
-    } catch (err) { $('[data-err]', form).textContent = err.message; btn.disabled = false; }
-  });
-  $('[data-track]', main).addEventListener('submit', (e) => { e.preventDefault(); const c = e.target.code.value.trim().toLowerCase(); if (c) location.hash = `#/track/${c}`; });
+  bindSearch(main);
+  $('[name=q]', main).focus();
 }
 
-async function trackPage(code) {
-  const c = await api(`/portal/track/${encodeURIComponent(code)}`);
-  const urlOf = (id) => `/api/portal/track/${code}/media/${c.id}/${id}`;
-  render(main, html`<div class="row no-print" style="margin-bottom:12px"><a class="btn btn-ghost btn-sm" href="#/">← رجوع</a></div>${carDetails(c, { urlOf, withMoney: false })}`);
+/** صفحة التتبّع (بالكود أو برقم الهيكل): بلا مبالغ */
+async function trackPage(c, again = '') {
+  const urlOf = (id) => `/api/portal/track/${c.trackCode}/media/${c.id}/${id}`;
+  render(main, html`<div class="no-print" style="margin-bottom:14px">${searchBox(again)}</div>${carDetails(c, { urlOf, withMoney: false })}`);
+  bindSearch(main);
   bindPhotos(main, c, urlOf);
+}
+async function notFound(msg, again) {
+  render(main, html`<div class="no-print" style="margin-bottom:14px">${searchBox(again)}</div><div class="card empty">${msg}</div>`);
+  bindSearch(main);
 }
 
 async function carsPage() {
@@ -184,7 +188,7 @@ function drawNav() {
   render(nav, me
     ? html`${a('#/cars', 'سياراتي')}${a('#/statement', 'كشف الحساب')}<a href="/calc">الحاسبة</a>${a('#/password', 'كلمة السر')}
         <span class="pt-me">${me.name}</span><button class="btn btn-sm" data-logout>خروج</button>`
-    : html`<a href="#/">دخول العملاء</a><a href="/calc">حاسبة التكلفة</a>`);
+    : html`<a href="#/">تتبّع سيارة</a><a href="/calc">حاسبة التكلفة</a>`);
   $('[data-logout]', nav)?.addEventListener('click', async () => { await api('/portal/logout', { method: 'POST', body: {} }).catch(() => {}); me = null; location.hash = '#/'; route(); });
 }
 
@@ -194,7 +198,12 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     let m;
-    if ((m = h.match(/^\/track\/([0-9a-fA-F]{12})$/))) return await trackPage(m[1].toLowerCase());
+    if ((m = h.match(/^\/track\/([0-9a-fA-F]{12})$/))) {
+      try { return await trackPage(await api(`/portal/track/${m[1].toLowerCase()}`)); } catch (e) { return notFound(e.message, m[1]); }
+    }
+    if ((m = h.match(/^\/vin\/([A-Za-z0-9]{17})$/))) {
+      try { return await trackPage(await api(`/portal/vin/${m[1].toUpperCase()}`), m[1].toUpperCase()); } catch (e) { return notFound(e.message, m[1].toUpperCase()); }
+    }
     if (!me) return landing();
     if (me.mustChange && h !== '/password') { location.hash = '#/password'; return; }
     if (h === '/password') return passwordPage();

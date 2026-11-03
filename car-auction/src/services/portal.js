@@ -199,6 +199,16 @@ export async function trackByCode(code) {
   return carView(r, { withMoney: false, history: h.get(r.id) || [] });
 }
 
+/** التتبّع العام برقم الهيكل (17 خانة كاملة): نفس صفحة التتبّع بالكود، بلا مبالغ ولا بيانات العميل */
+export async function trackByVin(vin) {
+  const v = String(vin || '').trim().toUpperCase();
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) throw new HttpError(422, 'BAD_VIN', 'اكتب رقم الهيكل كاملًا (17 خانة)');
+  const { rows: [r] } = await query(`${CAR_SQL} WHERE v.vin = $1`, [v]);
+  if (!r || r.status === 'CANCELLED') throw new HttpError(404, 'NOT_FOUND', 'ما لقيناش سيارة بهذا الرقم عندنا');
+  const h = await histories([r.id]);
+  return carView(r, { withMoney: false, history: h.get(r.id) || [] });
+}
+
 /** صورة لسيارة يملكها العميل، أو لسيارة كود تتبّعها معروف */
 export async function portalImage({ customerId = null, trackCode = null, vehicleId, imageId }) {
   const { rows: [r] } = await query(

@@ -51,64 +51,13 @@ export async function customersView(el) {
   render(el, html`<div class="card">
     <form class="filters" data-search><label class="field grow">بحث<input class="input" name="q" value="${q}" placeholder="الاسم أو رقم العميل"></label>
       <button class="btn btn-primary">بحث</button>${can('ADMIN', 'SALES') ? html`<button type="button" class="btn btn-accent" data-new>${icon('plus')} عميل جديد</button>` : ''}</form>
-    <div class="table-wrap"><table class="t"><thead><tr><th>الرقم</th><th>الاسم</th><th>النوع</th><th>المدينة</th><th>الهاتف</th><th>التحقق</th><th class="n">سياراته</th><th>بوابة العملاء</th></tr></thead>
+    <div class="table-wrap"><table class="t"><thead><tr><th>الرقم</th><th>الاسم</th><th>النوع</th><th>المدينة</th><th>الهاتف</th><th>التحقق</th><th class="n">سياراته</th></tr></thead>
       <tbody>${items.map((c) => html`<tr><td class="mono">${c.code}</td><td><b>${c.full_name}</b></td><td>${{ INDIVIDUAL: 'فرد', DEALER: 'معرض', COMPANY: 'شركة' }[c.customer_type]}</td><td>${c.city || '—'}</td><td class="mono">${c.phone || '—'}</td>
-        <td>${can('ADMIN', 'SALES') ? html`<select class="input" style="min-width:120px;min-height:32px;padding:2px 8px" data-kyc="${c.id}">${options(KYC, c.kyc_status, '')}</select>` : KYC.find(([v]) => v === c.kyc_status)[1]}</td><td class="n">${c.cars + c.purchases}</td>
-        <td>${portalBadge(c)}${can('ADMIN', 'SALES') ? html` <button class="btn btn-sm" data-portal="${c.id}">${c.portal_active == null ? 'تفعيل' : 'إدارة'}</button>` : ''}</td></tr>`)}</tbody></table>
+        <td>${can('ADMIN', 'SALES') ? html`<select class="input" style="min-width:120px;min-height:32px;padding:2px 8px" data-kyc="${c.id}">${options(KYC, c.kyc_status, '')}</select>` : KYC.find(([v]) => v === c.kyc_status)[1]}</td><td class="n">${c.cars + c.purchases}</td></tr>`)}</tbody></table>
       ${items.length ? '' : html`<div class="empty">لا يوجد عملاء</div>`}</div></div>`);
   $('[data-search]', el).addEventListener('submit', (e) => { e.preventDefault(); location.hash = `#/customers${e.target.q.value ? `?q=${encodeURIComponent(e.target.q.value)}` : ''}`; });
   $('[data-new]', el)?.addEventListener('click', async () => { if (await newCustomerDialog()) customersView(el); });
   $$('[data-kyc]', el).forEach((s) => s.addEventListener('change', () => guard(() => api(`/customers/${s.dataset.kyc}`, { method: 'PATCH', body: { kycStatus: s.value } }), 'تم تحديث حالة التحقق')));
-  $$('[data-portal]', el).forEach((b) => b.addEventListener('click', () => portalDialog(items.find((c) => c.id === b.dataset.portal), () => customersView(el))));
-}
-
-const portalBadge = (c) => (c.portal_active == null ? html`<span class="faint">—</span>`
-  : c.portal_active ? html`<span class="badge" style="color:#16a34a"><span class="dot"></span><span style="color:var(--text)">مفعّل${c.portal_last_login ? '' : ' (لم يدخل بعد)'}</span></span>`
-    : html`<span class="badge" style="color:#94a3b8"><span class="dot"></span><span style="color:var(--text)">موقوف</span></span>`);
-
-/** حساب بوابة العميل: تفعيل أو إعادة تعيين كلمة سر مؤقتة تُعرض مرة واحدة، مع رسالة جاهزة للإرسال */
-function portalDialog(c, reload) {
-  let shown = null; // كلمة السر المؤقتة بعد إنشائها (لا تُحفظ في أي مكان)
-  panelDialog(`بوابة العملاء — ${c.full_name}`, async (refresh) => {
-    const { account, phone } = await api(`/customers/${c.id}/portal`);
-    const link = `${location.origin}/portal`;
-    const msg = shown && `مرحبا ${c.full_name}، تقدر تتابع سياراتك وكشف حسابك من بوابة Golden Gate Motors:\n${link}\nرقم الدخول: ${phone}\nكلمة السر المؤقتة: ${shown}\n(بيطلب منك تغييرها أول مرة)`;
-    const waPhone = String(phone || '').replace(/\D/g, '').replace(/^0/, '218');
-    return {
-      body: html`
-        ${!phone ? html`<div class="alert danger">ما فيش رقم هاتف لهذا العميل. العميل يدخل البوابة برقم هاتفه، فسجّله أولًا.</div>` : ''}
-        <dl class="specs" style="margin-bottom:12px">
-          <div><dt>رقم الدخول</dt><dd class="mono">${phone || '—'}</dd></div>
-          <div><dt>الحالة</dt><dd>${!account ? 'غير مفعّل' : account.is_active ? 'مفعّل' : 'موقوف'}</dd></div>
-          <div><dt>آخر دخول</dt><dd>${account?.last_login_at ? fmt.dt(account.last_login_at) : '—'}</dd></div>
-          <div><dt>كلمة السر</dt><dd>${!account ? '—' : account.must_change ? 'مؤقتة (لم يغيّرها بعد)' : 'غيّرها العميل'}</dd></div>
-        </dl>
-        ${shown ? html`<div class="alert" style="margin-bottom:12px"><b>كلمة السر المؤقتة:</b> <span class="mono" style="font-size:20px;letter-spacing:2px">${shown}</span>
-          <div class="faint" style="font-size:12.5px">تظهر مرة وحدة بس. أرسلها للعميل الآن.</div>
-          <textarea class="input" readonly rows="5" style="margin-top:8px;width:100%" data-msg>${msg}</textarea>
-          <div class="row" style="gap:6px;margin-top:8px"><button class="btn btn-sm" data-copymsg>نسخ الرسالة</button>
-            ${waPhone ? html`<a class="btn btn-sm btn-accent" target="_blank" rel="noopener noreferrer" href="https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}">إرسال واتساب</a>` : ''}</div></div>` : ''}
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          ${phone ? html`<button class="btn btn-primary" data-set>${account ? 'إعادة تعيين كلمة السر' : 'تفعيل حساب البوابة'}</button>` : ''}
-          ${account?.is_active ? html`<button class="btn btn-danger" data-off>إيقاف الحساب</button>` : ''}
-          <a class="btn btn-ghost" href="/portal" target="_blank" rel="noopener">فتح البوابة ↗</a></div>
-        <p class="faint" style="font-size:12.5px;margin:12px 0 0">العميل يشوف سياراته المسجلة باسمه فقط: المراحل، والحاوية، والصور، والسعر المتفق عليه، وكشف حسابه. ما يشوفش التكاليف ولا الموردين.</p>`,
-      bind: (root) => {
-        $('[data-set]', root)?.addEventListener('click', async () => {
-          if (account && !confirm('إعادة التعيين تلغي كلمة السر الحالية وتخرج العميل من البوابة. نكمّل؟')) return;
-          const r = await guard(() => api(`/customers/${c.id}/portal`, { method: 'POST', body: {} }), account ? 'أُعيد تعيين كلمة السر' : 'فُعّل حساب البوابة');
-          if (r) { shown = r.password; refresh(); reload(); }
-        });
-        $('[data-off]', root)?.addEventListener('click', async () => {
-          if (!confirm('إيقاف حساب البوابة لهذا العميل؟')) return;
-          if (await guard(() => api(`/customers/${c.id}/portal`, { method: 'DELETE' }), 'أُوقف الحساب')) { shown = null; refresh(); reload(); }
-        });
-        $('[data-copymsg]', root)?.addEventListener('click', async () => {
-          try { await navigator.clipboard.writeText(msg); toast('نُسخت الرسالة', 'ok'); } catch { $('[data-msg]', root).select(); }
-        });
-      },
-    };
-  });
 }
 
 // ======================================================================= المزادات

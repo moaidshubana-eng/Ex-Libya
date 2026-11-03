@@ -93,6 +93,19 @@ describe('بوابة العملاء', () => {
     if (stock) assert.equal((await bidder.get(`/api/vehicles/${stock.id}`)).data.track_code, undefined);
   });
 
+  test('التتبّع برقم الهيكل بلا دخول ولا مبالغ', async () => {
+    const { rows: [{ vin }] } = await query('SELECT vin FROM vehicles WHERE id = $1', [carA]);
+    const anon = client(base);
+    const r = await anon.get(`/api/portal/vin/${vin.toLowerCase()}`);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.id, carA);
+    assert.equal(r.data.vin, vin);
+    assert.match(r.data.trackCode, /^[0-9a-f]{12}$/);
+    for (const k of ['price', 'paid', 'remaining', 'currency']) assert.equal(r.data[k], undefined, k);
+    assert.equal((await anon.get('/api/portal/vin/1HGCM82633A004352')).status, 404);
+    assert.equal((await anon.get('/api/portal/vin/ABC123')).status, 422);
+  });
+
   test('تغيير كلمة السر: الحالية خطأ تُرفض، والقصيرة تُرفض، وبعد التغيير لا تعمل المؤقتة', async () => {
     assert.equal((await pa.post('/api/portal/password', { current: 'nope-nope', next: 'NewPass123' })).status, 403);
     assert.equal((await pa.post('/api/portal/password', { current: tempPw, next: 'short' })).status, 422);
