@@ -5,6 +5,26 @@ import { mountPhotos, compress } from './photos.js';
 import { openLightbox } from './gallery.js';
 import { estimateLot, loadSettings } from './calc.js';
 import { watchVin } from './views-vehicles.js';
+import { bookmarkletHref, decodeImport } from './lot-grabber.js';
+
+/** نافذة تثبيت «زر الاستيراد من المزاد» في شريط المفضلة */
+async function grabberDialog() {
+  const p = modal({ title: '⭐ زر الاستيراد من صفحة المزاد', submitLabel: 'تم', body: html`
+    <p style="margin-top:0">زر تحطه مرة وحدة في شريط المفضلة في متصفحك. تفتح صفحة أي سيارة في <b>IAAI</b> أو <b>Copart</b> أو <b>bid.cars</b>، تضغطه، فتنفتح المنظومة ونافذة «إضافة لوت» معبّية: العداد، الضرر، الملكية، المفتاح، الموعد، السعر، الولاية والمدينة.</p>
+    <div style="text-align:center;margin:16px 0">
+      <a class="btn btn-accent" style="font-size:17px;padding:12px 22px;cursor:grab" draggable="true" data-bm href="${bookmarkletHref(location.origin)}">⭐ استيراد لـ Golden Gate</a>
+      <div class="faint" style="font-size:12.5px;margin-top:6px">اسحب هذا الزر بالماوس لشريط المفضلة ↑ (ما تضغطوش هني)</div>
+    </div>
+    <ol style="margin:0;padding-inline-start:20px;line-height:1.9">
+      <li>أظهر شريط المفضلة: <b class="mono">Ctrl+Shift+B</b></li>
+      <li>اسحب الزر الذهبي فوق وأفلته في الشريط</li>
+      <li>افتح صفحة سيارة في IAAI أو Copart أو bid.cars، واضغط الزر من الشريط</li>
+      <li>تنفتح المنظومة بنافذة معبّية — راجعها واضغط «إضافة»</li>
+    </ol>
+    <p class="faint" style="font-size:12.5px;margin:12px 0 0">الزر يقرا النص الظاهر في الصفحة اللي فاتحها أنت بس، وما يبعت أي طلب لموقع المزاد. رقم الهيكل في IAAI وCopart يبان ناقص لو مش داخل بحسابك؛ bid.cars يعطيه كامل. الصور حطها بـ«📋 لصق صورة».</p>` });
+  $('dialog [data-bm]')?.addEventListener('click', (e) => { e.preventDefault(); toast('اسحب الزر لشريط المفضلة بالماوس، وبعدين اضغطه من هناك وأنت في صفحة المزاد'); });
+  await p;
+}
 
 const can = (...roles) => roles.includes(state.user.role);
 const WRITERS = ['ADMIN', 'OPERATIONS', 'SALES'];
@@ -118,10 +138,12 @@ function toBody(r, editing) {
   return b;
 }
 
-async function lotDialog(w, reload) {
+/** prefill: بيانات من «زر الاستيراد» (صفحة المزاد) تُعبّأ في نافذة إضافة جديدة يراجعها المستخدم */
+async function lotDialog(w, reload, prefill = null) {
   const stopWatching = watchVin();
   let r;
-  try { r = await modal({ title: w ? `تعديل اللوت ${w.lot_number}` : 'إضافة لوت من مزاد أمريكي', submitLabel: w ? 'حفظ التعديل' : 'إضافة', body: lotForm(w || {}) }); } finally { stopWatching(); }
+  const title = w ? `تعديل اللوت ${w.lot_number}` : prefill ? 'إضافة لوت — من صفحة المزاد (راجع البيانات قبل الحفظ)' : 'إضافة لوت من مزاد أمريكي';
+  try { r = await modal({ title, submitLabel: w ? 'حفظ التعديل' : 'إضافة', body: lotForm(w || prefill || {}) }); } finally { stopWatching(); }
   if (!r) return;
   try {
     if (w) await api(`/watchlist/${w.id}`, { method: 'PATCH', body: toBody(r, true) });
@@ -225,7 +247,8 @@ export async function watchlistView(el, { query }) {
     <form class="card filters" data-search style="margin-bottom:12px">
       <label class="field grow">بحث<input class="input" name="q" value="${q}" placeholder="رقم اللوت، VIN، الماركة، الطراز، المدينة…"></label>
       <button class="btn btn-primary">بحث</button>
-      ${can(...WRITERS) ? html`<button type="button" class="btn btn-accent" data-add>${icon('plus')} إضافة لوت</button>` : ''}
+      ${can(...WRITERS) ? html`<button type="button" class="btn btn-accent" data-add>${icon('plus')} إضافة لوت</button>
+        <button type="button" class="btn" data-grabber>⭐ زر الاستيراد من المزاد</button>` : ''}
     </form>
     <div class="card" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l, n]) => html`<button type="button" class="${k === status ? 'on' : ''}" data-tab="${k}">${l} <span class="faint">${n}</span></button>`)}</div>
       ${status === 'WATCHING' && soon ? html`<div class="card-b" style="padding:10px 16px"><b class="neg">${soon}</b> مزاد يبدا خلال 24 ساعة</div>` : ''}</div>
@@ -234,6 +257,14 @@ export async function watchlistView(el, { query }) {
   $('[data-search]', el).addEventListener('submit', (e) => { e.preventDefault(); go(status, e.target.q.value.trim()); });
   $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
   $('[data-add]', el)?.addEventListener('click', () => lotDialog(null, reload));
+  $('[data-grabber]', el)?.addEventListener('click', grabberDialog);
+  // فُتحت من «زر الاستيراد»: نافذة إضافة معبّأة، ثم نزيل البيانات من الرابط حتى لا تُفتح ثانية عند التحديث
+  if (query.import) {
+    let pre = null;
+    try { pre = decodeImport(query.import); } catch { toast('بيانات الاستيراد غير صالحة', 'err'); }
+    history.replaceState(null, '', `#/watchlist?status=${status}`);
+    if (pre && can(...WRITERS)) lotDialog(null, reload, pre);
+  }
   for (const w of data.items) {
     const card = $(`[data-lot="${w.id}"]`, el);
     if (!card) continue;
