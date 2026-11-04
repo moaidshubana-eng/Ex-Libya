@@ -193,7 +193,7 @@ async function carPage(id) {
 async function statementPage() {
   const s = await api('/portal/statement');
   render(main, html`<div class="pt-title"><h1>كشف الحساب</h1><button class="btn btn-sm no-print" data-print>طباعة / PDF</button></div>
-    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo.svg" alt="Golden Gate Motors"><b>${s.name}</b> (${s.code}) — ${fmt.date(new Date())}</div>
+    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><b>${s.name}</b> (${s.code}) — ${fmt.date(new Date())}</div>
     <div class="grid g3">${s.summary.length ? s.summary.map((x) => html`<div class="card card-b pt-kpi"><span>الرصيد بـ${{ USD: 'الدولار', LYD: 'الدينار', EUR: 'اليورو' }[x.currency]}</span>
       <b class="${Number(x.balance) > 0.0005 ? 'neg' : 'pos'}">${Number(x.balance) > 0.0005 ? `عليك ${money(x.balance, x.currency)}` : Number(x.balance) < -0.0005 ? `لك ${money(-x.balance, x.currency)}` : 'خالص ✓'}</b>
       <span class="faint" style="font-size:12px">المستحق ${money(x.charged, x.currency)} · المدفوع ${money(x.paid, x.currency)}</span></div>`) : html`<div class="card card-b empty">لا توجد حركات بعد</div>`}</div>

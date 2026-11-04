@@ -33,7 +33,7 @@ export async function receiptView(el, { params, setTitle }) {
     <div class="card card-b receipt">
       ${p.voided ? html`<div class="alert danger" style="margin-bottom:12px"><b>ملغى:</b> ${p.voidReason}</div>` : ''}
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid var(--brand);padding-bottom:12px">
-        <div><img src="/brand/ggm-logo.svg" alt="Golden Gate Motors" style="height:48px"><div class="faint" style="margin-top:4px">منظومة الاستيراد والمزايدة</div></div>
+        <div><img src="/brand/ggm-logo-official.png" alt="Golden Gate Motors" style="height:72px"><div class="faint" style="margin-top:4px">منظومة الاستيراد والمزايدة</div></div>
         <div style="text-align:end"><h2 style="margin:0">${title}</h2><div class="mono" style="font-size:18px;font-weight:700">${p.receiptNo}</div>
           <div class="faint">${fmt.date(p.paidAt)}</div></div></div>
       <div class="receipt-amount">
@@ -81,7 +81,7 @@ export async function financeView(el, { query }) {
   const kpi = (label, v, color, sub = '') => html`<div class="card card-b"><div class="faint">${label}</div><div class="num" style="font-size:24px;font-weight:700;color:${color}">${lyd(v)}</div>${sub ? html`<div class="faint" style="font-size:12px">${sub}</div>` : ''}</div>`;
   const reload = () => financeView(el, { query: { month } });
   render(el, html`
-    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo.svg" alt="Golden Gate Motors"><h2 style="margin:4px 0">الأرباح والمصاريف — ${month}</h2></div>
+    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><h2 style="margin:4px 0">الأرباح والمصاريف — ${month}</h2></div>
     <form class="card filters no-print" data-month style="margin-bottom:16px"><label class="field">الشهر<input class="input" type="month" name="month" value="${month}"></label>
       <button class="btn btn-primary">عرض</button>
       ${can('ADMIN', 'ACCOUNTANT') ? html`<button type="button" class="btn btn-accent" data-new>${icon('plus')} مصروف جديد</button>` : ''}

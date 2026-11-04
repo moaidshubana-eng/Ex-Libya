@@ -64,7 +64,7 @@ export async function statementView(el, { params, setTitle }) {
   const reload = () => statementView(el, { params, setTitle });
 
   render(el, html`
-    <div class="print-only" style="margin-bottom:12px"><img class="print-logo" src="/brand/ggm-logo.svg" alt="Golden Gate Motors">
+    <div class="print-only" style="margin-bottom:12px"><img class="print-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors">
       <h2 style="margin:6px 0 0">كشف حساب ${type === 'customer' ? 'العميل' : 'المورد'}: ${p.name}${p.code ? ` (${p.code})` : ''}</h2><div>بتاريخ ${today}</div></div>
     <div class="row no-print" style="justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <a class="btn btn-ghost btn-sm" href="#/accounts?tab=${type}s">${icon('right')} كل الحسابات</a>

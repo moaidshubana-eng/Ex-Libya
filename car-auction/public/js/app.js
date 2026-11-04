@@ -82,7 +82,7 @@ function shell() {
   });
   render(document.body, html`<a class="sr-only" href="#main">تخطَّ إلى المحتوى</a><div class="shell">
     <aside class="sidebar" aria-label="القائمة الرئيسية">
-      <div class="brand"><img class="brand-logo" src="/brand/ggm-logo-light.svg" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
+      <div class="brand"><img class="brand-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
       <nav class="nav">${nav}</nav>
       <div class="me"><b>${u.full_name}</b><span>${LABELS.role[u.role]}</span>
         <div class="row" style="margin-top:8px"><button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-theme-toggle>الوضع الداكن/الفاتح</button>
@@ -90,7 +90,7 @@ function shell() {
         <button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-logout>${icon('logout')} خروج</button></div></div>
     </aside>
     <main class="main" id="main">
-      <header class="topbar"><button class="btn btn-sm menu-btn" data-menu aria-label="القائمة">${icon('menu')}</button><img class="topbar-mark" src="/brand/ggm-mark.svg" alt="Golden Gate Motors">
+      <header class="topbar"><button class="btn btn-sm menu-btn" data-menu aria-label="القائمة">${icon('menu')}</button><img class="topbar-mark" src="/brand/ggm-icon-64.png" alt="Golden Gate Motors">
         <div><h1 data-title></h1><div class="crumbs" data-crumbs></div></div><span class="spacer"></span></header>
       <div class="content" data-content></div>
     </main></div><div class="toast-host" aria-live="polite"></div>`);
@@ -107,7 +107,7 @@ function shell() {
 function loginScreen() {
   render(document.body, html`<div class="login">
     <section class="hero">
-      <div class="brand brand-hero"><img class="brand-logo" src="/brand/ggm-logo-light.svg" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
+      <div class="brand brand-hero"><img class="brand-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
       <div><h1>من ساحة المزاد في أمريكا<br>إلى المشتري في ليبيا — في شاشة واحدة</h1>
         <p>تتبع كل سيارة عبر الشحن والجمارك والنقل، تكاليف دقيقة لكل سيارة، ومزايدات حية، وتقارير جاهزة للتصدير.</p></div>
       <div class="feats">
