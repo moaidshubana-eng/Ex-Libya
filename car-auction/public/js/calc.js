@@ -27,7 +27,6 @@ export const PORTS = {
   NJ: { label: 'نيوجيرسي (Newark)', quad: 1050, triple: 1400, loading: 1700 },
   TX: { label: 'هيوستن (Houston)', quad: 1150, triple: 1530, loading: 1850 },
   CA: { label: 'لوس أنجلوس (Long Beach)', quad: 1600, triple: 2130, loading: 2650 },
-  WA: { label: 'سياتل (Seattle)', quad: 1950, triple: 2600, loading: 3250 },
 };
 export const SHIP_TYPES = { quad: 'رباعي (4 بالحاوية)', triple: 'ثلاثي (3 بالحاوية)', loading: 'تحميل' };
 // الجمرك بالدينار، ثابت لا يتأثر بسعر الصرف
@@ -51,7 +50,9 @@ export function saveSettings(s) {
 }
 
 // ------------------------------------------------------------ الساحات
-const yardObj = (platform) => ([state, port, city, name, towing]) => ({ platform, state, port, city, name, towing });
+// هامش الشركة على سعر النقل الداخلي في ملحق الوسيط
+export const TOWING_MARGIN = 50;
+const yardObj = (platform) => ([state, port, city, name, towing]) => ({ platform, state, port, city, name, towing: towing + TOWING_MARGIN });
 export const YARDS = { COPART: COPART_YARDS.map(yardObj('COPART')), IAAI: IAAI_YARDS.map(yardObj('IAAI')) };
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\(.*?\)|—.*$|\b(iaa|iaai|copart)\b/g, '').replace(/^[a-z]{2}\s*-\s*/, '').replace(/[^a-z]/g, '');

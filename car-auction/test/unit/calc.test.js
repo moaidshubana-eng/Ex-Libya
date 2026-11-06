@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { estimate, findYard, isCleanTitle, estimateLot, PORTS } from '../../public/js/calc.js';
+import { estimate, findYard, isCleanTitle, estimateLot, PORTS, YARDS, TOWING_MARGIN } from '../../public/js/calc.js';
 
 const S = { exchange: 8.4, transferPct: 3, wire: 3, ports: PORTS };
 const near = (a, b) => assert.ok(Math.abs(a - b) < 0.005, `${a} ≠ ${b}`);
@@ -33,10 +33,26 @@ describe('حاسبة التكلفة حتى ليبيا', () => {
 
   test('مطابقة الساحة من بيانات اللوت', () => {
     assert.equal(findYard('IAAI', { usState: 'FL', city: 'Orlando', branch: 'Orlando-North (FL)' }).name, 'Orlando-North IAA');
-    assert.equal(findYard('COPART', { usState: 'NY', city: 'Rochester', branch: 'NY - Rochester — Lane A-48' }).towing, 525);
+    assert.equal(findYard('COPART', { usState: 'NY', city: 'Rochester', branch: 'NY - Rochester — Lane A-48' }).towing, 575);
     assert.equal(findYard('IAAI', { usState: 'TX', city: 'Lubbock', branch: 'Lubbock (TX) — Lane A-93' }).port, 'TX');
-    assert.equal(findYard('COPART', { usState: 'IN', city: 'Fort Wayne', branch: 'IN - Fort Wayne' }).towing, 675);
+    assert.equal(findYard('COPART', { usState: 'IN', city: 'Fort Wayne', branch: 'IN - Fort Wayne' }).towing, 725);
     assert.equal(findYard('IAAI', { usState: 'ZZ', city: 'Nowhere' }), null);
+  });
+
+  test('الساحات حسب ملحق أكتوبر 2026 مع هامش الشركة', () => {
+    assert.equal(TOWING_MARGIN, 50);
+    assert.equal(YARDS.COPART.length, 190);
+    assert.equal(YARDS.IAAI.length, 176);
+    assert.deepEqual(Object.keys(PORTS), ['GA', 'NJ', 'TX', 'CA']);
+    assert.ok([...YARDS.COPART, ...YARDS.IAAI].every((y) => PORTS[y.port]));
+    const seattle = findYard('IAAI', { branch: 'Seattle' });
+    assert.deepEqual([seattle.towing, seattle.port], [925, 'CA']);
+    assert.equal(findYard('COPART', { branch: 'Savannah' }).towing, 230);
+    assert.equal(findYard('IAAI', { branch: 'Houston' }).towing, 300);
+    assert.equal(findYard('COPART', { branch: 'Tucson' }).towing, 525);
+    assert.equal(findYard('COPART', { branch: 'Tifton' }).state, 'GA');
+    for (const branch of ['Bismarck', 'Rapid City', 'Casper', 'Billings', 'Helena']) assert.equal(findYard('COPART', { branch }), null);
+    for (const branch of ['Fargo', 'Casper', 'Billings', 'Missoula']) assert.equal(findYard('IAAI', { branch }), null);
   });
 
   test('نوع الملكية والتقدير السريع للوت', () => {
