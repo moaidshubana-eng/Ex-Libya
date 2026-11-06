@@ -39,7 +39,7 @@ export const defaultCustomsIdx = (year) => (year >= 2023 ? 3 : 0);
 // ------------------------------------------------------------ الإعدادات (لكل مستخدم في متصفحه)
 const KEY = 'ggm_calc_settings';
 /** أسعار الشركة الافتراضية — وهي نفسها في الحاسبة العامة (/calc) التي لا يغيّرها الزائر */
-export const defaultSettings = () => ({ exchange: 8.4, transferPct: 3, wire: 3, ports: structuredClone(PORTS) });
+export const defaultSettings = () => ({ exchange: 10, transferPct: 3, wire: 3, ports: structuredClone(PORTS) });
 export function loadSettings() {
   const s = defaultSettings();
   try { Object.assign(s, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* التخزين غير متاح */ }
