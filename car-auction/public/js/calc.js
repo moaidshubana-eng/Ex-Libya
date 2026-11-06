@@ -39,7 +39,13 @@ export const defaultCustomsIdx = (year) => (year >= 2023 ? 3 : 0);
 // ------------------------------------------------------------ الإعدادات (لكل مستخدم في متصفحه)
 const KEY = 'ggm_calc_settings';
 /** أسعار الشركة الافتراضية — وهي نفسها في الحاسبة العامة (/calc) التي لا يغيّرها الزائر */
-export const defaultSettings = () => ({ exchange: 10, transferPct: 3, wire: 3, ports: structuredClone(PORTS) });
+export const defaultSettings = () => ({ exchange: 10, transferPct: 3, wire: 3, towingMargin: TOWING_MARGIN, ports: structuredClone(PORTS) });
+/** إعدادات المدير المحفوظة في الخادم فوق الافتراضية (الحاسبة العامة) */
+export function mergeSettings(saved) {
+  const d = defaultSettings();
+  if (!saved) return d;
+  return { ...d, ...saved, ports: Object.fromEntries(Object.keys(PORTS).map((k) => [k, { ...PORTS[k], ...saved.ports?.[k] }])) };
+}
 export function loadSettings() {
   const s = defaultSettings();
   try { Object.assign(s, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* التخزين غير متاح */ }
@@ -54,6 +60,8 @@ export function saveSettings(s) {
 export const TOWING_MARGIN = 50;
 const yardObj = (platform) => ([state, port, city, name, towing]) => ({ platform, state, port, city, name, towing: towing + TOWING_MARGIN });
 export const YARDS = { COPART: COPART_YARDS.map(yardObj('COPART')), IAAI: IAAI_YARDS.map(yardObj('IAAI')) };
+/** سعر نقل الساحة بعد هامش الإعدادات (y.towing يحمل الهامش الافتراضي) */
+export const yardTowing = (y, s) => y.towing - TOWING_MARGIN + (s?.towingMargin ?? TOWING_MARGIN);
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\(.*?\)|—.*$|\b(iaa|iaai|copart)\b/g, '').replace(/^[a-z]{2}\s*-\s*/, '').replace(/[^a-z]/g, '');
 /** يطابق ساحة اللوت: باسم الفرع أولًا، ثم المدينة داخل الولاية */

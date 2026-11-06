@@ -743,6 +743,14 @@ CREATE INDEX idx_portal_sessions_customer ON portal_sessions(customer_id) WHERE 
 ALTER TABLE vehicles ADD COLUMN track_code TEXT NOT NULL DEFAULT substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
 CREATE UNIQUE INDEX uq_vehicles_track_code ON vehicles(track_code);
 
+-- إعدادات الحاسبة العامة (/calc): صف واحد يغيّره المدير ويقرأه كل زائر
+CREATE TABLE calc_settings (
+  id          BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),   -- يضمن صفًا واحدًا فقط
+  data        JSONB NOT NULL,                                -- سعر الصرف، فرق الحوالة، الواير، هامش النقل، أسعار الشحن
+  updated_by  UUID REFERENCES users(id),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ---------------------------------------------------------------------
 -- 9) التكامل والمزامنة
 -- ---------------------------------------------------------------------

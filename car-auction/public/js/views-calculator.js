@@ -1,15 +1,15 @@
 // حاسبة التكلفة: من سعر المزايدة في أمريكا إلى التكلفة الواصلة في ليبيا، مع عرض سعر قابل للطباعة.
 // تُفتح فارغة، أو من لوت في «مزادات أمريكا» (#/calculator?lot=<id>) فتُعبّأ ببياناته.
 import { html, render, $, $$, api, fmt, toast } from './core.js';
-import { estimate, loadSettings, saveSettings, defaultSettings, YARDS, findYard, isCleanTitle, PORTS, SHIP_TYPES, CUSTOMS, defaultCustomsIdx } from './calc.js';
+import { estimate, loadSettings, saveSettings, mergeSettings, YARDS, yardTowing, findYard, isCleanTitle, PORTS, SHIP_TYPES, CUSTOMS, defaultCustomsIdx } from './calc.js';
 
 const usd = (v) => `$${Math.round(v).toLocaleString('en-US')}`;
 const lyd = (v) => `${Math.round(v).toLocaleString('en-US')} د.ل`;
 const seg = (name, opts, cur) => html`<div class="seg" role="radiogroup">${opts.map(([v, l]) => html`<label><input type="radio" name="${name}" value="${v}" ${v === cur ? 'checked' : ''}><span>${l}</span></label>`)}</div>`;
 
-/** publicMode: الصفحة العامة (/calc) — بلا تسجيل دخول، والإعدادات ثابتة على أسعار الشركة لا يغيّرها الزائر */
-export async function calculatorView(el, { query = {}, setTitle = () => {}, publicMode = false }) {
-  const s = publicMode ? defaultSettings() : loadSettings();
+/** publicMode: الصفحة العامة (/calc) — بلا تسجيل دخول، وإعداداتها ما حفظه المدير (settings) لا يغيّرها الزائر */
+export async function calculatorView(el, { query = {}, setTitle = () => {}, publicMode = false, settings = null }) {
+  const s = publicMode ? mergeSettings(settings) : loadSettings();
   const st = { platform: 'COPART', clean: false, live: false, bid: '', yard: null, towing: '', port: 'NJ', shipType: 'quad', customsIdx: 0,
     sublot: '', titleIssue: '', customer: '', title: '' };
   if (query.lot && !publicMode) {
@@ -44,7 +44,7 @@ export async function calculatorView(el, { query = {}, setTitle = () => {}, publ
           <h3 class="calc-h">2 · الساحة والنقل الداخلي</h3>
           <label class="field">ابحث عن الساحة (المدينة، الاسم أو الولاية)<input class="input" name="yardq" autocomplete="off" placeholder="مثلًا: Lubbock أو TX" value="${st.yard ? `${st.yard.name} — ${st.yard.city}, ${st.yard.state}` : ''}"></label>
           <div class="calc-yards" data-yards></div>
-          <label class="field">أو اكتب سعر النقل الداخلي ($)<input class="input num" name="towing" inputmode="decimal" placeholder="${st.yard ? st.yard.towing : '0'}"></label>
+          <label class="field">أو اكتب سعر النقل الداخلي ($)<input class="input num" name="towing" inputmode="decimal" placeholder="${st.yard ? yardTowing(st.yard, s) : '0'}"></label>
         </div>
         <div class="card card-b">
           <h3 class="calc-h">3 · الشحن البحري والجمرك</h3>
@@ -93,12 +93,12 @@ export async function calculatorView(el, { query = {}, setTitle = () => {}, publ
     const box = $('[data-yards]', el);
     if (!q || (st.yard && f('yardq').value === `${st.yard.name} — ${st.yard.city}, ${st.yard.state}`)) { render(box, ''); return; }
     const list = YARDS[radio('platform')].filter((y) => `${y.name} ${y.city} ${y.state}`.toLowerCase().includes(q)).slice(0, 8);
-    render(box, list.length ? html`${list.map((y, i) => html`<button type="button" data-yard="${i}"><b>${y.name}</b> <span class="faint">${y.city}, ${y.state}</span><span class="num">$${y.towing} → ${y.port}</span></button>`)}`
+    render(box, list.length ? html`${list.map((y, i) => html`<button type="button" data-yard="${i}"><b>${y.name}</b> <span class="faint">${y.city}, ${y.state}</span><span class="num">$${yardTowing(y, s)} → ${y.port}</span></button>`)}`
       : html`<div class="faint" style="padding:8px">لا توجد ساحة بهذا الاسم — اكتب سعر النقل يدويًا</div>`);
     $$('[data-yard]', box).forEach((b) => b.addEventListener('click', () => {
       st.yard = list[Number(b.dataset.yard)];
       f('yardq').value = `${st.yard.name} — ${st.yard.city}, ${st.yard.state}`;
-      f('towing').value = ''; f('towing').placeholder = st.yard.towing;
+      f('towing').value = ''; f('towing').placeholder = yardTowing(st.yard, s);
       f('port').value = st.yard.port; st.port = st.yard.port;
       drawShips(); drawYards(); compute();
     }));
@@ -106,7 +106,7 @@ export async function calculatorView(el, { query = {}, setTitle = () => {}, publ
 
   const compute = () => {
     st.shipType = radio('shipType') || st.shipType;
-    const towing = f('towing').value !== '' ? Number(f('towing').value) : st.yard?.towing || 0;
+    const towing = f('towing').value !== '' ? Number(f('towing').value) : (st.yard ? yardTowing(st.yard, s) : 0);
     const e = estimate({ platform: radio('platform'), clean: radio('clean') === '1', live: radio('live') === '1', bid: f('bid').value,
       towing, port: f('port').value, shipType: st.shipType, customsLYD: f('customsOn').checked ? f('customsLYD').value : 0, sublot: f('sublot').value, titleIssue: f('titleIssue').value }, s);
     const withCustoms = f('customsOn').checked;

@@ -48,7 +48,7 @@ export function createApp() {
     res.set('Cache-Control', 'no-cache');
     res.type('html').send(indexHtml);
   });
-  // الحاسبة العامة: صفحة مستقلة بلا تسجيل دخول لأي زائر (الحساب كله في المتصفح، لا تلمس الـAPI)
+  // الحاسبة العامة: صفحة مستقلة بلا تسجيل دخول لأي زائر (الحساب كله في المتصفح؛ تقرأ إعدادات المدير فقط من الـAPI)
   const calcHtml = readFileSync(join(pub, 'calc.html'), 'utf8')
     .replace('src="/js/calc-page.js"', `src="/v/${build}/js/calc-page.js"`)
     .replace('href="/styles.css"', `href="/v/${build}/styles.css"`);

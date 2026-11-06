@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { estimate, findYard, isCleanTitle, estimateLot, PORTS, YARDS, TOWING_MARGIN } from '../../public/js/calc.js';
+import { estimate, findYard, isCleanTitle, estimateLot, PORTS, YARDS, TOWING_MARGIN, mergeSettings, yardTowing } from '../../public/js/calc.js';
 
 const S = { exchange: 8.4, transferPct: 3, wire: 3, ports: PORTS };
 const near = (a, b) => assert.ok(Math.abs(a - b) < 0.005, `${a} ≠ ${b}`);
@@ -53,6 +53,17 @@ describe('حاسبة التكلفة حتى ليبيا', () => {
     assert.equal(findYard('COPART', { branch: 'Tifton' }).state, 'GA');
     for (const branch of ['Bismarck', 'Rapid City', 'Casper', 'Billings', 'Helena']) assert.equal(findYard('COPART', { branch }), null);
     for (const branch of ['Fargo', 'Casper', 'Billings', 'Missoula']) assert.equal(findYard('IAAI', { branch }), null);
+  });
+
+  test('إعدادات المدير فوق الافتراضية، وهامش النقل يغيّر سعر الساحة', () => {
+    const d = mergeSettings(null);
+    assert.deepEqual([d.exchange, d.towingMargin, d.ports.NJ.quad], [10, 50, 1050]);
+    const s = mergeSettings({ exchange: 9, towingMargin: 80, ports: { NJ: { quad: 1111 } } });
+    assert.deepEqual([s.exchange, s.ports.NJ.quad, s.ports.NJ.triple, s.ports.NJ.label], [9, 1111, 1400, PORTS.NJ.label]);
+    const y = findYard('COPART', { branch: 'Savannah' });
+    assert.equal(yardTowing(y, d), 230);
+    assert.equal(yardTowing(y, s), 260);
+    assert.equal(yardTowing(y, mergeSettings({ towingMargin: 0 })), 180);
   });
 
   test('نوع الملكية والتقدير السريع للوت', () => {

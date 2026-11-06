@@ -151,6 +151,38 @@ api.post('/exchange-rates', requireRole(['ADMIN', 'ACCOUNTANT']), asyncH(async (
   res.status(201).json(r);
 }));
 
+// ---------------------------------------------------------------- إعدادات الحاسبة العامة
+// القراءة لكل زائر (الحاسبة العامة بلا دخول)؛ التعديل للمدير فقط
+const CALC_PORTS = ['GA', 'NJ', 'TX', 'CA'];
+const CALC_SHIP_TYPES = ['quad', 'triple', 'loading'];
+const calcNum = (v, min, max, label) => {
+  const n = v === '' || v == null ? NaN : Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) throw new HttpError(422, 'CALC_SETTING', `${label}: قيمة غير معقولة`);
+  return n;
+};
+
+api.get('/public/calc-settings', asyncH(async (_req, res) => {
+  const { rows: [r] } = await query('SELECT data FROM calc_settings');
+  res.set('Cache-Control', 'no-store');
+  res.json({ settings: r?.data ?? null });
+}));
+
+api.put('/calc-settings', requireRole('ADMIN'), asyncH(async (req, res) => {
+  const b = req.body || {};
+  const data = {
+    exchange: calcNum(b.exchange, 0.5, 50, 'سعر الصرف'),
+    transferPct: calcNum(b.transferPct, 0, 100, 'فرق الحوالة'),
+    wire: calcNum(b.wire, 0, 1000, 'الواير'),
+    towingMargin: calcNum(b.towingMargin, 0, 5000, 'هامش النقل'),
+    ports: Object.fromEntries(CALC_PORTS.map((p) => [p, Object.fromEntries(CALC_SHIP_TYPES.map((k) => [k, calcNum(b.ports?.[p]?.[k], 0, 100000, `شحن ${p}`)]))])),
+  };
+  await query(
+    `INSERT INTO calc_settings (id, data, updated_by) VALUES (TRUE, $1, $2)
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now()`, [data, req.user.id]);
+  await audit(null, { actorId: req.user.id, action: 'CALC_SETTINGS_SET', entity: 'calc_settings', entityId: 'public', after: data, ip: req.ip });
+  res.json({ settings: data });
+}));
+
 // ---------------------------------------------------------------- مرجعيات
 api.get('/meta', requireAuth, asyncH(async (req, res) => {
   const [cats, ports, rates, makes, vendors] = await Promise.all([

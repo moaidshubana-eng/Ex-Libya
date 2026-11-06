@@ -322,6 +322,8 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .pub-title p { margin: 2px 0 0; color: #c6d3e3; font-size: 14px; }
 .pub-main { flex: 1; padding-top: 20px; padding-bottom: 28px; }
 .pub-foot { background: #0b1628; color: #c6d3e3; font-size: 13px; padding: 14px 0; text-align: center; }
+.calc-mark { background: none; border: 0; color: inherit; opacity: .3; font-size: 12px; padding: 4px 8px; margin-inline-start: 4px; cursor: pointer; }
+.calc-mark:hover, .calc-mark:focus-visible { opacity: .9; }
 @media (max-width: 600px) { .pub-logo { height: 52px; } .pub-title h1 { font-size: 18px; } }
 @media print { .pub-head { display: none; } .pub-main { padding: 0; } }
 
