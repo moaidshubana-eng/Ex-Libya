@@ -404,8 +404,7 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .stmt-t tfoot th { background: var(--surface-2); }
 .stmt-t td, .stmt-t th { white-space: normal; }
 .stmt-t .n, .stmt-t td:nth-child(2) { white-space: nowrap; }
-.stmt-void { opacity: .5; text-decoration: line-through; }
-@page stmt { size: A4 portrait; margin: 12mm; }
+.stmt-void { opacity: .5; text-decoration: line-through; }@page stmt { size: A4 portrait; margin: 12mm; }
 @media (max-width: 600px) { .stmt-kpis { grid-template-columns: 1fr; } .stmt-head { flex-direction: column; } }
 
 @media print {

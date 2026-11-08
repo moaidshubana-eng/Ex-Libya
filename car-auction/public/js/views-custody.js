@@ -10,6 +10,87 @@ const day = (d) => (d ? d.split('-').reverse().join('/') : '—'); // YYYY-MM-DD
 const KIND = { RECEIPT: 'استلام من الخزينة', EXPENSE: 'صرف', RETURN: 'إرجاع للخزينة' };
 const opts = (list, cur) => list.map(([v, l]) => html`<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`);
 
+// ======================================================================= تحميل PDF
+// المتصفح نفسه يرسم الكشف صورةً (SVG foreignObject)، فيبقى العربي ووصل الحروف والمسافات كما على الشاشة؛
+// ورسم html2canvas للنص العربي يلزق الكلمات ببعض. ثم jsPDF (من /vendor، تُحمَّل عند أول ضغطة؛ CSP لا تسمح بسكربت خارجي)
+// يضع الصورة في صفحات A4 مقطوعة بين السطور لا في وسطها.
+const PDF_W = 720; // عرض المحتوى بالبكسل = 190 مم (A4 ناقص هامشين 10 مم)
+const PDF_SCALE = 2;
+const PAGE_H = (PDF_W * 277) / 190; // ارتفاع 277 مم بنفس المقياس
+let pdfLib, cssText;
+const loadPdfLib = () => (pdfLib ??= new Promise((resolve, reject) => {
+  const s = Object.assign(document.createElement('script'), { src: '/vendor/html2pdf.bundle.min.js' });
+  s.onload = () => resolve(window.html2pdf);
+  s.onerror = () => { pdfLib = null; reject(new Error('تعذّر تحميل أداة PDF')); };
+  document.head.appendChild(s);
+}));
+const dataUrl = (blob) => new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+
+/** يرسم العقدة على لوحة بعرض صفحة A4 بالألوان الفاتحة، ويعيد مواضع القطع الممكنة (نهايات السطور) */
+async function snapshot(node) {
+  const copy = node.cloneNode(true);
+  copy.querySelectorAll('.no-print').forEach((x) => x.remove());
+  copy.style.cssText = `width:${PDF_W}px;max-width:none;margin:0;box-shadow:none;border:0;border-radius:0`;
+  copy.querySelectorAll('.table-wrap').forEach((x) => { x.style.overflow = 'visible'; });
+  // الصورة داخل SVG لا تجلب ملفات خارجية: الشعار يُضمَّن
+  for (const im of copy.querySelectorAll('img')) im.src = await dataUrl(await fetch(im.src).then((r) => r.blob()));
+  cssText ??= await fetch([...document.querySelectorAll('link[rel=stylesheet]')].map((l) => l.href).find((h) => h.startsWith(location.origin))).then((r) => r.text());
+
+  const root = document.documentElement;
+  const theme = root.dataset.theme;
+  root.dataset.theme = 'light';
+  const probe = Object.assign(document.createElement('div'), { dir: 'rtl' });
+  probe.style.cssText = `position:absolute;top:0;left:0;width:${PDF_W}px;visibility:hidden`;
+  probe.appendChild(copy);
+  document.body.appendChild(probe);
+  const top = copy.getBoundingClientRect().top;
+  const height = Math.ceil(copy.getBoundingClientRect().height) + 2;
+  const cuts = [...copy.querySelectorAll('thead tr, tbody tr, tfoot tr, .stmt-kpis')].map((x) => Math.ceil(x.getBoundingClientRect().bottom - top));
+  probe.remove();
+  if (theme) root.dataset.theme = theme; else delete root.dataset.theme;
+
+  const font = '*{font-family:"Segoe UI",Tahoma,Arial,sans-serif !important}';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" data-theme="light" width="${PDF_W}" height="${height}"><foreignObject x="0" y="0" width="100%" height="100%">`
+    + `<div xmlns="http://www.w3.org/1999/xhtml" dir="rtl" lang="ar" style="width:${PDF_W}px;background:#fff"><style>${cssText.replace(/<\//g, '<\\/')}${font}</style>`
+    + `${new XMLSerializer().serializeToString(copy)}</div></foreignObject></svg>`;
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await img.decode();
+  const canvas = Object.assign(document.createElement('canvas'), { width: PDF_W * PDF_SCALE, height: height * PDF_SCALE });
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(PDF_SCALE, PDF_SCALE);
+  ctx.drawImage(img, 0, 0);
+  return { canvas, height, cuts };
+}
+
+/** يقطع اللوحة صفحات عند نهايات السطور */
+function paginate({ canvas, height, cuts }) {
+  const pages = [];
+  for (let start = 0; start < height;) {
+    const limit = start + PAGE_H;
+    const end = height <= limit ? height : Math.max(...cuts.filter((c) => c > start && c <= limit), Math.floor(limit));
+    const page = Object.assign(document.createElement('canvas'), { width: canvas.width, height: Math.ceil((end - start) * PDF_SCALE) });
+    page.getContext('2d').drawImage(canvas, 0, start * PDF_SCALE, canvas.width, page.height, 0, 0, canvas.width, page.height);
+    pages.push(page);
+    start = end;
+  }
+  return pages;
+}
+
+async function downloadPdf(node, filename) {
+  const [html2pdf, shot] = await Promise.all([loadPdfLib(), snapshot(node)]);
+  const [first, ...rest] = paginate(shot);
+  const pdf = await html2pdf().set({ margin: 10, image: { type: 'jpeg', quality: 0.95 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } })
+    .from(first, 'canvas').toPdf().get('pdf');
+  for (const p of rest) {
+    pdf.addPage();
+    pdf.addImage(p.toDataURL('image/jpeg', 0.95), 'JPEG', 10, 10, 190, (p.height / PDF_SCALE) * (190 / PDF_W));
+  }
+  pdf.save(filename);
+}
+
 // ======================================================================= القائمة
 export async function custodiesView(el) {
   const { items } = await api('/custodies');
@@ -50,7 +131,8 @@ export async function custodyView(el, { params, setTitle }) {
         ${writer() && k.is_active ? html`<button class="btn" data-add="RECEIPT">استلام من الخزينة</button>
           <button class="btn btn-accent" data-add="EXPENSE">${icon('plus')} صرف</button>
           <button class="btn" data-add="RETURN">إرجاع للخزينة</button>` : ''}
-        <button class="btn btn-primary" data-print>طباعة / PDF</button></div></div>
+        <button class="btn btn-primary" data-pdf>${icon('pdf')} تحميل PDF</button>
+        <button class="btn" data-print>طباعة</button></div></div>
     <div class="card card-b stmt">
       <div class="stmt-head">
         <div><img src="/brand/ggm-logo-official.png" alt="Golden Gate Motors" style="height:68px"></div>
@@ -74,6 +156,11 @@ export async function custodyView(el, { params, setTitle }) {
       <div class="receipt-sign"><div>صاحب العهدة<br><span></span></div><div>المحاسب<br><span></span></div></div>
     </div>`);
   $('[data-print]', el).addEventListener('click', () => window.print());
+  $('[data-pdf]', el).addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    try { await downloadPdf($('.stmt', el), `كشف عهدة ${k.holder_name} ${day(new Date().toISOString().slice(0, 10)).replaceAll('/', '-')}.pdf`); } catch (e) { toast(`تعذّر إنشاء الملف: ${e.message}`, 'err'); } finally { btn.disabled = false; }
+  });
   $$('[data-add]', el).forEach((b) => b.addEventListener('click', async () => {
     const kind = b.dataset.add;
     const today = new Date().toISOString().slice(0, 10);
