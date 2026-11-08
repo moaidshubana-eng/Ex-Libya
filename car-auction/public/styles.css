@@ -393,6 +393,20 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .receipt-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; text-align: center; color: var(--text-2); }
 .receipt-sign span { display: block; border-bottom: 1px dotted var(--text-2); height: 40px; }
 @page receipt { size: A5 portrait; margin: 10mm; }
+/* كشف العهدة */
+.stmt { max-width: 900px; margin: 0 auto; }
+.stmt-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid var(--brand); padding-bottom: 12px; }
+.stmt-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+.stmt-kpis > div { background: var(--surface-2); border-radius: 10px; padding: 10px 14px; display: grid; gap: 2px; }
+.stmt-kpis span { color: var(--text-2); font-size: 13px; }
+.stmt-kpis b { font-size: 20px; }
+.stmt-bal { border: 1px solid var(--brand); }
+.stmt-t tfoot th { background: var(--surface-2); }
+.stmt-t td, .stmt-t th { white-space: normal; }
+.stmt-t .n, .stmt-t td:nth-child(2) { white-space: nowrap; }
+.stmt-void { opacity: .5; text-decoration: line-through; }
+@page stmt { size: A4 portrait; margin: 12mm; }
+@media (max-width: 600px) { .stmt-kpis { grid-template-columns: 1fr; } .stmt-head { flex-direction: column; } }
 
 @media print {
   @page { size: A4 landscape; margin: 12mm; }
@@ -409,6 +423,10 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
   .print-only { display: block; }
   .receipt { page: receipt; max-width: none; border: 0; padding: 0; font-size: 12px; }
   .receipt-amount { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .stmt { page: stmt; max-width: none; border: 0; padding: 0; }
+  .stmt .t.stmt-t { font-size: 11px; }
+  .stmt .t.stmt-t td, .stmt .t.stmt-t th { padding: 5px 6px; }
+  .stmt-kpis > div, .stmt-t tfoot th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .calc { display: block; }
   .calc-in { display: none !important; }
   .calc-res { page: receipt; max-width: 560px; margin: 0 auto; font-size: 12px; }

@@ -99,7 +99,7 @@ describe('المصاريف العامة والربح الشهري', () => {
 
 describe('الهجرة 0003 على قاعدة قائمة', () => {
   test('تُرقّم الدفعات الموجودة بلا أرقام', async () => {
-    await query('DROP TABLE IF EXISTS company_expenses');
+    await query('DROP TABLE IF EXISTS custody_entries, custodies, company_expenses'); // العهد (0008) تعتمد على المصاريف
     await query('DROP INDEX IF EXISTS uq_account_payments_receipt');
     await query('ALTER TABLE account_payments DROP COLUMN receipt_no');
     await query(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);

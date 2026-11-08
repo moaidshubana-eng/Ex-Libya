@@ -27,25 +27,35 @@ export function monthRange(month) {
   return { month: `${y}-${pad(mo)}`, from: `${y}-${pad(mo)}-01`, to: `${next[0]}-${pad(next[1])}-01` };
 }
 
-export async function addExpense(b, actor) {
+/** يسجّل المصروف داخل معاملة قائمة (تستعمله العهدة أيضًا ليُسجَّل المصروف وقيد العهدة معًا) */
+export async function insertExpense(c, b, actor) {
   const date = b.expenseDate || new Date().toISOString().slice(0, 10);
-  return tx(async (c) => {
-    const fx = b.currency === 'LYD' ? '1' : (b.fxRateToLyd || await rateToLyd(c, b.currency, date));
-    const { rows: [e] } = await c.query(
-      `INSERT INTO company_expenses (expense_no, category, description, amount, currency, fx_rate_to_lyd, expense_date, method, reference, created_by)
-       VALUES ('EX-' || to_char($6::date, 'YYYY') || '-' || lpad(nextval('expense_seq')::text, 5, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [b.category, b.description, b.amount, b.currency, fx, date, b.method || 'CASH', b.reference || null, actor.id]);
-    await audit(c, { actorId: actor.id, action: 'EXPENSE_ADDED', entity: 'company_expense', entityId: e.id, after: { no: e.expense_no, category: e.category, amount: e.amount, currency: e.currency, lyd: e.amount_lyd }, ip: actor.ip });
-    return e;
-  });
+  const fx = b.currency === 'LYD' ? '1' : (b.fxRateToLyd || await rateToLyd(c, b.currency, date));
+  const { rows: [e] } = await c.query(
+    `INSERT INTO company_expenses (expense_no, category, description, amount, currency, fx_rate_to_lyd, expense_date, method, reference, created_by)
+     VALUES ('EX-' || to_char($6::date, 'YYYY') || '-' || lpad(nextval('expense_seq')::text, 5, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [b.category, b.description, b.amount, b.currency, fx, date, b.method || 'CASH', b.reference || null, actor.id]);
+  await audit(c, { actorId: actor.id, action: 'EXPENSE_ADDED', entity: 'company_expense', entityId: e.id, after: { no: e.expense_no, category: e.category, amount: e.amount, currency: e.currency, lyd: e.amount_lyd }, ip: actor.ip });
+  return e;
+}
+
+export async function addExpense(b, actor) {
+  return tx((c) => insertExpense(c, b, actor));
+}
+
+/** يلغي المصروف داخل معاملة قائمة؛ يعيد null إن لم يوجد أو أُلغي مسبقًا */
+export async function cancelExpense(c, id, reason, actor) {
+  const { rows: [e] } = await c.query(
+    'UPDATE company_expenses SET voided_at = now(), voided_by = $2, void_reason = $3 WHERE id = $1 AND voided_at IS NULL RETURNING *', [id, actor.id, reason]);
+  if (e) await audit(c, { actorId: actor.id, action: 'EXPENSE_VOIDED', entity: 'company_expense', entityId: id, before: { no: e.expense_no, lyd: e.amount_lyd }, after: { reason }, ip: actor.ip });
+  return e || null;
 }
 
 export async function voidExpense(id, reason, actor) {
   return tx(async (c) => {
-    const { rows: [e] } = await c.query(
-      'UPDATE company_expenses SET voided_at = now(), voided_by = $2, void_reason = $3 WHERE id = $1 AND voided_at IS NULL RETURNING *', [id, actor.id, reason]);
-    if (!e) throw new HttpError(404, 'NOT_FOUND', 'المصروف غير موجود أو ملغى مسبقًا');
-    await audit(c, { actorId: actor.id, action: 'EXPENSE_VOIDED', entity: 'company_expense', entityId: id, before: { no: e.expense_no, lyd: e.amount_lyd }, after: { reason }, ip: actor.ip });
+    const { rows: [link] } = await c.query('SELECT 1 FROM custody_entries WHERE expense_id = $1 AND voided_at IS NULL', [id]);
+    if (link) throw new HttpError(409, 'CUSTODY_EXPENSE', 'هذا المصروف مصروف من عهدة؛ ألغِه من كشف العهدة حتى يرجع المبلغ لرصيدها');
+    if (!(await cancelExpense(c, id, reason, actor))) throw new HttpError(404, 'NOT_FOUND', 'المصروف غير موجود أو ملغى مسبقًا');
     return { ok: true };
   });
 }

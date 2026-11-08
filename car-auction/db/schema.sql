@@ -743,6 +743,34 @@ CREATE INDEX idx_portal_sessions_customer ON portal_sessions(customer_id) WHERE 
 ALTER TABLE vehicles ADD COLUMN track_code TEXT NOT NULL DEFAULT substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
 CREATE UNIQUE INDEX uq_vehicles_track_code ON vehicles(track_code);
 
+-- العُهد النقدية: مبلغ يستلمه شخص من الخزينة ويصرف منه؛ الصرف منها يُسجَّل مصروفًا عامًا أيضًا
+CREATE TABLE custodies (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  holder_name  TEXT NOT NULL,                          -- صاحب العهدة (ليس بالضرورة مستخدمًا في المنظومة)
+  note         TEXT,
+  is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by   UUID REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE custody_entries (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seq          BIGSERIAL NOT NULL UNIQUE,              -- ترتيب التسجيل: الكشف يُعرض بهذا الترتيب مثل دفتر العهدة
+  custody_id   UUID NOT NULL REFERENCES custodies(id),
+  kind         TEXT NOT NULL CHECK (kind IN ('RECEIPT','EXPENSE','RETURN')),  -- استلام من الخزينة / صرف / إرجاع للخزينة
+  entry_date   DATE NOT NULL,
+  description  TEXT NOT NULL,
+  amount       NUMERIC(14,3) NOT NULL CHECK (amount > 0),  -- بالدينار
+  expense_id   UUID REFERENCES company_expenses(id),
+  created_by   UUID REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  voided_at    TIMESTAMPTZ,                            -- لا حذف فعلي
+  voided_by    UUID REFERENCES users(id),
+  void_reason  TEXT,
+  CHECK ((kind = 'EXPENSE') = (expense_id IS NOT NULL)),
+  CHECK ((voided_at IS NULL) = (void_reason IS NULL))
+);
+CREATE INDEX idx_custody_entries ON custody_entries(custody_id, seq);
+
 -- إعدادات الحاسبة العامة (/calc): صف واحد يغيّره المدير ويقرأه كل زائر
 CREATE TABLE calc_settings (
   id          BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),   -- يضمن صفًا واحدًا فقط

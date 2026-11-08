@@ -17,6 +17,7 @@ import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
+import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry } from '../services/custody.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
 import { setPortalAccount, disablePortalAccount, portalAccountInfo } from '../services/portal.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
@@ -581,6 +582,26 @@ api.post('/expenses/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH
   const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
   res.json(await voidExpense(req.params.id, b.reason, actorOf(req)));
 }));
+// ---------------------------------------------------------------- العُهد النقدية
+api.get('/custodies', requireRole(FIN_READERS), asyncH(async (_req, res) => res.json({ items: await listCustodies() })));
+api.post('/custodies', requireRole(ACC_WRITERS), asyncH(async (req, res) => {
+  const b = validate(req.body, { holderName: t.string({ required: true, min: 2, max: 120 }), note: t.string({ max: 300 }) });
+  res.status(201).json(await createCustody(b, actorOf(req)));
+}));
+api.get('/custodies/:id', requireRole(FIN_READERS), uuidParam('id'), asyncH(async (req, res) => res.json(await custodyStatement(req.params.id))));
+api.post('/custodies/:id/entries', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    kind: t.enum(['RECEIPT', 'EXPENSE', 'RETURN'], { required: true }), entryDate: t.date({ required: true }),
+    description: t.string({ required: true, min: 2, max: 300 }), amount: t.decimal({ required: true, positive: true }),
+    category: t.enum(Object.keys(EXPENSE_CATEGORIES)),
+  });
+  res.status(201).json(await addCustodyEntry(req.params.id, b, actorOf(req)));
+}));
+api.post('/custody-entries/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
+  res.json(await voidCustodyEntry(req.params.id, b.reason, actorOf(req)));
+}));
+
 api.get('/reports/profit', requireRole(FIN_READERS), asyncH(async (req, res) => res.json(await profitReport(monthQ(req)))));
 
 // ---------------------------------------------------------------- مزادات أمريكا (لوتات نتابعها قبل الشراء)
