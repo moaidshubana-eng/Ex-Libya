@@ -2,6 +2,7 @@
 import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
 import { money } from './views-accounts.js';
 import { attachmentLinks, pickInvoices, uploadInvoices, invoiceField } from './attachments.js';
+import { downloadPdf } from './pdf.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const CUR_NAME = { USD: 'دولار', LYD: 'دينار', EUR: 'يورو' };
@@ -76,17 +77,27 @@ export async function overviewSection() {
 
 // ======================================================================= المصاريف والأرباح
 export async function financeView(el, { query }) {
+  // الفترة: شهر (?month=) أو من–إلى (?from=&to=)
+  const ranged = !!(query.from || query.to);
   const month = query.month || new Date().toISOString().slice(0, 7);
-  const [p, ex, owed] = await Promise.all([api(`/reports/profit?month=${month}`), api(`/expenses?month=${month}`), api('/expenses/owed')]);
+  const pq = ranged ? new URLSearchParams(Object.entries({ from: query.from, to: query.to }).filter(([, v]) => v)).toString() : `month=${month}`;
+  const [p, ex, owed] = await Promise.all([api(`/reports/profit?${pq}`), api(`/expenses?${pq}`), api('/expenses/owed')]);
   const t = p.totals;
+  const day = (d) => d.split('-').reverse().join('/');
+  const period = ranged ? `من ${day(p.from)} إلى ${day(p.until)}` : month;
   const kpi = (label, v, color, sub = '') => html`<div class="card card-b"><div class="faint">${label}</div><div class="num" style="font-size:24px;font-weight:700;color:${color}">${lyd(v)}</div>${sub ? html`<div class="faint" style="font-size:12px">${sub}</div>` : ''}</div>`;
-  const reload = () => financeView(el, { query: { month } });
-  render(el, html`
-    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><h2 style="margin:4px 0">الأرباح والمصاريف — ${month}</h2></div>
-    <form class="card filters no-print" data-month style="margin-bottom:16px"><label class="field">الشهر<input class="input" type="month" name="month" value="${month}"></label>
+  const reload = () => financeView(el, { query });
+  render(el, html`<div data-report>
+    <div class="print-only" style="margin-bottom:10px"><img class="print-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><h2 style="margin:4px 0">الأرباح والمصاريف — ${period}</h2></div>
+    <form class="card filters no-print" data-month style="margin-bottom:16px">
+      <label class="field">الشهر<input class="input" type="month" name="month" value="${ranged ? '' : month}"></label>
+      <label class="field">أو فترة: من<input class="input" type="date" name="from" value="${ranged ? p.from : ''}"></label>
+      <label class="field">إلى<input class="input" type="date" name="to" value="${ranged ? p.until : ''}"></label>
       <button class="btn btn-primary">عرض</button>
       ${can('ADMIN', 'ACCOUNTANT') ? html`<button type="button" class="btn btn-accent" data-new>${icon('plus')} مصروف جديد</button>` : ''}
-      <button type="button" class="btn" data-print>طباعة / PDF</button></form>
+      <button type="button" class="btn btn-primary" data-pdf>${icon('pdf')} تحميل PDF</button>
+      <button type="button" class="btn" data-print>طباعة</button></form>
+    ${ranged ? html`<div class="faint no-print" style="margin:-6px 0 12px">الفترة المعروضة: ${period}</div>` : ''}
     ${p.warnings.map((w) => html`<div class="alert danger" style="margin-bottom:10px">${w}</div>`)}
     <div class="grid g4">
       ${kpi('إيراد السيارات المباعة', t.revenueLyd, 'var(--text)', `${p.cars.length} سيارة`)}
@@ -94,13 +105,13 @@ export async function financeView(el, { query }) {
       ${kpi('مصاريف الشركة', t.expensesLyd, 'var(--danger)')}
       ${kpi('صافي الربح', t.netProfitLyd, Number(t.netProfitLyd) >= 0 ? 'var(--success)' : 'var(--danger)', `الربح الإجمالي ${lyd(t.grossProfitLyd)}`)}
     </div>
-    <div class="card" style="margin-top:16px"><div class="card-h"><h2>السيارات المباعة في الشهر</h2><span class="faint">الإيراد − التكلفة الواصلة، بالدينار</span></div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h2>السيارات المباعة في ${ranged ? 'الفترة' : 'الشهر'}</h2><span class="faint">الإيراد − التكلفة الواصلة، بالدينار</span></div>
       <div class="table-wrap"><table class="t"><thead><tr><th>السيارة</th><th>النوع</th><th>العميل</th><th>التاريخ</th><th class="n">الإيراد</th><th class="n">التكلفة</th><th class="n">الربح</th></tr></thead>
         <tbody>${p.cars.map((c) => html`<tr><td><a href="#/vehicles/${c.vehicleId}"><b class="mono">${c.stockNo}</b></a> ${c.title}</td>
           <td>${c.kind}<div class="faint" style="font-size:12px">${c.ref}</div></td><td>${c.customer}</td><td>${fmt.date(c.soldAt)}</td>
           <td class="n">${c.revenueLyd == null ? '—' : lyd(c.revenueLyd)}</td><td class="n">${lyd(c.costLyd)}</td>
           <td class="n">${c.profitLyd == null ? '—' : html`<b class="${Number(c.profitLyd) >= 0 ? 'pos' : 'neg'}">${lyd(c.profitLyd)}</b>`}</td></tr>`)}</tbody></table>
-        ${p.cars.length ? '' : html`<div class="empty">لا توجد سيارات مباعة في هذا الشهر</div>`}</div></div>
+        ${p.cars.length ? '' : html`<div class="empty">لا توجد سيارات مباعة في ${ranged ? 'هذه الفترة' : 'هذا الشهر'}</div>`}</div></div>
     <div class="grid g2" style="margin-top:16px;align-items:start">
       <div class="card"><div class="card-h"><h2>المصاريف حسب البند</h2></div>
         <div class="table-wrap"><table class="t"><tbody>${p.expenses.map((e) => html`<tr><td>${e.label}</td><td class="n">${e.n}</td><td class="n"><b>${lyd(e.total_lyd)}</b></td></tr>`)}
@@ -115,7 +126,7 @@ export async function financeView(el, { query }) {
                 ${!e.attachments.length && !e.voided_at ? html`<span class="badge-warn no-print">بلا فاتورة</span>` : ''}</div></td>
             <td class="n">${money(e.amount, e.currency)}${e.currency !== 'LYD' ? html`<div class="faint" style="font-size:12px">${lyd(e.amount_lyd)}</div>` : ''}</td>
             <td class="no-print">${!e.voided_at && !e.from_custody && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
-          ${ex.items.length ? '' : html`<div class="empty">لا مصاريف مسجلة في هذا الشهر</div>`}</div></div>
+          ${ex.items.length ? '' : html`<div class="empty">لا مصاريف مسجلة في ${ranged ? 'هذه الفترة' : 'هذا الشهر'}</div>`}</div></div>
     </div>
     <div class="card" style="margin-top:16px"><div class="card-h"><h2>مستحق لأشخاص دفعوا من مالهم</h2><span class="faint">مصاريف الشركة اللي دفعها موظف من ماله ولسه ما رُدّتش له (كل الشهور)</span></div>
       ${owed.people.length ? owed.people.map((o) => html`<div class="owed">
@@ -124,9 +135,20 @@ export async function financeView(el, { query }) {
           <td>${e.description}<div class="att-row">${attachmentLinks(e.attachments)}${e.attachments.length ? '' : html`<span class="badge-warn">بلا فاتورة</span>`}</div></td>
           <td class="n">${money(e.amount, e.currency)}</td>
           <td class="no-print">${can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm" data-reimburse="${e.id}">رُدّت له</button>` : ''}</td></tr>`)}</tbody></table></div></div>`)
-        : html`<div class="empty">لا مستحقات — كل ما دفعه الموظفون من مالهم رُدّ لهم</div>`}</div>`);
-  $('[data-month]', el).addEventListener('submit', (e) => { e.preventDefault(); location.hash = `#/finance?month=${e.target.month.value}`; });
+        : html`<div class="empty">لا مستحقات — كل ما دفعه الموظفون من مالهم رُدّ لهم</div>`}</div></div>`);
+  $('[data-month]', el).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const { month: m, from, to } = e.target;
+    // الفترة تغلب الشهر إن كُتب أحد طرفيها
+    const qs = from.value || to.value ? new URLSearchParams(Object.entries({ from: from.value, to: to.value }).filter(([, v]) => v)).toString() : `month=${m.value || month}`;
+    location.hash = `#/finance?${qs}`;
+  });
   $('[data-print]', el).addEventListener('click', () => window.print());
+  $('[data-pdf]', el).addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    try { await downloadPdf($('[data-report]', el), `الأرباح والمصاريف ${period.replaceAll('/', '-')}.pdf`); } catch (e) { toast(`تعذّر إنشاء الملف: ${e.message}`, 'err'); } finally { btn.disabled = false; }
+  });
   $('[data-new]', el)?.addEventListener('click', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const r = await modal({ title: 'مصروف جديد', submitLabel: 'حفظ المصروف', body: html`

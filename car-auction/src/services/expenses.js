@@ -65,8 +65,27 @@ export async function voidExpense(id, reason, actor) {
 export const ATTACHMENTS_SQL = (alias) => `(SELECT COALESCE(json_agg(json_build_object('id', a.id, 'filename', a.filename, 'mime', a.mime) ORDER BY a.created_at), '[]')
   FROM expense_attachments a WHERE a.expense_id = ${alias}.id)`;
 
-export async function listExpenses(month) {
-  const r = monthRange(month);
+/**
+ * فترة التقرير: شهر 'YYYY-MM'، أو من–إلى (تاريخان شاملان). يعيد { from, to (اليوم التالي للنهاية، غير شامل), month?, until }.
+ * إن أُعطي أحد طرفي الفترة فقط: «إلى» = اليوم، و«من» = أول سنة «إلى».
+ */
+export function resolvePeriod(p = {}) {
+  if (typeof p === 'string' || p === null || (!p.from && !p.to)) {
+    const r = monthRange(typeof p === 'object' && p ? p.month : p);
+    const last = new Date(`${r.to}T00:00:00Z`); last.setUTCDate(last.getUTCDate() - 1);
+    return { ...r, until: last.toISOString().slice(0, 10) };
+  }
+  const iso = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') && !Number.isNaN(Date.parse(d)) ? d : null);
+  const until = p.to ? iso(p.to) : new Date().toISOString().slice(0, 10);
+  const from = p.from ? iso(p.from) : until && `${until.slice(0, 4)}-01-01`;
+  if (!from || !until) throw new HttpError(422, 'BAD_PERIOD', 'تاريخ الفترة غير صالح');
+  if (from > until) throw new HttpError(422, 'BAD_PERIOD', 'بداية الفترة بعد نهايتها');
+  const next = new Date(`${until}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1);
+  return { month: null, from, until, to: next.toISOString().slice(0, 10) };
+}
+
+export async function listExpenses(period) {
+  const r = resolvePeriod(period);
   const { rows } = await query(
     `SELECT e.*, u.full_name AS created_by_name, ${ATTACHMENTS_SQL('e')} AS attachments,
             EXISTS (SELECT 1 FROM custody_entries k WHERE k.expense_id = e.id) AS from_custody
@@ -175,8 +194,8 @@ export async function markReimbursed(id, note, actor) {
   });
 }
 
-export async function profitReport(month) {
-  const r = monthRange(month);
+export async function profitReport(period) {
+  const r = resolvePeriod(period);
   const [sales, reserved, expenses] = await Promise.all([
     query(`SELECT s.vehicle_id, v.stock_no, v.year, v.make, v.model, s.sold_at, s.invoice_no, s.sale_type,
                   (s.sale_price_lyd + s.buyer_fee_lyd) AS revenue_lyd, lc.total_cost_lyd, c.full_name AS customer

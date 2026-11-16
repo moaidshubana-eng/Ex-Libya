@@ -74,4 +74,22 @@ describe('فواتير المصاريف ومستحقات من دفع من مال
     const inArchive = (await acc.get('/api/expenses/invoices?q=' + encodeURIComponent('مواد تنظيف'))).data.items[0];
     assert.equal(inArchive.custody_holder, 'تجربة');
   });
+
+  test('المصاريف والربح لفترة من–إلى (الطرفان شاملان)، والشهر يبقى يعمل', async () => {
+    const l = (await acc.get('/api/expenses?from=2026-10-01&to=2026-11-08')).data;
+    assert.deepEqual([l.from, l.until, l.month], ['2026-10-01', '2026-11-08', null]);
+    const amounts = l.items.map((e) => Number(e.amount)).sort((a, b) => a - b);
+    assert.deepEqual(amounts, [900, 3780]); // إيجار 1/10 والكاميرات 8/11؛ مواد التنظيف 10/11 خارج الفترة
+    const p = (await acc.get('/api/reports/profit?from=2026-10-01&to=2026-11-08')).data;
+    assert.equal(Number(p.totals.expensesLyd), 4680);
+    assert.equal(p.until, '2026-11-08');
+    const shorter = (await acc.get('/api/expenses?from=2026-10-01&to=2026-11-07')).data.items.map((e) => Number(e.amount));
+    assert.deepEqual(shorter, [900]);
+    assert.equal((await acc.get('/api/expenses?from=2026-11-08&to=2026-10-01')).status, 422);
+    assert.equal((await acc.get('/api/reports/profit?from=2026-13-01&to=2026-11-08')).status, 422);
+    const m = (await acc.get('/api/expenses?month=2026-11')).data;
+    assert.deepEqual([m.month, m.from, m.until], ['2026-11', '2026-11-01', '2026-11-30']);
+    const onlyFrom = (await acc.get('/api/expenses?to=2026-10-31')).data;
+    assert.deepEqual([onlyFrom.from, onlyFrom.until], ['2026-01-01', '2026-10-31']);
+  });
 });

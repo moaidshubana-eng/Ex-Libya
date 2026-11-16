@@ -568,7 +568,10 @@ api.get('/accounts/overview', requireRole([...new Set([...CUSTOMER_ACC_READERS, 
 
 // ---------------------------------------------------------------- مصاريف الشركة والربح الشهري
 const FIN_READERS = ['ADMIN', 'ACCOUNTANT', 'VIEWER'];
-const monthQ = (req) => (req.query.month ? String(req.query.month).slice(0, 7) : null);
+// الفترة: ?month=YYYY-MM أو ?from=YYYY-MM-DD&to=YYYY-MM-DD
+const monthQ = (req) => (req.query.from || req.query.to
+  ? { from: req.query.from ? String(req.query.from) : null, to: req.query.to ? String(req.query.to) : null }
+  : { month: req.query.month ? String(req.query.month).slice(0, 7) : null });
 api.get('/expenses', requireRole(FIN_READERS), asyncH(async (req, res) => res.json(await listExpenses(monthQ(req)))));
 api.post('/expenses', requireRole(ACC_WRITERS), asyncH(async (req, res) => {
   const b = validate(req.body, {
