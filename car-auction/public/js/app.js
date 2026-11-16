@@ -18,7 +18,7 @@ const ROUTES = [
   { path: '/dashboard', title: 'لوحة المؤشرات', view: dashboardView, roles: STAFF, nav: ['dash', 'التشغيل'] },
   { path: '/vehicles', title: 'السيارات', view: vehiclesView, nav: ['car'] },
   { path: '/watchlist', title: 'مزادات أمريكا', view: watchlistView, roles: STAFF, nav: ['clock'] },
-  { path: '/calculator', title: 'حاسبة التكلفة', view: calculatorView, roles: STAFF, nav: ['money'] },
+  { path: '/calculator', title: 'حاسبة التكلفة', view: calculatorView, roles: STAFF, nav: ['calc'] },
   { path: '/vehicles/:id', title: 'تفاصيل السيارة', view: vehicleDetailView },
   { path: '/compare', title: 'مقارنة السيارات', view: compareView },
   { path: '/auctions', title: 'المزادات', view: auctionsView, nav: ['gavel'] },
@@ -26,16 +26,16 @@ const ROUTES = [
   { path: '/customers', title: 'العملاء', view: customersView, roles: ['ADMIN', 'SALES', 'ACCOUNTANT'], nav: ['users'] },
   { path: '/shipments', title: 'تتبع الشحنات', view: shipmentsView, roles: STAFF, nav: ['ship', 'اللوجستيات'] },
   { path: '/customs', title: 'الجمارك', view: customsView, roles: STAFF, nav: ['customs'] },
-  { path: '/accounts', title: 'حسابات العملاء والموردين', view: accountsView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'], nav: ['money', 'المالية'] },
+  { path: '/accounts', title: 'حسابات العملاء والموردين', view: accountsView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'], nav: ['ledger', 'المالية'] },
   { path: '/accounts/:type/:id', title: 'كشف حساب', view: statementView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },
-  { path: '/finance', title: 'الأرباح والمصاريف', view: financeView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['report'] },
-  { path: '/invoices', title: 'الفواتير', view: invoicesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['pdf'] },
-  { path: '/custody', title: 'العُهد', view: custodiesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['money'] },
+  { path: '/finance', title: 'الأرباح والمصاريف', view: financeView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['chart'] },
+  { path: '/invoices', title: 'الفواتير', view: invoicesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['receipt'] },
+  { path: '/custody', title: 'العُهد', view: custodiesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['wallet'] },
   { path: '/custody/:id', title: 'كشف عهدة', view: custodyView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'] },
   { path: '/receipts/:id', title: 'إيصال', view: receiptView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },
   { path: '/reports', title: 'تقرير التكاليف', view: reportsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS', 'VIEWER', 'SALES'], nav: ['report'] },
   { path: '/integrations', title: 'الربط مع Copart / IAAI', view: integrationsView, roles: STAFF, nav: ['sync', 'النظام'] },
-  { path: '/settings', title: 'الإعدادات', view: settingsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS'], nav: ['money'] },
+  { path: '/settings', title: 'الإعدادات', view: settingsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS'], nav: ['gear'] },
   { path: '/audit', title: 'سجل التدقيق', view: auditView, roles: ['ADMIN'], nav: ['audit'] },
 ];
 
@@ -96,10 +96,14 @@ function shell() {
     </aside>
     <main class="main" id="main">
       <header class="topbar"><button class="btn btn-sm menu-btn" data-menu aria-label="القائمة">${icon('menu')}</button><img class="topbar-mark" src="/brand/ggm-icon-64.png" alt="Golden Gate Motors">
-        <div><h1 data-title></h1><div class="crumbs" data-crumbs></div></div><span class="spacer"></span></header>
+        <div><h1 data-title></h1><div class="crumbs" data-crumbs></div></div><span class="spacer"></span>
+        <span class="user-chip" title="${LABELS.role[u.role]}"><span class="avatar" aria-hidden="true">${[...u.full_name.trim()][0] || '؟'}</span><span class="user-name">${u.full_name}</span></span></header>
       <div class="content" data-content></div>
-    </main></div><div class="toast-host" aria-live="polite"></div>`);
+    </main><div class="nav-backdrop" data-nav-close></div></div><div class="toast-host" aria-live="polite"></div>`);
   $('[data-menu]').addEventListener('click', () => $('.shell').classList.toggle('nav-open'));
+  // على الجوال: الضغط خارج القائمة أو Escape يغلقها
+  $('[data-nav-close]').addEventListener('click', () => $('.shell').classList.remove('nav-open'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('.shell')?.classList.remove('nav-open'); });
   $('[data-pw]').addEventListener('click', changePasswordDialog);
   $('[data-logout]').addEventListener('click', async () => { await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); });
   $('[data-theme-toggle]').addEventListener('click', () => {
@@ -185,10 +189,26 @@ window.addEventListener('auth:expired', () => {
 
 (async () => {
   try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* */ }
+  boot();
+})();
+
+// 401 = لا جلسة فنعرض الدخول. أي فشل آخر (الخادم نائم في الاستضافة المجانية ويرد 502/503، أو الشبكة مقطوعة)
+// ليس خروجًا: نعرض «جارٍ تشغيل المنظومة» ونعيد المحاولة، بدل شاشة دخول توهم المستخدم أن جلسته انتهت
+async function boot(attempt = 0) {
   try {
     state.user = (await api('/auth/me')).user;
     await start();
-  } catch {
-    loginScreen();
+  } catch (e) {
+    if (e.status === 401) { loginScreen(); return; }
+    if (attempt === 0) render(document.body, html`<div class="waking"><img src="/brand/ggm-logo-official.png" alt="Golden Gate Motors">
+      <div class="waking-spin" aria-hidden="true"></div><h2>جارٍ تشغيل المنظومة…</h2>
+      <p>الخادم كان متوقفًا لعدم الاستعمال، ويحتاج حتى دقيقة ليشتغل. الصفحة تفتح وحدها.</p></div>`);
+    if (attempt >= 40) { // دقيقتان بلا رد: نتوقف ونترك القرار للمستخدم
+      render(document.body, html`<div class="waking"><img src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><h2>تعذّر الوصول للمنظومة</h2>
+        <p>تأكد من اتصال الإنترنت ثم أعد المحاولة.</p><button class="btn btn-primary" data-retry>إعادة المحاولة</button></div>`);
+      $('[data-retry]').addEventListener('click', () => location.reload());
+      return;
+    }
+    setTimeout(() => boot(attempt + 1), 3000);
   }
-})();
+}

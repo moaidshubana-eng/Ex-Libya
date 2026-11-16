@@ -1,5 +1,5 @@
 import { newVendorDialog, vendorTypeLabel } from './views-manage.js';
-import { html, render, $, $$, api, fmt, LABELS, state, toast, modal, icon } from './core.js';
+import { html, render, $, $$, api, fmt, LABELS, state, toast, modal, icon, localToday } from './core.js';
 
 const ROLE_OPTS = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER', 'BIDDER'];
 
@@ -8,7 +8,7 @@ export async function settingsView(el) {
   const [fx, users] = await Promise.all([api('/exchange-rates'), isAdmin ? api('/users') : { items: [] }]);
   const latest = {};
   for (const r of fx.items) if (!latest[r.currency]) latest[r.currency] = r;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const stale = (r) => !r || (Date.now() - new Date(r.effective_date)) > 3 * 86_400_000;
 
   render(el, html`

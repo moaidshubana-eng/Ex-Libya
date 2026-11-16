@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { asyncH, requireAuth, requireRole, rateLimit, HttpError, ROLES } from '../security/middleware.js';
 import { verifyPassword, hashPassword, passwordPolicyError, newToken, sha256, encrypt, lookupHash, decrypt, mask } from '../security/crypto.js';
 import { validate, t, isUuid } from '../validate.js';
+import { today } from '../domain/dates.js';
 import { STATUSES, STATUS_CODES } from '../domain/status.js';
 const TITLES = ['CLEAN', 'SALVAGE', 'REBUILT', 'PARTS_ONLY', 'CERTIFICATE_OF_DESTRUCTION', 'OTHER'];
 import { listVehicles, getVehicle, changeStatus, compareVehicles, getVehicleCosts, createVehicle, updateVehicle } from '../services/vehicles.js';
@@ -441,8 +442,8 @@ api.patch('/customs/:id', requireRole(ROLES.LOGISTICS_WRITERS), uuidParam('id'),
       const { rows: ex } = await c.query(`SELECT 1 FROM vehicle_costs WHERE vehicle_id = $1 AND category_code = 'CUSTOMS_DUTY' AND voided_at IS NULL`, [cd.vehicle_id]);
       if (!ex.length) await c.query(
         `INSERT INTO vehicle_costs (vehicle_id, category_code, description, amount, currency, fx_rate_to_lyd, incurred_at, invoice_ref, is_paid, created_by)
-         VALUES ($1,'CUSTOMS_DUTY','رسم جمركي — بيان ' || COALESCE($3,'-'), $2, 'LYD', 1, current_date, $3, true, $4)`,
-        [cd.vehicle_id, upd.duty_amount_lyd, upd.declaration_no, req.user.id]);
+         VALUES ($1,'CUSTOMS_DUTY','رسم جمركي — بيان ' || COALESCE($3,'-'), $2, 'LYD', 1, $5::date, $3, true, $4)`,
+        [cd.vehicle_id, upd.duty_amount_lyd, upd.declaration_no, req.user.id, today()]);
     }
     // أي تقدم في البيان بعد المستندات يدخل السيارة "في الجمارك" إن كانت في الميناء، والإفراج يخرجها منها (حتى لو قفز المستخدم مباشرة للإفراج)
     let { rows: [v] } = await c.query('SELECT status FROM vehicles WHERE id = $1', [cd.vehicle_id]);

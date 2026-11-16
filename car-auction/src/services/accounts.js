@@ -15,6 +15,7 @@
 import { query, tx, audit } from '../db.js';
 import { HttpError } from '../security/middleware.js';
 import { rateToLyd } from './costs.js';
+import { today } from '../domain/dates.js';
 
 const toMil = (v) => Math.round(Number(v) * 1000);
 const fromMil = (m) => (m / 1000).toFixed(3);
@@ -202,7 +203,7 @@ export async function addAccountPayment(partyType, partyId, b, actor) {
   if (b.currency !== settleCurrency && !['USD', 'EUR'].some((f) => [b.currency, settleCurrency].includes(f) && [b.currency, settleCurrency].includes('LYD'))) {
     throw new HttpError(422, 'BAD_CONVERSION', 'التحويل يكون بين الدينار وعملة أجنبية فقط');
   }
-  const date = b.paidAt || new Date().toISOString().slice(0, 10);
+  const date = b.paidAt || today();
   return tx(async (c) => {
     const table = partyType === 'CUSTOMER' ? 'customers' : 'vendors';
     const { rows: [party] } = await c.query(`SELECT id FROM ${table} WHERE id = $1`, [partyId]);

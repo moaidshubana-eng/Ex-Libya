@@ -1,7 +1,7 @@
-import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, imgUrl, toast, modal, icon } from './core.js';
+import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, imgUrl, toast, modal, icon, localToday } from './core.js';
 import { photosBar, mountPhotos } from './photos.js';
 import { dealFields, dealCard, mountDeal, loadCustomers } from './views-accounts.js';
-import { overviewSection } from './views-finance.js';
+import { overviewSection, financeStrip } from './views-finance.js';
 import { galleryTemplate, mountGallery, openLightbox } from './gallery.js';
 import { sellDialog, paymentDialog, openCustomsDialog } from './views-manage.js';
 const PRESALE = ['IN_TRANSIT_SEA', 'AT_PORT_LIBYA', 'IN_CUSTOMS', 'CUSTOMS_CLEARED', 'IN_STOCK'];
@@ -110,7 +110,7 @@ export function watchVin() {
 }
 
 export async function addVehicleDialog() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   let customers = [];
   try { customers = await loadCustomers(true); } catch { /* دور بلا صلاحية قراءة العملاء */ }
   const stopWatching = watchVin();
@@ -159,7 +159,16 @@ async function editVehicleDialog(v, reload) {
 
 // ======================================================================= لوحة المؤشرات
 export async function dashboardView(el) {
-  const [d, overview] = await Promise.all([api('/dashboard'), overviewSection()]);
+  const [d, overview, finance] = await Promise.all([api('/dashboard'), overviewSection(), financeStrip()]);
+  const hour = new Date().getHours();
+  const quick = [
+    ['#/vehicles', 'car', 'السيارات', ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER']],
+    ['#/watchlist', 'clock', 'مزادات أمريكا', ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER']],
+    ['#/calculator', 'calc', 'حاسبة التكلفة', ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER']],
+    ['#/custody', 'wallet', 'العُهد', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
+    ['#/finance', 'chart', 'المصاريف', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
+    ['#/invoices', 'receipt', 'الفواتير', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
+  ].filter(([, , , roles]) => roles.includes(state.user.role));
   const count = Object.fromEntries(d.byStatus.map((s) => [s.status, s.n]));
   const total = d.byStatus.reduce((a, s) => a + s.n, 0);
   const st = state.meta.statuses;
@@ -170,12 +179,18 @@ export async function dashboardView(el) {
   const syncBad = d.sync.filter((s) => s.circuit_open_until || s.consecutive_failures > 0 || s.open_errors > 0);
 
   render(el, html`
+    <div class="welcome">
+      <div><h2>${hour < 12 ? 'صباح الخير' : 'مساء الخير'}، ${state.user.full_name}</h2>
+        <div class="faint">${new Date().toLocaleDateString('ar-LY-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div></div>
+      <nav class="quick-links" aria-label="وصول سريع">${quick.map(([href, ico, label]) => html`<a href="${href}">${icon(ico)}<span>${label}</span></a>`)}</nav>
+    </div>
     <div class="grid g4">
       ${kpi('money', 'قيمة المخزون (التكلفة الواصلة)', fmt.lyd(d.money.inventory_cost_lyd), `${total - sum(['SOLD', 'DELIVERED', 'CANCELLED'])} سيارة غير مباعة`, '#0b3b66')}
       ${kpi('ship', 'في الطريق بحرًا', fmt.n(inTransit), `${d.shipments.length} شحنة مفتوحة`, '#0284c7')}
       ${kpi('customs', 'في الميناء والجمارك', fmt.n(atPort), d.aging.find((a) => a.status === 'IN_CUSTOMS') ? `متوسط ${d.aging.find((a) => a.status === 'IN_CUSTOMS').avg_days} يوم في الجمارك` : '', '#f97316')}
       ${kpi('gavel', 'مزايدات حية', fmt.n(d.auctions.open_lots), `${d.auctions.open_bids} مزايدة على اللوتات المفتوحة`, '#e11d48')}
     </div>
+    ${finance}
     ${overview}
 
     <div class="card" style="margin-top:16px">
@@ -490,7 +505,7 @@ const TAB = {
   track: (v) => html`<div class="stack">
     ${v.shipment ? html`<div><h4 style="margin-top:0">الشحن البحري</h4><dl class="specs">
       ${spec('رقم الشحنة', v.shipment.shipment_no)}${spec('رقم الحجز', v.shipment.booking_no)}${spec('بوليصة الشحن', v.shipment.bill_of_lading)}
-      ${spec('الحاوية', raw(`<span class="mono">${v.shipment.container_no}</span>`))}${spec('الخط الملاحي', v.shipment.carrier)}${spec('السفينة / الرحلة', `${v.shipment.vessel_name || '—'} / ${v.shipment.voyage_no || '—'}`)}
+      ${spec('الحاوية', html`<span class="mono">${v.shipment.container_no}</span>`)}${spec('الخط الملاحي', v.shipment.carrier)}${spec('السفينة / الرحلة', `${v.shipment.vessel_name || '—'} / ${v.shipment.voyage_no || '—'}`)}
       ${spec('المغادرة', fmt.date(v.shipment.atd || v.shipment.etd))}${spec('الوصول', v.shipment.ata ? fmt.date(v.shipment.ata) : `متوقع ${fmt.date(v.shipment.eta)}`)}${spec('موضعها في الحاوية', v.shipment.position)}
     </dl>
     <ul class="hist" style="margin-top:10px">${(v.shipment.events || []).map((e) => html`<li><span class="faint">${fmt.dt(e.occurred_at)}</span><span><b>${e.event_code}</b> — ${e.description} · ${e.location || ''}</span></li>`)}</ul></div>`
@@ -530,7 +545,7 @@ const TAB = {
     ${spec('المصدر', l.source_name)}${spec('رقم اللوت', l.lot_number)}${spec('الساحة', `${l.yard_name || ''} (${l.yard_state || ''})`)}${spec('تاريخ البيع', fmt.date(l.sale_date))}
     ${spec('حالة البيع', l.sale_status)}${spec('القيمة الفعلية ACV', fmt.money(l.acv_usd, 'USD'))}${spec('تقدير الإصلاح', fmt.money(l.repair_estimate_usd, 'USD'))}
     ${spec('سعر الشراء', fmt.money(l.purchase_price_usd, 'USD'))}${spec('آخر مزامنة', fmt.dt(l.last_synced_at))}
-    ${spec('الرابط', l.listing_url ? raw(`<a href="${encodeURI(l.listing_url)}" target="_blank" rel="noopener noreferrer">فتح في ${l.source}</a>`) : '—')}
+    ${spec('الرابط', /^https?:\/\//i.test(l.listing_url || '') ? html`<a href="${l.listing_url}" target="_blank" rel="noopener noreferrer">فتح في ${l.source}</a>` : '—')}
   </dl>`)}`,
 
   history: (v) => html`<ul class="hist">${[...v.history].reverse().map((h) => html`<li><span class="faint">${fmt.dt(h.occurred_at)}</span>
@@ -539,7 +554,7 @@ const TAB = {
 
 function bindCosts(body, v, reload) {
   $('[data-addcost]', body)?.addEventListener('click', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const r = await modal({
       title: 'إضافة تكلفة', submitLabel: 'حفظ التكلفة', body: html`
         <label class="field">البند<select class="input" name="categoryCode" required>${Object.entries(LABELS.stage).map(([stage, l]) => html`<optgroup label="${l}">${state.meta.costCategories.filter((c) => c.stage === stage).map((c) => html`<option value="${c.code}">${c.name_ar}</option>`)}</optgroup>`)}</select></label>

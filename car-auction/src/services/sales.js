@@ -4,6 +4,7 @@ import { HttpError } from '../security/middleware.js';
 import { encrypt, lookupHash } from '../security/crypto.js';
 import { changeStatus } from './vehicles.js';
 import { publish } from './realtime.js';
+import { today } from '../domain/dates.js';
 
 // ------------------------------------------------------------------ العملاء
 export async function createCustomer(b, actor) {
@@ -138,7 +139,7 @@ export async function addPayment(saleId, b, actor) {
   return tx(async (c) => {
     const { rows: [s] } = await c.query('SELECT id, sale_price_lyd, buyer_fee_lyd FROM sales WHERE id = $1 FOR UPDATE', [saleId]);
     if (!s) throw new HttpError(404, 'NOT_FOUND', 'البيع غير موجود');
-    const date = new Date().toISOString().slice(0, 10);
+    const date = today();
     const fx = b.currency === 'LYD' ? '1' : await rateToLyd(c, b.currency, date);
     const { rows: [p] } = await c.query(
       `INSERT INTO payments (sale_id, amount, currency, fx_rate_to_lyd, method, reference, received_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,

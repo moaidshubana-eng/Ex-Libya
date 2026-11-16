@@ -11,6 +11,7 @@ import { query, tx, audit } from '../db.js';
 import { HttpError } from '../security/middleware.js';
 import { rateToLyd } from './costs.js';
 import { sniffImageType } from './images.js';
+import { today } from '../domain/dates.js';
 
 export const EXPENSE_CATEGORIES = {
   RENT: 'إيجار', SALARIES: 'رواتب', UTILITIES: 'كهرباء ومياه واتصالات', FUEL_TRANSPORT: 'وقود ومواصلات', MARKETING: 'دعاية وتسويق',
@@ -20,8 +21,8 @@ export const EXPENSE_CATEGORIES = {
 /** حدود الشهر 'YYYY-MM' → [أول يوم، أول يوم من الشهر التالي) */
 export function monthRange(month) {
   const m = /^(\d{4})-(\d{2})$/.exec(month || '');
-  const now = new Date();
-  const y = m ? Number(m[1]) : now.getFullYear(), mo = m ? Number(m[2]) : now.getMonth() + 1;
+  const now = today(); // الشهر الحالي بتوقيت الشركة
+  const y = m ? Number(m[1]) : Number(now.slice(0, 4)), mo = m ? Number(m[2]) : Number(now.slice(5, 7));
   if (mo < 1 || mo > 12) throw new HttpError(422, 'BAD_MONTH', 'الشهر غير صالح');
   const pad = (n) => String(n).padStart(2, '0');
   const next = mo === 12 ? [y + 1, 1] : [y, mo + 1];
@@ -30,7 +31,7 @@ export function monthRange(month) {
 
 /** يسجّل المصروف داخل معاملة قائمة (تستعمله العهدة أيضًا ليُسجَّل المصروف وقيد العهدة معًا) */
 export async function insertExpense(c, b, actor) {
-  const date = b.expenseDate || new Date().toISOString().slice(0, 10);
+  const date = b.expenseDate || today();
   const fx = b.currency === 'LYD' ? '1' : (b.fxRateToLyd || await rateToLyd(c, b.currency, date));
   const { rows: [e] } = await c.query(
     `INSERT INTO company_expenses (expense_no, category, description, amount, currency, fx_rate_to_lyd, expense_date, method, reference, paid_by, created_by)
@@ -76,7 +77,7 @@ export function resolvePeriod(p = {}) {
     return { ...r, until: last.toISOString().slice(0, 10) };
   }
   const iso = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') && !Number.isNaN(Date.parse(d)) ? d : null);
-  const until = p.to ? iso(p.to) : new Date().toISOString().slice(0, 10);
+  const until = p.to ? iso(p.to) : today();
   const from = p.from ? iso(p.from) : until && `${until.slice(0, 4)}-01-01`;
   if (!from || !until) throw new HttpError(422, 'BAD_PERIOD', 'تاريخ الفترة غير صالح');
   if (from > until) throw new HttpError(422, 'BAD_PERIOD', 'بداية الفترة بعد نهايتها');
@@ -220,7 +221,7 @@ export async function profitReport(period) {
   for (const v of reserved.rows) {
     let revenue = null, fx = '1';
     try {
-      fx = v.customer_currency === 'LYD' ? '1' : await rateToLyd(null, v.customer_currency, new Date(v.sold_at).toISOString().slice(0, 10));
+      fx = v.customer_currency === 'LYD' ? '1' : await rateToLyd(null, v.customer_currency, today(new Date(v.sold_at)));
       revenue = Math.round(Number(v.customer_price) * Number(fx) * 1000) / 1000;
     } catch { warnings.push(`لا يوجد سعر صرف ${v.customer_currency} يوم بيع ${v.stock_no}، فلم يُحتسب إيرادها`); }
     cars.push({ vehicleId: v.vehicle_id, stockNo: v.stock_no, title: `${v.year} ${v.make} ${v.model}`, soldAt: v.sold_at, kind: 'طلب عميل',

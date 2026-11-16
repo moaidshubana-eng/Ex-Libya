@@ -1,5 +1,5 @@
 // الإيصالات (قبض من العميل / صرف للمورد)، لوحة «لنا وعلينا»، ومصاريف الشركة مع الربح الشهري.
-import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
+import { html, render, $, $$, api, fmt, state, toast, modal, icon, localToday } from './core.js';
 import { money } from './views-accounts.js';
 import { attachmentLinks, pickInvoices, uploadInvoices, invoiceField } from './attachments.js';
 import { downloadPdf } from './pdf.js';
@@ -75,11 +75,31 @@ export async function overviewSection() {
   </div>`;
 }
 
+// ======================================================================= مالية الشركة اليوم (لوحة المؤشرات)
+/** أربع بطاقات تختصر ما يحتاج متابعة: مصاريف الشهر، أرصدة العهد، المستحق للموظفين، والمصاريف بلا فاتورة */
+export async function financeStrip() {
+  if (!can('ADMIN', 'ACCOUNTANT', 'VIEWER')) return '';
+  let p, custodies, owed, inv;
+  try {
+    [p, custodies, owed, inv] = await Promise.all([api(`/reports/profit?month=${localToday().slice(0, 7)}`), api('/custodies'), api('/expenses/owed'), api('/expenses/invoices?missing=1')]);
+  } catch { return ''; }
+  const custodyBal = custodies.items.filter((k) => k.is_active).reduce((a, k) => a + Number(k.balance), 0);
+  const owedTotal = owed.people.reduce((a, o) => a + Number(o.totalLyd), 0);
+  const tile = (href, ico, color, label, value, sub) => html`<a class="card fin-tile" href="${href}" style="--c:${color}">
+    <span class="ico">${icon(ico)}</span><span class="fin-body"><span class="label">${label}</span><b class="num">${value}</b><span class="sub">${sub}</span></span></a>`;
+  return html`<div class="grid g4" style="margin-top:16px">
+    ${tile('#/finance', 'chart', '#dc2626', 'مصاريف هذا الشهر', lyd(p.totals.expensesLyd), `صافي الربح ${lyd(p.totals.netProfitLyd)}`)}
+    ${tile('#/custody', 'wallet', '#0284c7', 'أرصدة العُهد', lyd(custodyBal), `${custodies.items.filter((k) => k.is_active).length} عهدة مفتوحة`)}
+    ${tile('#/finance', 'users', '#f97316', 'مستحق لموظفين دفعوا من مالهم', lyd(owedTotal), owed.people.length ? `${owed.people.length} شخص` : 'لا مستحقات')}
+    ${tile('#/invoices?missing=1', 'receipt', inv.totals.missing ? '#b45309' : '#059669', 'مصاريف بلا فاتورة', String(inv.totals.missing), `من ${inv.totals.expenses} مصروف`)}
+  </div>`;
+}
+
 // ======================================================================= المصاريف والأرباح
 export async function financeView(el, { query }) {
   // الفترة: شهر (?month=) أو من–إلى (?from=&to=)
   const ranged = !!(query.from || query.to);
-  const month = query.month || new Date().toISOString().slice(0, 7);
+  const month = query.month || localToday().slice(0, 7);
   const pq = ranged ? new URLSearchParams(Object.entries({ from: query.from, to: query.to }).filter(([, v]) => v)).toString() : `month=${month}`;
   const [p, ex, owed] = await Promise.all([api(`/reports/profit?${pq}`), api(`/expenses?${pq}`), api('/expenses/owed')]);
   const t = p.totals;
@@ -150,7 +170,7 @@ export async function financeView(el, { query }) {
     try { await downloadPdf($('[data-report]', el), `الأرباح والمصاريف ${period.replaceAll('/', '-')}.pdf`); } catch (e) { toast(`تعذّر إنشاء الملف: ${e.message}`, 'err'); } finally { btn.disabled = false; }
   });
   $('[data-new]', el)?.addEventListener('click', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const r = await modal({ title: 'مصروف جديد', submitLabel: 'حفظ المصروف', body: html`
       <div class="grid g2"><label class="field">البند<select class="input" name="category">${opts(EXPENSE_CATEGORIES, 'RENT')}</select></label>
         <label class="field">التاريخ<input class="input" type="date" name="expenseDate" value="${today}" max="${today}"></label></div>

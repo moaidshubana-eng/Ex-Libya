@@ -1,5 +1,5 @@
 // العُهد النقدية: قائمة العهد بأرصدتها، وكشف كل عهدة (استلام / صرف / إرجاع) قابل للطباعة.
-import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
+import { html, render, $, $$, api, fmt, state, toast, modal, icon, localToday } from './core.js';
 import { EXPENSE_CATEGORIES } from './views-finance.js';
 import { attachmentLinks, pickInvoices, uploadInvoices, invoiceField } from './attachments.js';
 import { downloadPdf } from './pdf.js';
@@ -59,7 +59,7 @@ export async function custodyView(el, { params, setTitle }) {
         <div><img src="/brand/ggm-logo-official.png" alt="Golden Gate Motors" style="height:68px"></div>
         <div style="text-align:end"><h2 style="margin:0">كشف عهدة ${k.holder_name}</h2>
           <div class="faint">${s.period.from ? `الفترة من ${day(s.period.from)} إلى ${day(s.period.to)}` : 'لا حركات بعد'}</div>
-          <div class="faint">تاريخ الطباعة ${day(new Date().toISOString().slice(0, 10))} · المبالغ بالدينار الليبي</div></div></div>
+          <div class="faint">تاريخ الطباعة ${day(localToday())} · المبالغ بالدينار الليبي</div></div></div>
       <div class="stmt-kpis">
         <div><span>إجمالي المستلم</span><b class="num">${amt(t.in)}</b></div>
         <div><span>إجمالي المصروف والمرجَع</span><b class="num">${amt(t.out)}</b></div>
@@ -82,11 +82,11 @@ export async function custodyView(el, { params, setTitle }) {
   $('[data-pdf]', el).addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;
     btn.disabled = true;
-    try { await downloadPdf($('.stmt', el), `كشف عهدة ${k.holder_name} ${day(new Date().toISOString().slice(0, 10)).replaceAll('/', '-')}.pdf`); } catch (e) { toast(`تعذّر إنشاء الملف: ${e.message}`, 'err'); } finally { btn.disabled = false; }
+    try { await downloadPdf($('.stmt', el), `كشف عهدة ${k.holder_name} ${day(localToday()).replaceAll('/', '-')}.pdf`); } catch (e) { toast(`تعذّر إنشاء الملف: ${e.message}`, 'err'); } finally { btn.disabled = false; }
   });
   $$('[data-add]', el).forEach((b) => b.addEventListener('click', async () => {
     const kind = b.dataset.add;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const r = await modal({ title: `${KIND[kind]} — عهدة ${k.holder_name}`, submitLabel: 'حفظ', body: html`
       <div class="grid g2"><label class="field">التاريخ<input class="input" type="date" name="entryDate" value="${today}" max="${today}" required></label>
         <label class="field">المبلغ (د.ل)<input class="input num" name="amount" required inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label></div>

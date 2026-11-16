@@ -1,6 +1,6 @@
 // حسابات العملاء والموردين: قائمة الأرصدة، كشف الحساب، تسجيل الدفعات، وربط السيارة بالعميل والمورد.
 // الأرصدة لكل عملة على حدة. الخادم هو الذي يحسب ويفرض الصلاحيات؛ الواجهة تعرض فقط.
-import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
+import { html, render, $, $$, api, fmt, state, toast, modal, icon, localToday } from './core.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const SYM = { USD: '$', LYD: 'د.ل', EUR: '€' };
@@ -120,7 +120,7 @@ export async function paymentDialog(type, partyId, { account, vehicleId } = {}) 
   const owing = acc.summary.filter((s) => Number(s.balance) > 0.0005);
   const defCur = acc.vehicles.find((v) => v.vehicleId === vehicleId)?.currency || owing[0]?.currency || 'LYD';
   const rate = (c) => state.meta.rates.find((r) => r.currency === c)?.rate_to_lyd || '';
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   return new Promise((resolve) => {
     const d = document.createElement('dialog');
     d.className = 'modal';

@@ -35,6 +35,8 @@ export const config = {
   // مفتاح HMAC منفصل لبصمات البحث (الهاتف/الهوية)
   lookupKey: checkKey('LOOKUP_HMAC_KEY', Buffer.from(requiredInProd('LOOKUP_HMAC_KEY', Buffer.alloc(32, 9).toString('base64')), 'base64')),
   sessionTtlHours: Number(env.SESSION_TTL_HOURS || 10),
+  // توقيت الشركة: به يُحدَّد «اليوم» للتواريخ الافتراضية (الخادم نفسه يعمل بتوقيت UTC)
+  timezone: env.BUSINESS_TZ || 'Africa/Tripoli',
   cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : isProd,
   // الربط الآلي مع Copart/IAAI/التتبع: معطّل افتراضيًا. تُدخل السيارات يدويًا أو بملف CSV.
   // لتفعيله لاحقًا: INTEGRATIONS_ENABLED=true مع مفاتيح المصادر (انظر docs/03).

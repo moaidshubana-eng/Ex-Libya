@@ -1,5 +1,5 @@
 import { newShipmentDialog, editShipmentDialog, addCarToShipmentDialog, removeCarFromShipment } from './views-manage.js';
-import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, toast, modal, icon } from './core.js';
+import { html, raw, render, $, $$, api, fmt, LABELS, STAGE_COLORS, state, statusBadge, toast, modal, icon, localToday } from './core.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 
@@ -42,7 +42,7 @@ export async function shipmentsView(el) {
         <label class="field">البند<select class="input" name="categoryCode">${state.meta.costCategories.filter((c) => ['OCEAN', 'LIBYA_PORT', 'CUSTOMS', 'LIBYA_INLAND'].includes(c.stage)).map((c) => html`<option value="${c.code}">${c.name_ar}</option>`)}</select></label>
         <div class="grid g3"><label class="field">الإجمالي<input class="input num" name="totalAmount" required pattern="\\d+(\\.\\d{1,3})?"></label>
           <label class="field">العملة<select class="input" name="currency"><option>USD</option><option>LYD</option><option>EUR</option></select></label>
-          <label class="field">التاريخ<input class="input" type="date" name="incurredAt" value="${new Date().toISOString().slice(0, 10)}" required></label></div>
+          <label class="field">التاريخ<input class="input" type="date" name="incurredAt" value="${localToday()}" required></label></div>
         <label class="field">طريقة التوزيع<select class="input" name="method"><option value="EQUAL">بالتساوي</option><option value="BY_PURCHASE_VALUE">حسب قيمة الشراء</option></select></label>
         <label class="field">الوصف<input class="input" name="description"></label>` });
     if (!r) return;

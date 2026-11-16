@@ -4,6 +4,7 @@ import { vinError } from '../domain/vin.js';
 import { canTransition, manualNextStatuses, STATUS_LABEL } from '../domain/status.js';
 import { applyDeal } from './accounts.js';
 import { HttpError } from '../security/middleware.js';
+import { today } from '../domain/dates.js';
 
 /**
  * تغيير حالة السيارة داخل معاملة قائمة (client). المصدر الوحيد لتغيير الحالة
@@ -221,7 +222,7 @@ export async function createVehicle(b, actor, inTx = null) {
         b.titleType || 'OTHER', b.primaryDamage || null, b.hasKeys ?? null, b.runAndDrive ?? null, port?.id || null, b.notes || null,
         b.engine || null, b.transmission || null, b.driveType || null, b.fuelType || null]);
     await c.query(`INSERT INTO vehicle_status_history (vehicle_id, from_status, to_status, source, reason, changed_by) VALUES ($1, NULL, 'PURCHASED', 'MANUAL', 'إدخال يدوي', $2)`, [v.id, actor.id]);
-    const date = b.purchaseDate || new Date().toISOString().slice(0, 10);
+    const date = b.purchaseDate || today();
     if (b.source && b.source !== 'OTHER' && b.lotNumber) {
       await c.query(
         `INSERT INTO source_listings (vehicle_id, source_id, lot_number, sale_date, sale_status, purchase_price_usd, raw_payload, payload_hash)

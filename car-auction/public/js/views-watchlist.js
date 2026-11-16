@@ -1,5 +1,5 @@
 // مزادات أمريكا: لوتات Copart/IAAI نتابعها قبل الشراء (السعر، موعد المزاد، الولاية والمدينة)، ثم «اشتريناها» تحوّلها لسيارة.
-import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
+import { html, render, $, $$, api, fmt, state, toast, modal, icon, localToday } from './core.js';
 import { dealFields, loadCustomers } from './views-accounts.js';
 import { mountPhotos, compress } from './photos.js';
 import { openLightbox } from './gallery.js';
@@ -156,7 +156,7 @@ async function lotDialog(w, reload, prefill = null) {
 async function convertDialog(w) {
   let customers = [];
   try { customers = await loadCustomers(true); } catch { /* دور بلا صلاحية قراءة العملاء */ }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const price = w.final_price_usd || w.current_bid_usd;
   const full = /^[A-HJ-NPR-Z0-9]{17}$/.test(w.vin || '');
   const r = await modal({ title: `اشتريناها: ${w.year || ''} ${w.make || ''} ${w.model || ''}`, submitLabel: 'تحويل لسيارة', body: html`

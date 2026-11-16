@@ -3,6 +3,7 @@ import { query, tx, audit } from '../db.js';
 import { HttpError } from '../security/middleware.js';
 import { changeStatus } from './vehicles.js';
 import { forwardPath, pathIndex } from '../domain/status.js';
+import { today as businessToday } from '../domain/dates.js';
 
 // ------------------------------------------------------------------ الموردون
 export async function createVendor(b, actor) {
@@ -80,7 +81,7 @@ export async function updateShipment(id, b, actor) {
   return tx(async (c) => {
     const { rows: [s] } = await c.query('SELECT * FROM shipments WHERE id = $1 FOR UPDATE', [id]);
     if (!s) throw new HttpError(404, 'NOT_FOUND', 'الشحنة غير موجودة');
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessToday();
     const sets = [], vals = [id];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
     for (const [k, col] of Object.entries({ bookingNo: 'booking_no', billOfLading: 'bill_of_lading', containerNo: 'container_no', vesselName: 'vessel_name', voyageNo: 'voyage_no', etd: 'etd', eta: 'eta', atd: 'atd', ata: 'ata', notes: 'notes' }))
