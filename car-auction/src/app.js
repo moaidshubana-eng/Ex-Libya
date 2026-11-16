@@ -30,7 +30,7 @@ export function createApp() {
 
   app.use(securityHeaders);
   // رفع الصور وحده يقبل جسمًا أكبر (صورة مضغوطة بترميز base64)؛ بقية المسارات تبقى بحد 200kb
-  app.use(/^\/api\/(vehicles|watchlist)\/[^/]+\/images\/?$/, express.json({ limit: '8mb' }));
+  app.use(/^\/api\/((vehicles|watchlist)\/[^/]+\/images|expenses\/[^/]+\/attachments)\/?$/, express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));
   app.use('/api/portal', csrfGuard, portal); // بوابة العملاء: جلسات منفصلة عن الموظفين
   app.use('/api', csrfGuard, authenticate, api);

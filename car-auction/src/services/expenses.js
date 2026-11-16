@@ -10,6 +10,7 @@
 import { query, tx, audit } from '../db.js';
 import { HttpError } from '../security/middleware.js';
 import { rateToLyd } from './costs.js';
+import { sniffImageType } from './images.js';
 
 export const EXPENSE_CATEGORIES = {
   RENT: 'إيجار', SALARIES: 'رواتب', UTILITIES: 'كهرباء ومياه واتصالات', FUEL_TRANSPORT: 'وقود ومواصلات', MARKETING: 'دعاية وتسويق',
@@ -32,10 +33,10 @@ export async function insertExpense(c, b, actor) {
   const date = b.expenseDate || new Date().toISOString().slice(0, 10);
   const fx = b.currency === 'LYD' ? '1' : (b.fxRateToLyd || await rateToLyd(c, b.currency, date));
   const { rows: [e] } = await c.query(
-    `INSERT INTO company_expenses (expense_no, category, description, amount, currency, fx_rate_to_lyd, expense_date, method, reference, created_by)
-     VALUES ('EX-' || to_char($6::date, 'YYYY') || '-' || lpad(nextval('expense_seq')::text, 5, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [b.category, b.description, b.amount, b.currency, fx, date, b.method || 'CASH', b.reference || null, actor.id]);
-  await audit(c, { actorId: actor.id, action: 'EXPENSE_ADDED', entity: 'company_expense', entityId: e.id, after: { no: e.expense_no, category: e.category, amount: e.amount, currency: e.currency, lyd: e.amount_lyd }, ip: actor.ip });
+    `INSERT INTO company_expenses (expense_no, category, description, amount, currency, fx_rate_to_lyd, expense_date, method, reference, paid_by, created_by)
+     VALUES ('EX-' || to_char($6::date, 'YYYY') || '-' || lpad(nextval('expense_seq')::text, 5, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [b.category, b.description, b.amount, b.currency, fx, date, b.method || 'CASH', b.reference || null, b.paidBy?.trim() || null, actor.id]);
+  await audit(c, { actorId: actor.id, action: 'EXPENSE_ADDED', entity: 'company_expense', entityId: e.id, after: { no: e.expense_no, category: e.category, amount: e.amount, currency: e.currency, lyd: e.amount_lyd, paidBy: e.paid_by }, ip: actor.ip });
   return e;
 }
 
@@ -60,12 +61,96 @@ export async function voidExpense(id, reason, actor) {
   });
 }
 
+/** قائمة مختصرة بفواتير المصروف (بلا المحتوى) — تُضمَّن في استعلامات المصاريف والعهد */
+export const ATTACHMENTS_SQL = (alias) => `(SELECT COALESCE(json_agg(json_build_object('id', a.id, 'filename', a.filename, 'mime', a.mime) ORDER BY a.created_at), '[]')
+  FROM expense_attachments a WHERE a.expense_id = ${alias}.id)`;
+
 export async function listExpenses(month) {
   const r = monthRange(month);
   const { rows } = await query(
-    `SELECT e.*, u.full_name AS created_by_name FROM company_expenses e LEFT JOIN users u ON u.id = e.created_by
+    `SELECT e.*, u.full_name AS created_by_name, ${ATTACHMENTS_SQL('e')} AS attachments,
+            EXISTS (SELECT 1 FROM custody_entries k WHERE k.expense_id = e.id) AS from_custody
+       FROM company_expenses e LEFT JOIN users u ON u.id = e.created_by
       WHERE e.expense_date >= $1 AND e.expense_date < $2 ORDER BY e.expense_date DESC, e.created_at DESC`, [r.from, r.to]);
   return { ...r, items: rows };
+}
+
+// ---------------------------------------------------------------- فواتير المصاريف
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_EXPENSE = 10;
+
+/** يفك base64 ويحدد النوع من البايتات نفسها: صورة JPEG/PNG/WebP أو PDF فقط */
+export function decodeAttachment(data) {
+  const m = /^data:[^;,]*;base64,(.*)$/s.exec(data);
+  const b64 = (m ? m[1] : data).replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) throw new HttpError(422, 'BAD_FILE', 'بيانات الملف غير صالحة');
+  const buf = Buffer.from(b64, 'base64');
+  if (!buf.length) throw new HttpError(422, 'BAD_FILE', 'الملف فارغ');
+  if (buf.length > MAX_ATTACHMENT_BYTES) throw new HttpError(413, 'FILE_TOO_LARGE', 'الملف أكبر من 5 ميغابايت');
+  const mime = sniffImageType(buf) || (buf.toString('ascii', 0, 5) === '%PDF-' ? 'application/pdf' : null);
+  if (!mime) throw new HttpError(415, 'UNSUPPORTED_FILE', 'الفاتورة صورة (JPEG أو PNG أو WebP) أو ملف PDF فقط');
+  return { buf, mime };
+}
+
+export async function addExpenseAttachment(expenseId, { data, filename }, actor) {
+  const { buf, mime } = decodeAttachment(data);
+  return tx(async (c) => {
+    const { rows: [e] } = await c.query('SELECT id, expense_no, voided_at FROM company_expenses WHERE id = $1 FOR UPDATE', [expenseId]);
+    if (!e) throw new HttpError(404, 'NOT_FOUND', 'المصروف غير موجود');
+    if (e.voided_at) throw new HttpError(409, 'EXPENSE_VOIDED', 'المصروف ملغى');
+    const { rows: [n] } = await c.query('SELECT count(*)::int AS n FROM expense_attachments WHERE expense_id = $1', [expenseId]);
+    if (n.n >= MAX_ATTACHMENTS_PER_EXPENSE) throw new HttpError(422, 'TOO_MANY_FILES', `الحد الأقصى ${MAX_ATTACHMENTS_PER_EXPENSE} فواتير للمصروف`);
+    const name = String(filename || '').replace(/[\\/\r\n"]/g, '').trim().slice(0, 120) || (mime === 'application/pdf' ? 'فاتورة.pdf' : 'فاتورة.jpg');
+    const { rows: [a] } = await c.query(
+      `INSERT INTO expense_attachments (expense_id, filename, mime, bytes, content, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, filename, mime, bytes`,
+      [expenseId, name, mime, buf.length, buf, actor.id]);
+    await audit(c, { actorId: actor.id, action: 'EXPENSE_ATTACHMENT_ADDED', entity: 'company_expense', entityId: expenseId, after: { attachment: a.id, no: e.expense_no, mime, bytes: buf.length }, ip: actor.ip });
+    return a;
+  });
+}
+
+export async function getExpenseAttachment(id) {
+  const { rows: [a] } = await query('SELECT filename, mime, content FROM expense_attachments WHERE id = $1', [id]);
+  if (!a) throw new HttpError(404, 'NOT_FOUND', 'الفاتورة غير موجودة');
+  return a;
+}
+
+export async function removeExpenseAttachment(id, actor) {
+  return tx(async (c) => {
+    const { rows: [a] } = await c.query('DELETE FROM expense_attachments WHERE id = $1 RETURNING expense_id, filename', [id]);
+    if (!a) throw new HttpError(404, 'NOT_FOUND', 'الفاتورة غير موجودة');
+    await audit(c, { actorId: actor.id, action: 'EXPENSE_ATTACHMENT_REMOVED', entity: 'company_expense', entityId: a.expense_id, before: { attachment: id, filename: a.filename }, ip: actor.ip });
+    return { ok: true };
+  });
+}
+
+// ---------------------------------------------------------------- مصاريف دفعها شخص من ماله
+/** المبالغ التي على الشركة لأشخاص دفعوا مصاريفها من مالهم ولم تُردّ لهم بعد */
+export async function owedToPeople() {
+  const { rows } = await query(
+    `SELECT e.id, e.expense_no, e.expense_date::text AS expense_date, e.category, e.description, e.amount, e.currency, e.amount_lyd, e.paid_by,
+            ${ATTACHMENTS_SQL('e')} AS attachments
+       FROM company_expenses e WHERE e.paid_by IS NOT NULL AND e.reimbursed_at IS NULL AND e.voided_at IS NULL
+      ORDER BY e.paid_by, e.expense_date, e.created_at`);
+  const people = new Map();
+  for (const e of rows) {
+    const p = people.get(e.paid_by) || { name: e.paid_by, totalLyd: 0, items: [] };
+    p.totalLyd += Math.round(Number(e.amount_lyd) * 1000);
+    p.items.push(e);
+    people.set(e.paid_by, p);
+  }
+  return [...people.values()].map((p) => ({ ...p, totalLyd: (p.totalLyd / 1000).toFixed(3) }));
+}
+
+export async function markReimbursed(id, note, actor) {
+  return tx(async (c) => {
+    const { rows: [e] } = await c.query(
+      `UPDATE company_expenses SET reimbursed_at = now(), reimbursed_by = $2, reimburse_note = $3
+        WHERE id = $1 AND paid_by IS NOT NULL AND reimbursed_at IS NULL AND voided_at IS NULL RETURNING expense_no, paid_by, amount_lyd`, [id, actor.id, note || null]);
+    if (!e) throw new HttpError(409, 'NOT_OWED', 'هذا المصروف ليس مستحقًا لأحد أو رُدّ مسبقًا');
+    await audit(c, { actorId: actor.id, action: 'EXPENSE_REIMBURSED', entity: 'company_expense', entityId: id, after: { no: e.expense_no, to: e.paid_by, lyd: e.amount_lyd, note }, ip: actor.ip });
+    return { ok: true };
+  });
 }
 
 export async function profitReport(month) {

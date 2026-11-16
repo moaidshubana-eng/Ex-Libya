@@ -393,6 +393,12 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .receipt-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; text-align: center; color: var(--text-2); }
 .receipt-sign span { display: block; border-bottom: 1px dotted var(--text-2); height: 40px; }
 @page receipt { size: A5 portrait; margin: 10mm; }
+/* فواتير المصاريف */
+.att-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.att-row:empty { display: none; }
+.att-link { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; text-decoration: none; white-space: nowrap; }
+.badge-warn { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; white-space: nowrap; }
+.owed { padding: 12px 16px; border-top: 1px solid var(--border); }
 /* كشف العهدة */
 .stmt { max-width: 900px; margin: 0 auto; }
 .stmt-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid var(--brand); padding-bottom: 12px; }

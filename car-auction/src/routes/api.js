@@ -16,7 +16,7 @@ import { renderVehicleSvg } from '../services/media.js';
 import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
-import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES } from '../services/expenses.js';
+import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES, addExpenseAttachment, getExpenseAttachment, removeExpenseAttachment, owedToPeople, markReimbursed } from '../services/expenses.js';
 import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry } from '../services/custody.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
 import { setPortalAccount, disablePortalAccount, portalAccountInfo } from '../services/portal.js';
@@ -575,6 +575,7 @@ api.post('/expenses', requireRole(ACC_WRITERS), asyncH(async (req, res) => {
     category: t.enum(Object.keys(EXPENSE_CATEGORIES), { required: true }), description: t.string({ required: true, min: 2, max: 300 }),
     amount: t.decimal({ required: true, positive: true }), currency: t.enum(['USD', 'LYD', 'EUR'], { required: true }), fxRateToLyd: t.decimal({ positive: true }),
     expenseDate: t.date(), method: t.enum(['CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'OTHER']), reference: t.string({ max: 80 }),
+    paidBy: t.string({ max: 120 }), // من دفعها من ماله الخاص فتصير مستحقة له
   });
   res.status(201).json(await addExpense(b, actorOf(req)));
 }));
@@ -582,6 +583,25 @@ api.post('/expenses/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH
   const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
   res.json(await voidExpense(req.params.id, b.reason, actorOf(req)));
 }));
+// ---------------------------------------------------------------- فواتير المصاريف، والمستحق لمن دفع من ماله
+api.post('/expenses/:id/attachments', requireRole(ACC_WRITERS), uuidParam('id'), imageLimiter, asyncH(async (req, res) => {
+  const b = validate(req.body, { data: t.string({ required: true, max: 7_200_000 }), filename: t.string({ max: 200 }) });
+  res.status(201).json(await addExpenseAttachment(req.params.id, b, actorOf(req)));
+}));
+api.get('/expense-attachments/:id', requireRole(FIN_READERS), uuidParam('id'), asyncH(async (req, res) => {
+  const a = await getExpenseAttachment(req.params.id);
+  res.set('Content-Type', a.mime);
+  res.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.filename)}`);
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.send(a.content);
+}));
+api.post('/expense-attachments/:id/remove', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => res.json(await removeExpenseAttachment(req.params.id, actorOf(req)))));
+api.get('/expenses/owed', requireRole(FIN_READERS), asyncH(async (_req, res) => res.json({ people: await owedToPeople() })));
+api.post('/expenses/:id/reimburse', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { note: t.string({ max: 300 }) });
+  res.json(await markReimbursed(req.params.id, b.note, actorOf(req)));
+}));
+
 // ---------------------------------------------------------------- العُهد النقدية
 api.get('/custodies', requireRole(FIN_READERS), asyncH(async (_req, res) => res.json({ items: await listCustodies() })));
 api.post('/custodies', requireRole(ACC_WRITERS), asyncH(async (req, res) => {

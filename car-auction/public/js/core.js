@@ -116,6 +116,8 @@ export function modal({ title, body, submitLabel = 'حفظ', danger = false }) {
     d.addEventListener('close', () => {
       const ok = d.returnValue === 'ok';
       const data = ok ? Object.fromEntries(new FormData(d.querySelector('form'))) : null;
+      // حقول الملفات تعيد كل الملفات المختارة (FormData وحدها تُبقي آخر ملف فقط)
+      if (data) d.querySelectorAll('input[type=file]').forEach((i) => { data[i.name] = [...i.files]; });
       d.remove();
       resolve(data);
     });

@@ -1,6 +1,7 @@
 // الإيصالات (قبض من العميل / صرف للمورد)، لوحة «لنا وعلينا»، ومصاريف الشركة مع الربح الشهري.
 import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
 import { money } from './views-accounts.js';
+import { attachmentLinks, pickInvoices, uploadInvoices, invoiceField } from './attachments.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const CUR_NAME = { USD: 'دولار', LYD: 'دينار', EUR: 'يورو' };
@@ -76,7 +77,7 @@ export async function overviewSection() {
 // ======================================================================= المصاريف والأرباح
 export async function financeView(el, { query }) {
   const month = query.month || new Date().toISOString().slice(0, 7);
-  const [p, ex] = await Promise.all([api(`/reports/profit?month=${month}`), api(`/expenses?month=${month}`)]);
+  const [p, ex, owed] = await Promise.all([api(`/reports/profit?month=${month}`), api(`/expenses?month=${month}`), api('/expenses/owed')]);
   const t = p.totals;
   const kpi = (label, v, color, sub = '') => html`<div class="card card-b"><div class="faint">${label}</div><div class="num" style="font-size:24px;font-weight:700;color:${color}">${lyd(v)}</div>${sub ? html`<div class="faint" style="font-size:12px">${sub}</div>` : ''}</div>`;
   const reload = () => financeView(el, { query: { month } });
@@ -107,11 +108,23 @@ export async function financeView(el, { query }) {
       <div class="card"><div class="card-h"><h2>قيود المصاريف</h2><span class="faint">${ex.items.length} قيد</span></div>
         <div class="table-wrap"><table class="t"><thead><tr><th>التاريخ</th><th>البيان</th><th class="n">المبلغ</th><th class="no-print"></th></tr></thead>
           <tbody>${ex.items.map((e) => html`<tr style="${e.voided_at ? 'opacity:.5;text-decoration:line-through' : ''}"><td>${fmt.date(e.expense_date)}<div class="mono faint" style="font-size:11px">${e.expense_no}</div></td>
-            <td>${EXPENSE_CATEGORIES.find(([k]) => k === e.category)?.[1]} — ${e.description}${e.voided_at ? html`<div class="faint">ملغى: ${e.void_reason}</div>` : ''}</td>
+            <td>${EXPENSE_CATEGORIES.find(([k]) => k === e.category)?.[1]} — ${e.description}${e.voided_at ? html`<div class="faint">ملغى: ${e.void_reason}</div>` : ''}
+              ${e.paid_by ? html`<div style="font-size:12px">${e.reimbursed_at ? html`<span class="faint">دفعها ${e.paid_by} من ماله · رُدّت له ${fmt.date(e.reimbursed_at)}</span>` : html`<b class="neg">دفعها ${e.paid_by} من ماله · مستحقة له</b>`}</div>` : ''}
+              ${e.from_custody ? html`<div class="faint" style="font-size:12px">${e.reference || 'من عهدة'}</div>` : ''}
+              <div class="att-row">${attachmentLinks(e.attachments)}${!e.voided_at && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost no-print" data-attach="${e.id}">${e.attachments.length ? '+ فاتورة' : '📎 إرفاق فاتورة'}</button>` : ''}
+                ${!e.attachments.length && !e.voided_at ? html`<span class="badge-warn no-print">بلا فاتورة</span>` : ''}</div></td>
             <td class="n">${money(e.amount, e.currency)}${e.currency !== 'LYD' ? html`<div class="faint" style="font-size:12px">${lyd(e.amount_lyd)}</div>` : ''}</td>
-            <td class="no-print">${!e.voided_at && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
+            <td class="no-print">${!e.voided_at && !e.from_custody && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
           ${ex.items.length ? '' : html`<div class="empty">لا مصاريف مسجلة في هذا الشهر</div>`}</div></div>
-    </div>`);
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h2>مستحق لأشخاص دفعوا من مالهم</h2><span class="faint">مصاريف الشركة اللي دفعها موظف من ماله ولسه ما رُدّتش له (كل الشهور)</span></div>
+      ${owed.people.length ? owed.people.map((o) => html`<div class="owed">
+        <div class="row" style="justify-content:space-between"><b>${o.name}</b><b class="neg num">${lyd(o.totalLyd)}</b></div>
+        <div class="table-wrap"><table class="t"><tbody>${o.items.map((e) => html`<tr><td>${e.expense_date.split('-').reverse().join('/')}<div class="mono faint" style="font-size:11px">${e.expense_no}</div></td>
+          <td>${e.description}<div class="att-row">${attachmentLinks(e.attachments)}${e.attachments.length ? '' : html`<span class="badge-warn">بلا فاتورة</span>`}</div></td>
+          <td class="n">${money(e.amount, e.currency)}</td>
+          <td class="no-print">${can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm" data-reimburse="${e.id}">رُدّت له</button>` : ''}</td></tr>`)}</tbody></table></div></div>`)
+        : html`<div class="empty">لا مستحقات — كل ما دفعه الموظفون من مالهم رُدّ لهم</div>`}</div>`);
   $('[data-month]', el).addEventListener('submit', (e) => { e.preventDefault(); location.hash = `#/finance?month=${e.target.month.value}`; });
   $('[data-print]', el).addEventListener('click', () => window.print());
   $('[data-new]', el)?.addEventListener('click', async () => {
@@ -123,12 +136,26 @@ export async function financeView(el, { query }) {
       <div class="grid g3"><label class="field">المبلغ<input class="input num" name="amount" required inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label>
         <label class="field">العملة<select class="input" name="currency">${opts([['LYD', 'دينار'], ['USD', 'دولار'], ['EUR', 'يورو']], 'LYD')}</select></label>
         <label class="field">الطريقة<select class="input" name="method">${opts(Object.entries(METHOD), 'CASH')}</select></label></div>
-      <label class="field">المرجع<input class="input" name="reference" maxlength="80"></label>
+      <label class="field">المرجع<input class="input" name="reference" maxlength="80" placeholder="رقم الفاتورة مثلًا"></label>
+      <label class="field">دفعها من ماله الخاص (اختياري)<input class="input" name="paidBy" maxlength="120" placeholder="اسم الموظف — يصير المبلغ مستحقًا له حتى تردّه الشركة"></label>
+      ${invoiceField()}
       <p class="faint" style="margin:0">المصروف بالدولار أو اليورو يُحوَّل للدينار بسعر صرف يوم المصروف المسجل في الإعدادات.</p>` });
     if (!r) return;
-    const body = Object.fromEntries(Object.entries(r).filter(([, v]) => v !== ''));
-    try { await api('/expenses', { method: 'POST', body }); toast('سُجّل المصروف', 'ok'); reload(); } catch (e) { toast(e.message, 'err'); }
+    const { invoice = [], ...rest } = r;
+    const body = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== ''));
+    try {
+      const e = await api('/expenses', { method: 'POST', body });
+      const n = await uploadInvoices(e.id, invoice);
+      toast(n ? 'سُجّل المصروف وأُرفقت الفاتورة' : 'سُجّل المصروف', 'ok');
+      reload();
+    } catch (e) { toast(e.message, 'err'); }
   });
+  $$('[data-attach]', el).forEach((b) => b.addEventListener('click', async () => { if (await pickInvoices(b.dataset.attach)) reload(); }));
+  $$('[data-reimburse]', el).forEach((b) => b.addEventListener('click', async () => {
+    const r = await modal({ title: 'ردّ المبلغ لمن دفعه', submitLabel: 'تأكيد', body: html`<label class="field">ملاحظة (اختياري)<input class="input" name="note" maxlength="300" placeholder="مثلًا: حوالة مصرفية بتاريخ ..."></label>` });
+    if (!r) return;
+    try { await api(`/expenses/${b.dataset.reimburse}/reimburse`, { method: 'POST', body: r.note ? { note: r.note } : {} }); toast('سُجّل الردّ', 'ok'); reload(); } catch (e) { toast(e.message, 'err'); }
+  }));
   $$('[data-void]', el).forEach((b) => b.addEventListener('click', async () => {
     const r = await modal({ title: 'إلغاء مصروف', submitLabel: 'إلغاء المصروف', danger: true, body: html`<label class="field">السبب (إلزامي)<input class="input" name="reason" required minlength="3" maxlength="300"></label>` });
     if (!r) return;

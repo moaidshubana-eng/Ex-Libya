@@ -743,6 +743,24 @@ CREATE INDEX idx_portal_sessions_customer ON portal_sessions(customer_id) WHERE 
 ALTER TABLE vehicles ADD COLUMN track_code TEXT NOT NULL DEFAULT substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
 CREATE UNIQUE INDEX uq_vehicles_track_code ON vehicles(track_code);
 
+-- من دفع المصروف من ماله الخاص وتردّه له الشركة، وفواتير المصاريف المرفقة
+ALTER TABLE company_expenses ADD COLUMN paid_by TEXT;              -- فارغ = دفعتها الشركة؛ وإلا اسم من دفعها من ماله
+ALTER TABLE company_expenses ADD COLUMN reimbursed_at TIMESTAMPTZ;  -- متى ردّت الشركة المبلغ له
+ALTER TABLE company_expenses ADD COLUMN reimbursed_by UUID REFERENCES users(id);
+ALTER TABLE company_expenses ADD COLUMN reimburse_note TEXT;
+CREATE INDEX idx_expenses_owed ON company_expenses(paid_by) WHERE paid_by IS NOT NULL AND reimbursed_at IS NULL AND voided_at IS NULL;
+CREATE TABLE expense_attachments (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  expense_id   UUID NOT NULL REFERENCES company_expenses(id),
+  filename     TEXT NOT NULL,
+  mime         TEXT NOT NULL CHECK (mime IN ('image/jpeg','image/png','image/webp','application/pdf')),
+  bytes        INT NOT NULL,
+  content      BYTEA NOT NULL,                          -- في القاعدة: الاستضافة قد لا تملك قرصًا دائمًا
+  uploaded_by  UUID REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_expense_attachments ON expense_attachments(expense_id);
+
 -- العُهد النقدية: مبلغ يستلمه شخص من الخزينة ويصرف منه؛ الصرف منها يُسجَّل مصروفًا عامًا أيضًا
 CREATE TABLE custodies (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

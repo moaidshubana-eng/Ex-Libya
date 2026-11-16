@@ -1,6 +1,7 @@
 // العُهد النقدية: قائمة العهد بأرصدتها، وكشف كل عهدة (استلام / صرف / إرجاع) قابل للطباعة.
 import { html, render, $, $$, api, fmt, state, toast, modal, icon } from './core.js';
 import { EXPENSE_CATEGORIES } from './views-finance.js';
+import { attachmentLinks, pickInvoices, uploadInvoices, invoiceField } from './attachments.js';
 
 const can = (...roles) => roles.includes(state.user.role);
 const writer = () => can('ADMIN', 'ACCOUNTANT');
@@ -148,7 +149,9 @@ export async function custodyView(el, { params, setTitle }) {
         <tbody>${s.entries.map((e) => html`<tr class="${e.voided ? 'stmt-void no-print' : ''}">
           <td class="n">${e.no ?? ''}</td><td>${day(e.date)}</td>
           <td><b>${e.description}</b><div class="faint" style="font-size:12px">${e.kind === 'EXPENSE' ? `${e.categoryLabel || 'مصروف'} · ${e.expenseNo}` : KIND[e.kind]}</div>
-            ${e.voided ? html`<div class="faint">ملغاة: ${e.voidReason}</div>` : ''}</td>
+            ${e.voided ? html`<div class="faint">ملغاة: ${e.voidReason}</div>` : ''}
+            ${e.kind === 'EXPENSE' && !e.voided ? html`<div class="att-row no-print">${attachmentLinks(e.attachments)}${writer() ? html`<button class="btn btn-sm btn-ghost" data-attach="${e.expenseId}">${e.attachments.length ? '+ فاتورة' : '📎 إرفاق فاتورة'}</button>` : ''}
+              ${e.attachments.length ? '' : html`<span class="badge-warn">بلا فاتورة</span>`}</div>` : ''}</td>
           <td class="n">${amt(e.in)}</td><td class="n">${amt(e.out)}</td><td class="n"><b>${amt(e.balance)}</b></td>
           <td class="no-print">${!e.voided && writer() ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody>
         <tfoot><tr><th></th><th></th><th>المجموع</th><th class="n">${amt(t.in)}</th><th class="n">${amt(t.out)}</th><th class="n">${amt(t.balance)}</th><th class="no-print"></th></tr></tfoot></table>
@@ -169,10 +172,17 @@ export async function custodyView(el, { params, setTitle }) {
         <label class="field">المبلغ (د.ل)<input class="input num" name="amount" required inputmode="decimal" pattern="\\d+(\\.\\d{1,3})?"></label></div>
       ${kind === 'EXPENSE' ? html`<label class="field">البند<select class="input" name="category">${opts(EXPENSE_CATEGORIES, 'OTHER')}</select></label>` : ''}
       <label class="field">البيان<input class="input" name="description" required minlength="2" maxlength="300" value="${kind === 'RECEIPT' ? 'استلام العهدة من الخزينة' : kind === 'RETURN' ? 'إرجاع الباقي للخزينة' : ''}"></label>
-      ${kind === 'EXPENSE' ? html`<p class="faint" style="margin:0">يُسجَّل أيضًا في مصاريف الشركة فيدخل في الربح الشهري.</p>` : ''}` });
+      ${kind === 'EXPENSE' ? html`${invoiceField()}<p class="faint" style="margin:0">يُسجَّل أيضًا في مصاريف الشركة فيدخل في الربح الشهري.</p>` : ''}` });
     if (!r) return;
-    try { await api(`/custodies/${k.id}/entries`, { method: 'POST', body: { ...r, kind } }); toast('سُجّلت الحركة', 'ok'); reload(); } catch (e) { toast(e.message, 'err'); }
+    const { invoice = [], ...body } = r;
+    try {
+      const e = await api(`/custodies/${k.id}/entries`, { method: 'POST', body: { ...body, kind } });
+      if (e.expense_id) await uploadInvoices(e.expense_id, invoice);
+      toast('سُجّلت الحركة', 'ok');
+      reload();
+    } catch (e) { toast(e.message, 'err'); }
   }));
+  $$('[data-attach]', el).forEach((b) => b.addEventListener('click', async () => { if (await pickInvoices(b.dataset.attach)) reload(); }));
   $$('[data-void]', el).forEach((b) => b.addEventListener('click', async () => {
     const r = await modal({ title: 'إلغاء حركة', submitLabel: 'إلغاء الحركة', danger: true, body: html`<label class="field">السبب (إلزامي)<input class="input" name="reason" required minlength="3" maxlength="300"></label>
       <p class="faint" style="margin:0">إن كانت صرفًا يُلغى مصروفها أيضًا ويرجع المبلغ لرصيد العهدة.</p>` });

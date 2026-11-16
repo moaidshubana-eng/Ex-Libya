@@ -5,7 +5,7 @@
 // المبالغ بالدينار. الكشف بترتيب التسجيل مثل دفتر العهدة الورقي.
 import { query, tx, audit } from '../db.js';
 import { HttpError } from '../security/middleware.js';
-import { insertExpense, cancelExpense, EXPENSE_CATEGORIES } from './expenses.js';
+import { insertExpense, cancelExpense, EXPENSE_CATEGORIES, ATTACHMENTS_SQL } from './expenses.js';
 
 const mil = (v) => Math.round(Number(v) * 1000);
 const f3 = (m) => (m / 1000).toFixed(3);
@@ -35,7 +35,8 @@ export async function custodyStatement(id) {
   const { rows: [k] } = await query('SELECT * FROM custodies WHERE id = $1', [id]);
   if (!k) throw new HttpError(404, 'NOT_FOUND', 'العهدة غير موجودة');
   const { rows } = await query(
-    `SELECT e.*, e.entry_date::text AS entry_day, x.expense_no, x.category, u.full_name AS created_by_name
+    `SELECT e.*, e.entry_date::text AS entry_day, x.expense_no, x.category, u.full_name AS created_by_name,
+            CASE WHEN x.id IS NULL THEN '[]'::json ELSE ${ATTACHMENTS_SQL('x')} END AS attachments
        FROM custody_entries e LEFT JOIN company_expenses x ON x.id = e.expense_id LEFT JOIN users u ON u.id = e.created_by
       WHERE e.custody_id = $1 ORDER BY e.seq`, [id]);
   let bal = 0, inn = 0, out = 0, n = 0;
@@ -48,7 +49,7 @@ export async function custodyStatement(id) {
     return {
       id: e.id, no: live ? ++n : null, kind: e.kind, date: e.entry_day, description: e.description, amount: e.amount,
       in: e.kind === 'RECEIPT' ? e.amount : null, out: e.kind === 'RECEIPT' ? null : e.amount, balance: live ? f3(bal) : null,
-      expenseNo: e.expense_no, category: e.category, categoryLabel: EXPENSE_CATEGORIES[e.category] || null,
+      expenseId: e.expense_id, attachments: e.attachments, expenseNo: e.expense_no, category: e.category, categoryLabel: EXPENSE_CATEGORIES[e.category] || null,
       voided: !live, voidReason: e.void_reason, createdBy: e.created_by_name, createdAt: e.created_at,
     };
   });
