@@ -1,5 +1,5 @@
 // فواتير المصاريف: روابط فتحها، واختيار ملفات ورفعها (الصور تُصغَّر قبل الرفع، وPDF يُرفع كما هو).
-import { html, api, toast } from './core.js';
+import { html, api, toast, modal } from './core.js';
 import { compress } from './photos.js';
 
 const MAX_PDF = 5 * 1024 * 1024;
@@ -33,17 +33,26 @@ export async function uploadInvoices(expenseId, files) {
   return n;
 }
 
-/** يفتح اختيار الملفات ثم يرفعها */
-export function pickInvoices(expenseId) {
-  return new Promise((resolve) => {
-    const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*,application/pdf', multiple: true });
-    input.addEventListener('change', async () => {
-      const n = await uploadInvoices(expenseId, [...input.files]);
-      if (n) toast(n === 1 ? 'أُرفقت الفاتورة' : `أُرفقت ${n} فواتير`, 'ok');
-      resolve(n);
-    });
-    input.click();
-  });
+/** نافذة إرفاق: اختيار ملف، أو لصق صورة منسوخة (Ctrl+V من واتساب مثلًا)؛ تعيد عدد ما رُفع */
+export async function pickInvoices(expenseId) {
+  const pasted = [];
+  const onPaste = (e) => {
+    const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+    if (!files.length) return;
+    e.preventDefault();
+    pasted.push(...files);
+    const box = document.querySelector('[data-paste-zone]');
+    if (box) box.textContent = `✔ لُصق ${pasted.length === 1 ? 'ملف واحد' : `${pasted.length} ملفات`} — اضغط «إرفاق»`;
+  };
+  document.addEventListener('paste', onPaste);
+  const r = await modal({ title: 'إرفاق فاتورة', submitLabel: 'إرفاق', body: html`
+    <div class="paste-zone" data-paste-zone tabindex="0">انسخ صورة الفاتورة والصقها هنا (Ctrl+V)</div>
+    <label class="field">أو اختر ملفًا (صورة أو PDF)<input class="input" type="file" name="files" accept="image/*,application/pdf" multiple></label>` });
+  document.removeEventListener('paste', onPaste);
+  if (!r) return 0;
+  const n = await uploadInvoices(expenseId, [...pasted, ...(r.files || [])]);
+  if (n) toast(n === 1 ? 'أُرفقت الفاتورة' : `أُرفقت ${n} فواتير`, 'ok');
+  return n;
 }
 
 /** حقل اختيار الفاتورة داخل نموذج مصروف جديد */
