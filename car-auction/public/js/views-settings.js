@@ -3,9 +3,19 @@ import { html, render, $, $$, api, fmt, LABELS, state, toast, modal, icon, local
 
 const ROLE_OPTS = ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER', 'BIDDER'];
 
+/** وصف مقروء للجهاز من نص المتصفح: «Chrome على Windows» */
+function deviceLabel(ua) {
+  const s = String(ua || '');
+  const os = /iPhone|iPad/.test(s) ? 'iPhone' : /Android/.test(s) ? 'Android' : /Windows/.test(s) ? 'Windows' : /Mac OS/.test(s) ? 'Mac' : /Linux/.test(s) ? 'Linux' : '';
+  const br = /Edg\//.test(s) ? 'Edge' : /OPR\//.test(s) ? 'Opera' : /Firefox\//.test(s) ? 'Firefox' : /Chrome\//.test(s) ? 'Chrome' : /Safari\//.test(s) ? 'Safari' : '';
+  return br && os ? `${br} على ${os}` : br || os || 'جهاز غير معروف';
+}
+
 export async function settingsView(el) {
   const isAdmin = state.user.role === 'ADMIN';
-  const [fx, users] = await Promise.all([api('/exchange-rates'), isAdmin ? api('/users') : { items: [] }]);
+  const [fx, users, sec] = await Promise.all([api('/exchange-rates'), isAdmin ? api('/users') : { items: [] }, isAdmin ? api('/admin/security') : null]);
+  const backupDays = sec?.last_backup_at ? Math.floor((Date.now() - new Date(sec.last_backup_at)) / 86_400_000) : null;
+  const backupLate = sec && (backupDays === null || backupDays >= 7);
   const latest = {};
   for (const r of fx.items) if (!latest[r.currency]) latest[r.currency] = r;
   const today = localToday();
@@ -36,7 +46,30 @@ export async function settingsView(el) {
           <td>${u.is_active ? html`<span class="badge" style="color:var(--success)"><span class="dot"></span>فعّال</span>` : html`<span class="badge" style="color:var(--danger)"><span class="dot"></span>معطّل</span>`}</td>
           <td class="row"><button class="btn btn-sm" data-reset="${u.id}" data-name="${u.full_name}">كلمة مرور جديدة</button>
             ${u.id !== state.user.id ? html`<button class="btn btn-sm ${u.is_active ? 'btn-danger' : ''}" data-toggle="${u.id}" data-active="${u.is_active}">${u.is_active ? 'تعطيل' : 'تفعيل'}</button>` : ''}</td></tr>`)}</tbody></table></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h2>النسخ الاحتياطي</h2><span style="flex:1"></span><a class="btn btn-accent btn-sm" href="/api/admin/backup" download data-backup>${icon('download')} تنزيل نسخة كاملة</a></div>
+      <div class="card-b stack">
+        <p class="${backupLate ? 'neg' : 'muted'}" style="margin:0"><b>${backupDays === null ? 'لم تُنزَّل أي نسخة احتياطية بعد.' : backupDays === 0 ? 'آخر نسخة: اليوم.' : `آخر نسخة: منذ ${backupDays} يوم.`}</b>${backupLate ? ' نزّل نسخة الآن.' : ''}</p>
+        <p class="muted" style="margin:0">ملف واحد مضغوط فيه كل شيء: السيارات، الحسابات، المصاريف، العُهد، وصور الفواتير. <b>نزّل نسخة كل أسبوع</b> واحفظها خارج هذا الجهاز (فلاشة أو Google Drive). لو ضاعت قاعدة البيانات تُسترجع منها المنظومة كاملة.</p>
+        <p class="faint" style="margin:0">الملف فيه بيانات الشركة كلها، فلا ترسله لأحد ولا تتركه على جهاز مشترك.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h2>الأجهزة الداخلة الآن</h2><span style="flex:1"></span>${sec.sessions.length > 1 ? html`<button class="btn btn-sm btn-danger" data-revoke-others>إخراج كل الأجهزة الأخرى</button>` : ''}</div>
+      <div class="card-b" style="padding-bottom:0"><p class="muted" style="margin:0 0 10px">محاولات دخول فاشلة آخر 7 أيام: <b class="${sec.failed_logins_7d > 20 ? 'neg' : ''}">${sec.failed_logins_7d}</b>${sec.locked_users ? html` · حسابات مقفلة مؤقتًا: <b class="neg">${sec.locked_users}</b>` : ''} · <a href="#/audit">سجل التدقيق</a>. لو شفت جهازًا أو مكانًا ما تعرفاش، أخرجه وغيّر كلمة المرور.</p></div>
+      <div class="table-wrap"><table class="t"><thead><tr><th>المستخدم</th><th>الجهاز</th><th>IP</th><th>دخل في</th><th></th></tr></thead>
+        <tbody>${sec.sessions.map((s) => html`<tr><td><b>${s.full_name}</b> <span class="faint">${LABELS.role[s.role]}</span></td><td>${deviceLabel(s.user_agent)}</td><td class="mono faint">${s.ip || '—'}</td><td>${fmt.dt(s.created_at)}</td>
+          <td>${s.current ? html`<span class="badge" style="color:var(--success)"><span class="dot"></span>هذا الجهاز</span>` : html`<button class="btn btn-sm btn-danger" data-revoke="${s.id}">إخراج</button>`}</td></tr>`)}</tbody></table></div>
     </div>` : ''}`);
+
+  $('[data-backup]', el)?.addEventListener('click', () => { toast('بدأ تنزيل النسخة — احفظ الملف في مكان آمن', 'ok'); setTimeout(() => settingsView(el), 4000); });
+  $('[data-revoke-others]', el)?.addEventListener('click', async () => {
+    try { const r = await api('/admin/sessions/revoke-others', { method: 'POST', body: {} }); toast(`أُخرج ${r.revoked} جهاز`, 'ok'); settingsView(el); } catch (e) { toast(e.message, 'err'); }
+  });
+  $$('[data-revoke]', el).forEach((b) => b.addEventListener('click', async () => {
+    try { await api(`/admin/sessions/${b.dataset.revoke}/revoke`, { method: 'POST', body: {} }); toast('أُخرج الجهاز', 'ok'); settingsView(el); } catch (e) { toast(e.message, 'err'); }
+  }));
 
   $('[data-fx]', el)?.addEventListener('click', async () => {
     const r = await modal({ title: 'تسجيل سعر صرف', submitLabel: 'حفظ السعر', body: html`

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { config } from './config.js';
 import { query } from './db.js';
-import { securityHeaders, csrfGuard, authenticate, errorHandler, HttpError } from './security/middleware.js';
+import { securityHeaders, csrfGuard, authenticate, errorHandler, HttpError, rateLimit } from './security/middleware.js';
 import { api } from './routes/api.js';
 import { portal } from './routes/portal.js';
 import { mockFeedsRouter } from './sync/mock-feeds.js';
@@ -29,6 +29,8 @@ export function createApp() {
   if (config.mockFeeds) app.use('/mock', mockFeedsRouter());
 
   app.use(securityHeaders);
+  // السقف العام قبل قراءة الجسم وقبل أي استعلام: الطلب الزائد يُرفض بأرخص ما يمكن
+  if (config.apiRatePerMin > 0) app.use('/api', rateLimit({ windowMs: 60_000, max: config.apiRatePerMin, key: (req) => `all|${req.ip}` }));
   // رفع الصور وحده يقبل جسمًا أكبر (صورة مضغوطة بترميز base64)؛ بقية المسارات تبقى بحد 200kb
   app.use(/^\/api\/((vehicles|watchlist)\/[^/]+\/images|expenses\/[^/]+\/attachments)\/?$/, express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '200kb' }));

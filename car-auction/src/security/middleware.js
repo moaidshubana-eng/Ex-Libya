@@ -36,7 +36,10 @@ export function securityHeaders(req, res, next) {
 export function csrfGuard(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   const origin = req.get('origin');
-  if (origin && new URL(origin).host !== req.get('host')) return next(new HttpError(403, 'BAD_ORIGIN', 'أصل الطلب غير مسموح'));
+  // أصل غير قابل للتحليل (مثل "null" من صفحة معزولة) يُرفض كأي أصل غريب بدل أن يُسقط الطلب بخطأ داخلي
+  let originHost = null;
+  if (origin) { try { originHost = new URL(origin).host; } catch { originHost = ''; } }
+  if (origin && originHost !== req.get('host')) return next(new HttpError(403, 'BAD_ORIGIN', 'أصل الطلب غير مسموح'));
   const ct = req.get('content-type') || '';
   if (!ct.startsWith('application/json') && !ct.startsWith('text/csv'))
     return next(new HttpError(415, 'UNSUPPORTED_MEDIA', 'يجب إرسال البيانات بصيغة JSON'));

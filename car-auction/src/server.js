@@ -18,6 +18,12 @@ server.keepAliveTimeout = 65_000;
 const timers = [
   setInterval(() => auctionTick().catch((e) => console.error('[auction-tick]', e.message)), 3_000),
 ];
+// تنظيف دوري: الجلسات المنتهية منذ أكثر من شهر لا حاجة لها (سجل الدخول نفسه محفوظ في سجل التدقيق)
+const sweepSessions = () => pool.query(
+  `WITH a AS (DELETE FROM auction.user_sessions WHERE expires_at < now() - interval '30 days')
+   DELETE FROM auction.portal_sessions WHERE expires_at < now() - interval '30 days'`).catch((e) => console.error('[session-sweep]', e.message));
+sweepSessions();
+timers.push(setInterval(sweepSessions, 6 * 3600_000));
 if (config.schedulerEnabled) {
   timers.push(setInterval(() => schedulerTick().catch((e) => console.error('[scheduler]', e.message)), 60_000));
 }

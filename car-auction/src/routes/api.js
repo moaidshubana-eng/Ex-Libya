@@ -20,6 +20,7 @@ import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAc
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES, addExpenseAttachment, getExpenseAttachment, removeExpenseAttachment, owedToPeople, markReimbursed, listInvoices } from '../services/expenses.js';
 import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry } from '../services/custody.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
+import { writeBackup } from '../services/backup.js';
 import { setPortalAccount, disablePortalAccount, portalAccountInfo } from '../services/portal.js';
 import { syncPurchases, syncTracking, importCsv, retryDeadLetter, SyncBusy, CircuitOpen } from '../sync/engine.js';
 
@@ -748,10 +749,62 @@ api.post('/integrations/dead-letters/:id/retry', requireRole(['ADMIN', 'OPERATIO
 
 // ---------------------------------------------------------------- التدقيق
 api.get('/audit', requireRole(['ADMIN']), asyncH(async (req, res) => {
+  // ?kind=security يقتصر على أحداث الدخول والحسابات والنسخ؛ ?q= يبحث في اسم الإجراء أو المستخدم
+  const b = validate(req.query, { q: t.string({ max: 60 }), kind: t.enum(['security']) });
   const { rows } = await query(
     `SELECT a.id, a.action, a.entity, a.entity_id, a.after_data, a.ip, a.at, u.full_name AS actor
-       FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id ORDER BY a.id DESC LIMIT 100`);
+       FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id
+      WHERE ($1::text IS NULL OR a.action ILIKE '%' || $1 || '%' OR u.full_name ILIKE '%' || $1 || '%')
+        AND ($2::boolean IS NOT TRUE OR a.action = ANY($3))
+      ORDER BY a.id DESC LIMIT 200`, [b.q || null, b.kind === 'security', SECURITY_ACTIONS]);
   res.json({ items: rows });
+}));
+
+// ---------------------------------------------------------------- الأمان: الجلسات والنسخ الاحتياطي (المدير)
+const SECURITY_ACTIONS = ['LOGIN', 'LOGIN_FAILED', 'PASSWORD_CHANGED', 'USER_CREATED', 'USER_UPDATED', 'SESSION_REVOKED', 'BACKUP_EXPORTED', 'CALC_SETTINGS_SET'];
+
+api.get('/admin/security', requireRole('ADMIN'), asyncH(async (req, res) => {
+  const [sessions, stats] = await Promise.all([
+    query(`SELECT s.id, s.created_at, s.expires_at, host(s.ip) AS ip, s.user_agent, u.id AS user_id, u.full_name, u.role
+             FROM user_sessions s JOIN users u ON u.id = s.user_id
+            WHERE s.revoked_at IS NULL AND s.expires_at > now() ORDER BY s.created_at DESC LIMIT 100`),
+    query(`SELECT (SELECT max(at) FROM audit_logs WHERE action = 'BACKUP_EXPORTED') AS last_backup_at,
+                  (SELECT count(*)::int FROM audit_logs WHERE action = 'LOGIN_FAILED' AND at > now() - interval '7 days') AS failed_logins_7d,
+                  (SELECT count(*)::int FROM users WHERE locked_until > now()) AS locked_users,
+                  (SELECT count(*)::int FROM users WHERE is_active AND role = 'ADMIN') AS admins`),
+  ]);
+  res.json({ sessions: sessions.rows.map((s) => ({ ...s, current: s.id === req.user.session_id })), ...stats.rows[0] });
+}));
+
+// إنهاء جلسة بعينها (لأي مستخدم)، أو كل الجلسات عدا الحالية: لمّا يضيع جهاز أو يُشكّ في دخول غريب
+api.post('/admin/sessions/:id/revoke', requireRole('ADMIN'), uuidParam('id'), asyncH(async (req, res) => {
+  if (req.params.id === req.user.session_id) throw new HttpError(422, 'CURRENT_SESSION', 'هذه جلستك الحالية — استعمل «خروج»');
+  const { rows: [s] } = await query('UPDATE user_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING id, user_id', [req.params.id]);
+  if (!s) throw new HttpError(404, 'NOT_FOUND', 'الجلسة غير موجودة أو منتهية');
+  await audit(null, { actorId: req.user.id, action: 'SESSION_REVOKED', entity: 'user', entityId: s.user_id, after: { session: s.id }, ip: req.ip });
+  res.json({ ok: true });
+}));
+api.post('/admin/sessions/revoke-others', requireRole('ADMIN'), asyncH(async (req, res) => {
+  const { rowCount } = await query('UPDATE user_sessions SET revoked_at = now() WHERE id <> $1 AND revoked_at IS NULL AND expires_at > now()', [req.user.session_id]);
+  await audit(null, { actorId: req.user.id, action: 'SESSION_REVOKED', entity: 'user', entityId: req.user.id, after: { allOthers: true, count: rowCount }, ip: req.ip });
+  res.json({ ok: true, revoked: rowCount });
+}));
+
+// النسخة الاحتياطية الكاملة: ملف واحد مضغوط فيه كل البيانات (تنزيل مباشر من المتصفح)
+const backupLimiter = rateLimit({ windowMs: 60 * 60_000, max: 6, key: (req) => `bk|${req.user?.id}` });
+api.get('/admin/backup', requireRole('ADMIN'), backupLimiter, asyncH(async (req, res) => {
+  await audit(null, { actorId: req.user.id, action: 'BACKUP_EXPORTED', entity: 'backup', entityId: 'full', ip: req.ip });
+  res.set('Content-Type', 'application/gzip');
+  res.set('Content-Disposition', `attachment; filename="ggm-backup-${today()}.ndjson.gz"`);
+  res.set('Cache-Control', 'no-store');
+  try {
+    await writeBackup(res);
+  } catch (e) {
+    console.error('[backup]', e.message);
+    if (res.headersSent) return res.destroy(); // ملف مبتور: الاسترجاع يرفضه لأن سطر النهاية ناقص
+    res.removeHeader('Content-Disposition');
+    throw e;
+  }
 }));
 
 api.use(ops);

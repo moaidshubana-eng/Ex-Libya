@@ -35,6 +35,9 @@ export const config = {
   // مفتاح HMAC منفصل لبصمات البحث (الهاتف/الهوية)
   lookupKey: checkKey('LOOKUP_HMAC_KEY', Buffer.from(requiredInProd('LOOKUP_HMAC_KEY', Buffer.alloc(32, 9).toString('base64')), 'base64')),
   sessionTtlHours: Number(env.SESSION_TTL_HOURS || 10),
+  // سقف عام لطلبات الـAPI من عنوان واحد في الدقيقة (0 = معطّل). يحمي من الإغراق والتخمين الآلي؛
+  // مرتفع كفاية لمكتب كامل خلف عنوان واحد. معطّل خارج الإنتاج حتى لا يقطع الاختبارات
+  apiRatePerMin: Number(env.API_RATE_PER_MIN ?? (isProd ? 1200 : 0)),
   // توقيت الشركة: به يُحدَّد «اليوم» للتواريخ الافتراضية (الخادم نفسه يعمل بتوقيت UTC)
   timezone: env.BUSINESS_TZ || 'Africa/Tripoli',
   cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : isProd,
