@@ -49,6 +49,21 @@ describe('فواتير المصاريف ومستحقات من دفع من مال
     assert.ok(e.reimbursed_at);
   });
 
+  test('أرشيف الفواتير: كل الشهور، بحث، وإظهار الناقص', async () => {
+    const other = (await acc.post('/api/expenses', { category: 'RENT', description: 'إيجار أكتوبر', amount: '900', currency: 'LYD', expenseDate: '2026-10-01' })).data;
+    const all = (await viewer.get('/api/expenses/invoices')).data;
+    const ids = all.items.map((e) => e.id);
+    assert.ok(ids.includes(id) && ids.includes(other.id));
+    assert.equal(all.totals.missing, all.totals.expenses - all.totals.withInvoice);
+    const missing = (await acc.get('/api/expenses/invoices?missing=1')).data.items.map((e) => e.id);
+    assert.ok(missing.includes(other.id) && !missing.includes(id));
+    const found = (await acc.get(`/api/expenses/invoices?q=${encodeURIComponent('معتصم')}`)).data.items.map((e) => e.id);
+    assert.deepEqual(found, [id]);
+    const oct = (await acc.get('/api/expenses/invoices?from=2026-10-01&to=2026-10-31')).data.items.map((e) => e.id);
+    assert.ok(oct.includes(other.id) && !oct.includes(id));
+    assert.equal((await acc.get('/api/expenses/invoices?from=bad')).status, 422);
+  });
+
   test('مصروف العهدة يحمل فواتيره في الكشف', async () => {
     const k = (await acc.post('/api/custodies', { holderName: 'تجربة' })).data;
     const en = (await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'EXPENSE', entryDate: '2026-11-10', description: 'مواد تنظيف', amount: '154', category: 'OFFICE' })).data;
@@ -56,5 +71,7 @@ describe('فواتير المصاريف ومستحقات من دفع من مال
     const s = (await acc.get(`/api/custodies/${k.id}`)).data;
     assert.equal(s.entries[0].attachments.length, 1);
     assert.equal(s.entries[0].expenseId, en.expense_id);
+    const inArchive = (await acc.get('/api/expenses/invoices?q=' + encodeURIComponent('مواد تنظيف'))).data.items[0];
+    assert.equal(inArchive.custody_holder, 'تجربة');
   });
 });

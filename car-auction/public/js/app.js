@@ -8,6 +8,7 @@ import { accountsView, statementView } from './views-accounts.js';
 import { financeView, receiptView } from './views-finance.js';
 import { watchlistView } from './views-watchlist.js';
 import { custodiesView, custodyView } from './views-custody.js';
+import { invoicesView } from './views-invoices.js';
 import { calculatorView } from './views-calculator.js';
 // الحسابات التجريبية لا وجود لها في الإنتاج: لا تُعرض إلا عند التشغيل المحلي
 const isLocal = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
@@ -28,6 +29,7 @@ const ROUTES = [
   { path: '/accounts', title: 'حسابات العملاء والموردين', view: accountsView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'], nav: ['money', 'المالية'] },
   { path: '/accounts/:type/:id', title: 'كشف حساب', view: statementView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },
   { path: '/finance', title: 'الأرباح والمصاريف', view: financeView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['report'] },
+  { path: '/invoices', title: 'الفواتير', view: invoicesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['pdf'] },
   { path: '/custody', title: 'العُهد', view: custodiesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['money'] },
   { path: '/custody/:id', title: 'كشف عهدة', view: custodyView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'] },
   { path: '/receipts/:id', title: 'إيصال', view: receiptView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },

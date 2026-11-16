@@ -75,6 +75,28 @@ export async function listExpenses(month) {
   return { ...r, items: rows };
 }
 
+/** أرشيف الفواتير: كل المصاريف غير الملغاة في كل الشهور مع فواتيرها، ومن أين دُفعت */
+export async function listInvoices({ q, from, to, missing } = {}) {
+  const where = ['e.voided_at IS NULL'];
+  const args = [];
+  if (q) { args.push(`%${q}%`); where.push(`(e.description ILIKE $${args.length} OR e.expense_no ILIKE $${args.length} OR e.reference ILIKE $${args.length} OR e.paid_by ILIKE $${args.length} OR k.holder_name ILIKE $${args.length})`); }
+  if (from) { args.push(from); where.push(`e.expense_date >= $${args.length}`); }
+  if (to) { args.push(to); where.push(`e.expense_date <= $${args.length}`); }
+  if (missing) where.push('NOT EXISTS (SELECT 1 FROM expense_attachments a WHERE a.expense_id = e.id)');
+  const { rows } = await query(
+    `SELECT e.id, e.expense_no, e.expense_date::text AS expense_date, e.category, e.description, e.amount, e.currency, e.amount_lyd, e.reference,
+            e.paid_by, e.reimbursed_at, k.holder_name AS custody_holder, ${ATTACHMENTS_SQL('e')} AS attachments
+       FROM company_expenses e
+       LEFT JOIN custody_entries ce ON ce.expense_id = e.id AND ce.voided_at IS NULL
+       LEFT JOIN custodies k ON k.id = ce.custody_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.expense_date DESC, e.created_at DESC LIMIT 500`, args);
+  const { rows: [t] } = await query(
+    `SELECT count(*)::int AS total, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM expense_attachments a WHERE a.expense_id = e.id))::int AS with_invoice
+       FROM company_expenses e WHERE e.voided_at IS NULL`);
+  return { items: rows, totals: { expenses: t.total, withInvoice: t.with_invoice, missing: t.total - t.with_invoice } };
+}
+
 // ---------------------------------------------------------------- فواتير المصاريف
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_EXPENSE = 10;

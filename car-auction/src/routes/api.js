@@ -16,7 +16,7 @@ import { renderVehicleSvg } from '../services/media.js';
 import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
-import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES, addExpenseAttachment, getExpenseAttachment, removeExpenseAttachment, owedToPeople, markReimbursed } from '../services/expenses.js';
+import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES, addExpenseAttachment, getExpenseAttachment, removeExpenseAttachment, owedToPeople, markReimbursed, listInvoices } from '../services/expenses.js';
 import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry } from '../services/custody.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
 import { setPortalAccount, disablePortalAccount, portalAccountInfo } from '../services/portal.js';
@@ -596,6 +596,10 @@ api.get('/expense-attachments/:id', requireRole(FIN_READERS), uuidParam('id'), a
   res.send(a.content);
 }));
 api.post('/expense-attachments/:id/remove', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => res.json(await removeExpenseAttachment(req.params.id, actorOf(req)))));
+api.get('/expenses/invoices', requireRole(FIN_READERS), asyncH(async (req, res) => {
+  const b = validate(req.query, { q: t.string({ max: 100 }), from: t.date(), to: t.date(), missing: t.enum(['1']) });
+  res.json(await listInvoices({ ...b, missing: b.missing === '1' }));
+}));
 api.get('/expenses/owed', requireRole(FIN_READERS), asyncH(async (_req, res) => res.json({ people: await owedToPeople() })));
 api.post('/expenses/:id/reimburse', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   const b = validate(req.body, { note: t.string({ max: 300 }) });
