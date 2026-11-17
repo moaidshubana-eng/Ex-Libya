@@ -145,7 +145,7 @@ api.get('/exchange-rates', requireRole(ROLES.COST_READERS), asyncH(async (_req, 
 }));
 
 api.post('/exchange-rates', requireRole(['ADMIN', 'ACCOUNTANT']), asyncH(async (req, res) => {
-  const b = validate(req.body, { currency: t.enum(['USD', 'EUR'], { required: true }), rateToLyd: t.decimal({ required: true, positive: true }), effectiveDate: t.date({ required: true }) });
+  const b = validate(req.body, { currency: t.enum(['USD', 'EUR'], { required: true }), rateToLyd: t.decimal({ required: true, positive: true, scale: 6 }), effectiveDate: t.date({ required: true }) });
   if (Number(b.rateToLyd) < 0.5 || Number(b.rateToLyd) > 50) throw new HttpError(422, 'FX_RANGE', 'سعر غير معقول للدينار الليبي — راجع الرقم');
   const { rows: [r] } = await query(
     `INSERT INTO exchange_rates (currency, rate_to_lyd, effective_date, source) VALUES ($1,$2,$3,'MANUAL')
@@ -623,6 +623,7 @@ api.post('/custodies/:id/entries', requireRole(ACC_WRITERS), uuidParam('id'), as
     kind: t.enum(['RECEIPT', 'EXPENSE', 'RETURN'], { required: true }), entryDate: t.date({ required: true }),
     description: t.string({ required: true, min: 2, max: 300 }), amount: t.decimal({ required: true, positive: true }),
     category: t.enum(Object.keys(EXPENSE_CATEGORIES)),
+    allowOverdraw: t.bool(), // تأكيد صريح أن الصرف يتجاوز رصيد العهدة (صاحبها كمّل من ماله)
   });
   res.status(201).json(await addCustodyEntry(req.params.id, b, actorOf(req)));
 }));

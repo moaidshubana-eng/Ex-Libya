@@ -66,11 +66,12 @@ describe('فواتير المصاريف ومستحقات من دفع من مال
 
   test('مصروف العهدة يحمل فواتيره في الكشف', async () => {
     const k = (await acc.post('/api/custodies', { holderName: 'تجربة' })).data;
-    const en = (await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'EXPENSE', entryDate: '2026-11-10', description: 'مواد تنظيف', amount: '154', category: 'OFFICE' })).data;
+    assert.equal((await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'RECEIPT', entryDate: '2026-11-09', description: 'استلام', amount: '500' })).status, 201);
+    const en =(await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'EXPENSE', entryDate: '2026-11-10', description: 'مواد تنظيف', amount: '154', category: 'OFFICE' })).data;
     assert.equal((await acc.post(`/api/expenses/${en.expense_id}/attachments`, { data: PNG })).status, 201);
     const s = (await acc.get(`/api/custodies/${k.id}`)).data;
-    assert.equal(s.entries[0].attachments.length, 1);
-    assert.equal(s.entries[0].expenseId, en.expense_id);
+    assert.equal(s.entries[1].attachments.length, 1);
+    assert.equal(s.entries[1].expenseId, en.expense_id);
     const inArchive = (await acc.get('/api/expenses/invoices?q=' + encodeURIComponent('مواد تنظيف'))).data.items[0];
     assert.equal(inArchive.custody_holder, 'تجربة');
   });

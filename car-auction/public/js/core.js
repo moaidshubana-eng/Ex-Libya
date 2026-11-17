@@ -101,19 +101,56 @@ export function toast(msg, kind = '') {
   const el = Object.assign(document.createElement('div'), { className: `toast ${kind}`, textContent: msg });
   el.setAttribute('role', 'status');
   host.appendChild(el);
-  setTimeout(() => el.remove(), 4200);
+  setTimeout(() => el.remove(), kind === 'err' ? 7000 : 4200);
+  // نجاح أو رسالة عادية: النموذج الأخير انتهى أمره. خطأ: نعيد فتحه بما كُتب فيه
+  if (kind === 'err') reopenAfterError(msg); else lastModal = null;
+}
+
+// ---- حفظ ما كتبه المستخدم عند فشل الحفظ
+// النافذة تُغلق قبل أن يرد الخادم. إن رجع الخادم بخطأ نضغط الزر الذي فتحها من جديد ونعبّئها بنفس القيم
+// ونعرض الخطأ داخلها، فلا يعيد المستخدم الكتابة من أول. يعمل مع كل النماذج بلا تعديل في أماكن استدعائها.
+let lastClicked = null;   // آخر زر ضُغط (هو الذي فتح النافذة)
+let lastModal = null;     // { title, values, hadFiles, trigger, at } لآخر نموذج أُرسل
+let pendingRestore = null; // قيم تنتظر أن تُفتح نافذتها من جديد
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => { lastClicked = e.target.closest?.('button, a, [role=button]') || null; }, true);
+  window.addEventListener('hashchange', () => { lastModal = null; pendingRestore = null; });
+}
+const fieldsOf = (d) => [...d.querySelectorAll('input[name], select[name], textarea[name]')].filter((i) => i.type !== 'file');
+function reopenAfterError(msg) {
+  const m = lastModal;
+  lastModal = null;
+  if (!m || Date.now() - m.at > 45_000 || !m.trigger?.isConnected || document.querySelector('dialog[open]')) return;
+  pendingRestore = { ...m, error: msg };
+  m.trigger.click();
+  setTimeout(() => { pendingRestore = null; }, 1500); // لو الضغطة لم تفتح نفس النافذة لا تبقى القيم معلّقة
 }
 
 /** نافذة حوار بنموذج؛ تعيد قيم الحقول أو null عند الإلغاء */
 export function modal({ title, body, submitLabel = 'حفظ', danger = false }) {
   return new Promise((resolve) => {
+    const trigger = lastClicked;
     const d = document.createElement('dialog');
     d.className = 'modal';
     render(d, html`<form method="dialog">
-      <div class="m-h"><h3>${title}</h3><button class="btn btn-ghost btn-sm" value="cancel" aria-label="إغلاق">✕</button></div>
+      <div class="m-h"><h3>${title}</h3><button class="btn btn-ghost btn-sm" value="cancel" formnovalidate aria-label="إغلاق">✕</button></div>
       <div class="m-b">${body}</div>
       <div class="m-f"><button class="btn" value="cancel" formnovalidate>إلغاء</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" value="ok">${submitLabel}</button></div>
     </form>`);
+    const restore = pendingRestore && pendingRestore.title === String(title) ? pendingRestore : null;
+    if (restore) {
+      pendingRestore = null;
+      for (const i of fieldsOf(d)) {
+        if (!(i.name in restore.values)) continue;
+        if (i.type === 'checkbox' || i.type === 'radio') i.checked = restore.values[i.name].includes(i.value);
+        else i.value = restore.values[i.name];
+      }
+      const box = document.createElement('div');
+      box.className = 'alert danger';
+      box.setAttribute('role', 'alert');
+      box.textContent = `لم يُحفظ: ${restore.error}${restore.hadFiles ? ' — اختر الملف من جديد.' : ''}`;
+      d.querySelector('.m-b').prepend(box);
+    }
     document.body.appendChild(d);
     d.showModal();
     d.addEventListener('close', () => {
@@ -121,6 +158,15 @@ export function modal({ title, body, submitLabel = 'حفظ', danger = false }) {
       const data = ok ? Object.fromEntries(new FormData(d.querySelector('form'))) : null;
       // حقول الملفات تعيد كل الملفات المختارة (FormData وحدها تُبقي آخر ملف فقط)
       if (data) d.querySelectorAll('input[type=file]').forEach((i) => { data[i.name] = [...i.files]; });
+      const fields = fieldsOf(d);
+      // نافذة تأكيد بلا حقول لا تمسح النموذج الذي قبلها (مثل تأكيد تجاوز رصيد العهدة بعد نموذج الصرف)
+      if (ok && fields.length) {
+        const values = {};
+        for (const i of fields) {
+          if (i.type === 'checkbox' || i.type === 'radio') { (values[i.name] ||= []); if (i.checked) values[i.name].push(i.value); } else values[i.name] = i.value;
+        }
+        lastModal = { title: String(title), values, hadFiles: [...d.querySelectorAll('input[type=file]')].some((i) => i.files.length), trigger, at: Date.now() };
+      } else if (!ok && fields.length) lastModal = null;
       d.remove();
       resolve(data);
     });

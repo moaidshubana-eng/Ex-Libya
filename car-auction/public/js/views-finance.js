@@ -98,6 +98,8 @@ export async function financeStrip() {
 // ======================================================================= المصاريف والأرباح
 export async function financeView(el, { query }) {
   // الفترة: شهر (?month=) أو من–إلى (?from=&to=)
+  // فترة معكوسة (من بعد إلى): نبدّل التاريخين بدل أن نعرض خطأ يخفي الصفحة كلها
+  if (query.from && query.to && query.from > query.to) query = { ...query, from: query.to, to: query.from };
   const ranged = !!(query.from || query.to);
   const month = query.month || localToday().slice(0, 7);
   const pq = ranged ? new URLSearchParams(Object.entries({ from: query.from, to: query.to }).filter(([, v]) => v)).toString() : `month=${month}`;

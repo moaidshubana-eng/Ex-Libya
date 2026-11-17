@@ -62,6 +62,17 @@ export async function addCustodyEntry(id, b, actor) {
     const { rows: [k] } = await c.query('SELECT * FROM custodies WHERE id = $1 FOR UPDATE', [id]);
     if (!k) throw new HttpError(404, 'NOT_FOUND', 'العهدة غير موجودة');
     if (!k.is_active) throw new HttpError(409, 'CUSTODY_CLOSED', 'العهدة مقفلة');
+    // الخارج من العهدة لا يتجاوز رصيدها بصمت: الإرجاع يُرفض، والصرف يحتاج تأكيدًا صريحًا (العهدة مقفولة بـFOR UPDATE فالرصيد ثابت هنا)
+    if (b.kind !== 'RECEIPT') {
+      const { rows: [s] } = await c.query(
+        `SELECT COALESCE(sum(CASE WHEN kind = 'RECEIPT' THEN amount ELSE -amount END), 0)::numeric(14,3) AS bal FROM custody_entries WHERE custody_id = $1 AND voided_at IS NULL`, [id]);
+      const after = mil(s.bal) - mil(b.amount);
+      if (after < 0) {
+        const bal = `${Number(s.bal).toLocaleString('en-US')} د.ل`;
+        if (b.kind === 'RETURN') throw new HttpError(422, 'CUSTODY_RETURN_OVER', `المبلغ المرجَع أكبر من رصيد العهدة (${bal})`);
+        if (!b.allowOverdraw) throw new HttpError(409, 'CUSTODY_OVERDRAW', `الصرف أكبر من رصيد العهدة (${bal})`, { balance: s.bal, shortfall: f3(-after) });
+      }
+    }
     let expenseId = null;
     if (b.kind === 'EXPENSE') {
       if (!b.category) throw new HttpError(422, 'VALIDATION', 'اختر بند المصروف');

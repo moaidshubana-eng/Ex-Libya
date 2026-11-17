@@ -63,7 +63,10 @@ export async function settingsView(el) {
           <td>${s.current ? html`<span class="badge" style="color:var(--success)"><span class="dot"></span>هذا الجهاز</span>` : html`<button class="btn btn-sm btn-danger" data-revoke="${s.id}">إخراج</button>`}</td></tr>`)}</tbody></table></div>
     </div>` : ''}`);
 
-  $('[data-backup]', el)?.addEventListener('click', () => { toast('بدأ تنزيل النسخة — احفظ الملف في مكان آمن', 'ok'); setTimeout(() => settingsView(el), 4000); });
+  $('[data-backup]', el)?.addEventListener('click', () => { toast('بدأ تنزيل النسخة — احفظ الملف في مكان آمن', 'ok');
+    // تحديث «آخر نسخة» بعد لحظات، فقط إن بقي المستخدم في صفحة الإعدادات (وإلا يُرسم محتواها داخل صفحة أخرى)
+    setTimeout(() => { if (location.hash.startsWith('#/settings')) settingsView(el); }, 4000);
+  });
   $('[data-revoke-others]', el)?.addEventListener('click', async () => {
     try { const r = await api('/admin/sessions/revoke-others', { method: 'POST', body: {} }); toast(`أُخرج ${r.revoked} جهاز`, 'ok'); settingsView(el); } catch (e) { toast(e.message, 'err'); }
   });
@@ -74,7 +77,7 @@ export async function settingsView(el) {
   $('[data-fx]', el)?.addEventListener('click', async () => {
     const r = await modal({ title: 'تسجيل سعر صرف', submitLabel: 'حفظ السعر', body: html`
       <div class="grid g3"><label class="field">العملة<select class="input" name="currency"><option>USD</option><option>EUR</option></select></label>
-        <label class="field">السعر مقابل الدينار<input class="input num" name="rateToLyd" required inputmode="decimal" pattern="\\d+(\\.\\d{1,6})?" placeholder="5.5200"></label>
+        <label class="field">السعر مقابل الدينار<input class="input num" name="rateToLyd" required inputmode="decimal" pattern="\\d+(\\.\\d{1,6})?" placeholder="5.5200" title="رقم بالأرقام الإنجليزية، حتى 6 منازل عشرية"></label>
         <label class="field">اعتبارًا من<input class="input" type="date" name="effectiveDate" value="${today}" required></label></div>
       <p class="faint" style="margin:0">تسجيل سعر لنفس العملة والتاريخ يستبدل السابق. التكاليف المسجلة سابقًا لا تتغير.</p>` });
     if (!r) return;

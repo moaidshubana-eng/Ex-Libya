@@ -423,6 +423,12 @@ export async function vehicleDetailView(el, { params, setTitle }) {
       const r = await modal({ title: to === 'ON_HOLD' ? 'تعليق السيارة' : 'إلغاء السيارة', body: html`<label class="field">السبب (إلزامي)<textarea class="input" name="reason" required minlength="3" rows="3"></textarea></label>`, submitLabel: 'تأكيد', danger: to === 'CANCELLED' });
       if (!r) return;
       reason = r.reason;
+    } else {
+      // تغيير الحالة لا رجعة فيه (المسار باتجاه واحد): نسأل قبل التنفيذ
+      const sure = await modal({ title: 'تأكيد تغيير الحالة', submitLabel: 'نعم، انقلها', body: html`
+        <p style="margin:0">نقل <b>${title}</b> من «${label(v.status)}» إلى <b>«${label(to)}»</b>؟</p>
+        <p class="faint" style="margin:0">بعد النقل ما تقدرش ترجّعها للحالة السابقة.</p>` });
+      if (!sure) return;
     }
     try {
       await api(`/vehicles/${v.id}/status`, { method: 'POST', body: { to, reason, version: v.version } });

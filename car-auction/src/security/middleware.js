@@ -116,7 +116,7 @@ export function rateLimit({ windowMs, max, key, code = 'RATE_LIMITED' }) {
 }
 
 export function errorHandler(err, req, res, _next) {
-  if (err instanceof HttpError) return res.status(err.status).json({ error: { code: err.code, message: err.message, ...(err.minimum ? { minimum: err.minimum } : {}) } });
+  if (err instanceof HttpError) return res.status(err.status).json({ error: { code: err.code, message: err.message, ...(err.minimum ? { minimum: err.minimum } : {}), ...(err.shortfall ? { balance: err.balance, shortfall: err.shortfall } : {}) } });
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: { code: 'BAD_JSON', message: 'JSON غير صالح' } });
   if (err.type === 'entity.too.large') return res.status(413).json({ error: { code: 'TOO_LARGE', message: 'حجم الطلب كبير جدًا' } });
   // أخطاء قاعدة البيانات المعروفة تُترجم لرسائل مفهومة دون كشف التفاصيل الداخلية

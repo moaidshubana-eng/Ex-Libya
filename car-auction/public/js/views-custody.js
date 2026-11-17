@@ -95,8 +95,20 @@ export async function custodyView(el, { params, setTitle }) {
       ${kind === 'EXPENSE' ? html`${invoiceField()}<p class="faint" style="margin:0">يُسجَّل أيضًا في مصاريف الشركة فيدخل في الربح الشهري.</p>` : ''}` });
     if (!r) return;
     const { invoice = [], ...body } = r;
+    const send = (extra = {}) => api(`/custodies/${k.id}/entries`, { method: 'POST', body: { ...body, kind, ...extra } });
+    const dl = (v) => `${Number(v).toLocaleString('en-US')} د.ل`;
     try {
-      const e = await api(`/custodies/${k.id}/entries`, { method: 'POST', body: { ...body, kind } });
+      let e;
+      try { e = await send(); } catch (err) {
+        // الصرف أكبر من الرصيد: لا يُسجَّل إلا بتأكيد صريح
+        if (err.code !== 'CUSTODY_OVERDRAW') throw err;
+        const ok = await modal({ title: 'الصرف أكبر من رصيد العهدة', submitLabel: 'نعم، سجّل الصرف', danger: true, body: html`
+          <p style="margin:0">رصيد العهدة <b class="num">${dl(err.body.error.balance)}</b> والمبلغ المكتوب <b class="num">${dl(body.amount)}</b>.</p>
+          <p style="margin:0">لو سجّلته يصير رصيد العهدة بالسالب <b class="num neg">${dl(err.body.error.shortfall)}</b>، يعني ${k.holder_name} كمّل الباقي من ماله والشركة مدينة له به.</p>
+          <p class="faint" style="margin:0">لو الرقم غلط اضغط «إلغاء» وصحّحه.</p>` });
+        if (!ok) { toast('لم تُسجَّل الحركة — صحّح المبلغ', 'err'); return; }
+        e = await send({ allowOverdraw: true });
+      }
       if (e.expense_id) await uploadInvoices(e.expense_id, invoice);
       toast('سُجّلت الحركة', 'ok');
       reload();

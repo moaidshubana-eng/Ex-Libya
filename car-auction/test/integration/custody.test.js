@@ -60,6 +60,25 @@ describe('العُهد النقدية', () => {
     assert.equal((await acc.post(`/api/custody-entries/${net.id}/void`, { reason: 'مكرر' })).status, 404);
   });
 
+  test('الصرف فوق الرصيد يحتاج تأكيدًا صريحًا، والإرجاع فوق الرصيد مرفوض', async () => {
+    // الرصيد الآن 4800
+    const over = await add({ kind: 'EXPENSE', entryDate: '2026-11-09', description: 'رقم بالغلط', amount: '99999999', category: 'OTHER' });
+    assert.equal(over.status, 409, JSON.stringify(over.data));
+    assert.equal(over.data.error.code, 'CUSTODY_OVERDRAW');
+    assert.equal(over.data.error.balance, '4800.000');
+    assert.equal(over.data.error.shortfall, '99995199.000');
+    assert.equal((await add({ kind: 'RETURN', entryDate: '2026-11-09', description: 'إرجاع أكثر من الموجود', amount: '4800.001' })).status, 422);
+    assert.equal((await statement()).totals.balance, '4800.000', 'لم يُسجَّل شيء');
+    assert.equal((await acc.get('/api/expenses?month=2026-11')).data.items.filter((e) => e.description === 'رقم بالغلط').length, 0, 'ولا دخل في المصاريف');
+    // بالضبط قدر الرصيد: مقبول بلا تأكيد. وفوقه بتأكيد: مقبول ويصير الرصيد سالبًا
+    const exact = await add({ kind: 'EXPENSE', entryDate: '2026-11-09', description: 'كل الرصيد', amount: '4800', category: 'OTHER' });
+    assert.equal(exact.status, 201, JSON.stringify(exact.data));
+    const more = await add({ kind: 'EXPENSE', entryDate: '2026-11-09', description: 'كمّل من ماله', amount: '50', category: 'OTHER', allowOverdraw: true });
+    assert.equal(more.status, 201, JSON.stringify(more.data));
+    assert.equal((await statement()).totals.balance, '-50.000');
+    for (const e of [more, exact]) assert.equal((await acc.post(`/api/custody-entries/${e.data.id}/void`, { reason: 'تنظيف الاختبار' })).status, 200);
+  });
+
   test('التحقق: الصرف يحتاج بندًا، والمبلغ موجب', async () => {
     assert.equal((await add({ kind: 'EXPENSE', entryDate: '2026-11-08', description: 'بلا بند', amount: '10' })).status, 422);
     assert.equal((await add({ kind: 'RECEIPT', entryDate: '2026-11-08', description: 'سالب', amount: '-5' })).status, 422);

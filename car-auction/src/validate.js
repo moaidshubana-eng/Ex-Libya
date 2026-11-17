@@ -3,6 +3,18 @@ import { HttpError } from './security/middleware.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECIMAL = /^\d{1,11}(\.\d{1,3})?$/;
+const NUMERIC = /^\d+(\.\d+)?$/;
+
+// أسماء الحقول كما يراها المستخدم في رسائل الخطأ (الحقول غير المذكورة تبقى باسمها)
+const FIELD_AR = {
+  email: 'البريد الإلكتروني', password: 'كلمة المرور', current: 'كلمة المرور الحالية', next: 'كلمة المرور الجديدة', fullName: 'الاسم', phone: 'الهاتف',
+  amount: 'المبلغ', totalAmount: 'المبلغ', currency: 'العملة', description: 'البيان', category: 'البند', reason: 'السبب', note: 'الملاحظة', reference: 'المرجع',
+  rateToLyd: 'سعر الصرف', fxRateToLyd: 'سعر الصرف', fxRate: 'سعر الصرف', effectiveDate: 'التاريخ', entryDate: 'التاريخ', expenseDate: 'التاريخ', paidAt: 'التاريخ', incurredAt: 'التاريخ',
+  holderName: 'صاحب العهدة', name: 'الاسم', role: 'الدور', method: 'طريقة الدفع', vin: 'رقم الهيكل', year: 'سنة الصنع', make: 'الماركة', model: 'الموديل',
+  lotNumber: 'رقم اللوت', purchasePriceUsd: 'سعر الشراء', customerPrice: 'السعر المتفق عليه', priceLyd: 'السعر', startingPrice: 'سعر البداية', title: 'العنوان',
+  from: 'من تاريخ', to: 'إلى تاريخ', paidBy: 'من دفعها', containerNo: 'رقم الحاوية', odometer: 'العداد',
+};
+const ar = (name) => FIELD_AR[name.replace(/\[\d+\]$/, '')] || name;
 
 export const t = {
   string: (o = {}) => ({ kind: 'string', ...o }),
@@ -30,7 +42,13 @@ function check(name, spec, v) {
       return spec.values.includes(v) ? { value: v } : `${name}: قيمة غير مسموحة`;
     case 'decimal': {
       const s = String(v);
-      if (!DECIMAL.test(s)) return `${name}: رقم عشري غير صالح (3 منازل كحد أقصى)`;
+      // scale: عدد المنازل العشرية المسموح (3 للمبالغ؛ أسعار الصرف تحتاج أكثر، مثل 5.5200)
+      const scale = spec.scale ?? 3;
+      if (!NUMERIC.test(s)) return `${name}: اكتب رقمًا بالأرقام الإنجليزية بلا فواصل، مثل 1500 أو 1500.5`;
+      const [int, frac = ''] = s.split('.');
+      if (int.length > 11) return `${name}: الرقم كبير جدًا`;
+      if (frac.length > scale) return `${name}: ${scale} منازل عشرية كحد أقصى`;
+      if (scale === 3 && !DECIMAL.test(s)) return `${name}: رقم غير صالح`;
       if (spec.positive && Number(s) <= 0) return `${name}: يجب أن يكون أكبر من صفر`;
       return { value: s };
     }
@@ -76,10 +94,10 @@ export function validate(body, schema) {
     // nullable: القيمة null أو '' تعني «إفراغ الحقل» صراحةً (تختلف عن عدم إرساله)
     if (spec.nullable && key in body && (v === null || v === '')) { out[key] = null; continue; }
     if (v === undefined || v === null || v === '') {
-      if (spec.required) errors.push(`${key}: مطلوب`);
+      if (spec.required) errors.push(`${ar(key)}: مطلوب`);
       continue;
     }
-    const r = check(key, spec, v);
+    const r = check(ar(key), spec, v);
     if (typeof r === 'string') errors.push(r);
     else out[key] = r.value;
   }

@@ -63,15 +63,20 @@ async function navigate() {
   const seg = { lots: 'auctions', compare: 'vehicles' }[location.hash.split(/[/?]/)[1]] || location.hash.split(/[/?]/)[1];
   $$('.nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#/${seg}`));
   $('.shell').classList.remove('nav-open');
-  const setTitle = (t, crumb = '') => { $('[data-title]').textContent = t; $('[data-crumbs]').textContent = crumb; document.title = `${t} — Golden Gate Motors`; };
+  // صفحة أقدم ما زالت تحمّل لا تغيّر العنوان بعد أن انتقل المستخدم لغيرها
+  const setTitle = (t, crumb = '') => { if (token !== navToken) return; $('[data-title]').textContent = t; $('[data-crumbs]').textContent = crumb; document.title = `${t} — Golden Gate Motors`; };
   setTitle(m.route.title);
-  const content = $('[data-content]');
+  // كل تنقّل يرسم في حاوية خاصة به. الصفحة السابقة إن أكملت تحميلها متأخرة (أو أعادت رسم نفسها بمؤقت)
+  // ترسم في حاويتها المنزوعة فلا يظهر محتواها فوق الصفحة الحالية
+  const host = $('[data-content]');
+  const content = document.createElement('div');
+  host.replaceChildren(content);
   render(content, html`<div class="grid g4">${[1, 2, 3, 4].map(() => html`<div class="skeleton" style="height:110px"></div>`)}</div><div class="skeleton" style="height:320px;margin-top:16px"></div>`);
   try {
     const c = await m.route.view(content, { params: m.params, query: m.query, setTitle });
     if (token === navToken) cleanup = typeof c === 'function' ? c : null;
     else c?.();
-    window.scrollTo(0, 0);
+    if (token === navToken) window.scrollTo(0, 0);
   } catch (e) {
     if (token !== navToken) return;
     render(content, html`<div class="card empty">${e.status === 404 ? 'غير موجود' : `تعذر التحميل: ${e.message}`}</div>`);
