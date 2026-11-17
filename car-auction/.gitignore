@@ -3,3 +3,9 @@ node_modules/
 coverage/
 *.log
 storage/
+
+# Impeccable: runtime and decision mocks stay local
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/questions/
+.impeccable/config.local.json

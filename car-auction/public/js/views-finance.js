@@ -64,7 +64,7 @@ export async function overviewSection() {
   const list = (arr) => (arr.length ? arr.map((x) => html`<div class="num" style="font-size:22px;font-weight:700">${money(x.amount, x.currency)}</div>`) : html`<div class="num" style="font-size:22px;font-weight:700">0</div>`);
   const top = (rows, type) => (rows.length ? html`<table class="t" style="margin-top:8px"><tbody>${rows.map((t) => html`<tr>
       <td><a href="#/accounts/${type}/${t.id}">${t.name}</a></td><td class="n">${t.balances.map((b) => money(b.balance, b.currency)).join(' + ')}</td></tr>`)}</tbody></table>` : html`<div class="faint" style="margin-top:8px">لا توجد مبالغ مستحقة</div>`);
-  const box = (title, sub, part, type, color) => html`<div class="card card-b" style="border-top:3px solid ${color}">
+  const box = (title, sub, part, type) => html`<div class="card card-b">
     <div class="row" style="justify-content:space-between"><b>${title}</b><a class="btn btn-sm btn-ghost" href="#/accounts?tab=${type}s">كل الحسابات</a></div>
     <div class="faint" style="margin-bottom:4px">${sub(part)}</div>${list(part.owed)}
     ${part.credit.length ? html`<div class="faint" style="margin-top:4px">مقابل أرصدة ${type === 'customer' ? 'لعملاء' : 'مدفوعة مقدمًا'}: ${part.credit.map((c) => money(c.amount, c.currency)).join(' · ')}</div>` : ''}
@@ -85,14 +85,17 @@ export async function financeStrip() {
   } catch { return ''; }
   const custodyBal = custodies.items.filter((k) => k.is_active).reduce((a, k) => a + Number(k.balance), 0);
   const owedTotal = owed.people.reduce((a, o) => a + Number(o.totalLyd), 0);
-  const tile = (href, ico, color, label, value, sub) => html`<a class="card fin-tile" href="${href}" style="--c:${color}">
-    <span class="ico">${icon(ico)}</span><span class="fin-body"><span class="label">${label}</span><b class="num">${value}</b><span class="sub">${sub}</span></span></a>`;
-  return html`<div class="grid g4" style="margin-top:16px">
-    ${tile('#/finance', 'chart', '#dc2626', 'مصاريف هذا الشهر', lyd(p.totals.expensesLyd), `صافي الربح ${lyd(p.totals.netProfitLyd)}`)}
-    ${tile('#/custody', 'wallet', '#0284c7', 'أرصدة العُهد', lyd(custodyBal), `${custodies.items.filter((k) => k.is_active).length} عهدة مفتوحة`)}
-    ${tile('#/finance', 'users', '#f97316', 'مستحق لموظفين دفعوا من مالهم', lyd(owedTotal), owed.people.length ? `${owed.people.length} شخص` : 'لا مستحقات')}
-    ${tile('#/invoices?missing=1', 'receipt', inv.totals.missing ? '#b45309' : '#059669', 'مصاريف بلا فاتورة', String(inv.totals.missing), `من ${inv.totals.expenses} مصروف`)}
-  </div>`;
+  // لوحة الفئات: كل مبلغ برقم كبير منقوش، والدينار بلا كسور (التفاصيل الدقيقة في صفحته)
+  const whole = (v) => Math.round(Number(v) || 0).toLocaleString('en-US');
+  const den = (href, label, value, unit, sub, alert = false) => html`<a class="den ${alert ? 'alert-den' : ''}" href="${href}">
+    <span class="den-k">${label}</span><span class="den-v">${value}<small>${unit}</small></span><span class="den-s">${sub}</span></a>`;
+  const open = custodies.items.filter((k) => k.is_active).length;
+  return html`<section class="note" aria-label="مالية الشركة اليوم"><div class="note-in">
+    ${den('#/finance', 'مصاريف هذا الشهر', whole(p.totals.expensesLyd), 'د.ل', `صافي الربح ${lyd(p.totals.netProfitLyd)}`)}
+    ${den('#/custody', 'أرصدة العُهد', whole(custodyBal), 'د.ل', `${open} عهدة مفتوحة`)}
+    ${den('#/finance', 'مستحق للموظفين', whole(owedTotal), 'د.ل', owed.people.length ? owed.people.map((o) => o.name).slice(0, 2).join('، ') : 'لا مستحقات')}
+    ${den('#/invoices?missing=1', 'مصاريف بلا فاتورة', String(inv.totals.missing), `من ${inv.totals.expenses}`, inv.totals.missing ? 'ارفق الفواتير الناقصة' : 'كل المصاريف موثّقة', inv.totals.missing > 0)}
+  </div></section>`;
 }
 
 // ======================================================================= المصاريف والأرباح

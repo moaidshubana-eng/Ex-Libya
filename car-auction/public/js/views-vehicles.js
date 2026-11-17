@@ -184,29 +184,22 @@ export async function dashboardView(el) {
         <div class="faint">${new Date().toLocaleDateString('ar-LY-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div></div>
       <nav class="quick-links" aria-label="وصول سريع">${quick.map(([href, ico, label]) => html`<a href="${href}">${icon(ico)}<span>${label}</span></a>`)}</nav>
     </div>
-    <div class="grid g4">
-      ${kpi('money', 'قيمة المخزون (التكلفة الواصلة)', fmt.lyd(d.money.inventory_cost_lyd), `${total - sum(['SOLD', 'DELIVERED', 'CANCELLED'])} سيارة غير مباعة`, '#0b3b66')}
-      ${kpi('ship', 'في الطريق بحرًا', fmt.n(inTransit), `${d.shipments.length} شحنة مفتوحة`, '#0284c7')}
-      ${kpi('customs', 'في الميناء والجمارك', fmt.n(atPort), d.aging.find((a) => a.status === 'IN_CUSTOMS') ? `متوسط ${d.aging.find((a) => a.status === 'IN_CUSTOMS').avg_days} يوم في الجمارك` : '', '#f97316')}
-      ${kpi('gavel', 'مزايدات حية', fmt.n(d.auctions.open_lots), `${d.auctions.open_bids} مزايدة على اللوتات المفتوحة`, '#e11d48')}
-    </div>
     ${finance}
-    ${overview}
 
     <div class="card" style="margin-top:16px">
-      <div class="card-h"><h2>دورة حياة الأسطول</h2><span class="faint">${total} سيارة · انقر أي حالة لعرض سياراتها</span></div>
-      <div class="card-b stack">
-        <div class="bar" role="img" aria-label="توزيع السيارات حسب الحالة">${st.filter((s) => count[s.code]).map((s) => html`<span title="${s.label}: ${count[s.code]}" style="width:${(count[s.code] / total) * 100}%;background:${s.color}"></span>`)}</div>
-        <div class="pipeline">${STAGES.map(([stage, label]) => {
-          const list = st.filter((s) => s.stage === stage);
-          return html`<div class="stage"><h4><span>${label}</span><b class="num">${sum(list.map((s) => s.code))}</b></h4>
-            ${list.map((s) => html`<a class="s-row" href="#/vehicles?status=${s.code}"><span><span class="badge" style="color:${s.color};padding:0 6px;border:0;background:none"><span class="dot"></span></span>${s.label}</span><b>${count[s.code] || 0}</b></a>`)}</div>`;
-        })}
-          <div class="stage"><h4><span>استثناءات</span><b class="num">${sum(['ON_HOLD', 'CANCELLED'])}</b></h4>
-            ${st.filter((s) => s.stage === 'EXCEPTION').map((s) => html`<a class="s-row" href="#/vehicles?status=${s.code}"><span>${s.label}</span><b>${count[s.code] || 0}</b></a>`)}</div>
-        </div>
-      </div>
+      <div class="card-h"><h2>مسار السيارات</h2><span class="faint">${total} سيارة · من الشراء إلى التسليم · اضغط أي محطة لعرض سياراتها</span><span style="flex:1"></span>
+        ${OFF_PATH.filter((c) => count[c]).map((c) => html`<a class="badge" href="#/vehicles?status=${c}">${st.find((s) => s.code === c)?.label} <b class="num">${count[c]}</b></a>`)}</div>
+      <div class="card-b"><nav class="track" aria-label="عدد السيارات في كل مرحلة">${st.filter((s) => !OFF_PATH.includes(s.code)).map((s) => html`<a class="track-st ${count[s.code] ? 'has' : 'zero'}" href="#/vehicles?status=${s.code}">
+        <span class="track-n num">${count[s.code] || 0}</span><span>${s.label}</span></a>`)}</nav></div>
     </div>
+
+    <div class="grid g4" style="margin-top:16px">
+      ${kpi('money', 'قيمة المخزون (التكلفة الواصلة)', fmt.lyd(d.money.inventory_cost_lyd), `${total - sum(['SOLD', 'DELIVERED', 'CANCELLED'])} سيارة غير مباعة`)}
+      ${kpi('ship', 'في الطريق بحرًا', fmt.n(inTransit), `${d.shipments.length} شحنة مفتوحة`)}
+      ${kpi('customs', 'في الميناء والجمارك', fmt.n(atPort), d.aging.find((a) => a.status === 'IN_CUSTOMS') ? `متوسط ${d.aging.find((a) => a.status === 'IN_CUSTOMS').avg_days} يوم في الجمارك` : '')}
+      ${kpi('gavel', 'مزايدات حية', fmt.n(d.auctions.open_lots), `${d.auctions.open_bids} مزايدة على اللوتات المفتوحة`)}
+    </div>
+    ${overview}
 
     <div class="grid g2" style="margin-top:16px;grid-template-columns:1.5fr 1fr">
       <div class="card">
@@ -242,7 +235,9 @@ export async function dashboardView(el) {
     </div>`);
 }
 
-const kpi = (ic, label, value, sub, c) => html`<div class="card kpi" style="--c:${c}"><span class="label"><span class="ico">${icon(ic)}</span>${label}</span><span class="value num">${value}</span><span class="sub">${sub}</span></div>`;
+// حالات خارج المسار الرئيسي: تُعرض كشارات بجانب عنوان المسار لا كمحطات
+const OFF_PATH = ['IN_AUCTION', 'ON_HOLD', 'CANCELLED'];
+const kpi = (ic, label, value, sub) => html`<div class="card kpi"><span class="label"><span class="ico">${icon(ic)}</span>${label}</span><span class="value num">${value}</span><span class="sub">${sub}</span></div>`;
 const line = (k, v) => html`<div class="row" style="justify-content:space-between"><span class="muted">${k}</span><b class="num">${v}</b></div>`;
 
 // ======================================================================= قائمة السيارات
