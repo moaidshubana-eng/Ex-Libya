@@ -118,10 +118,10 @@ export async function calculatorView(el, { query = {}, setTitle = () => {}, publ
     render(out, html`<div class="card calc-res">
       <div class="calc-total">
         <img src="/brand/ggm-logo-official.png" alt="Golden Gate Motors" class="calc-logo">
-        <div class="faint" style="color:#cfc8b8">التكلفة حتى ليبيا</div>
+        <div class="faint" style="color:#c6d3e3">التكلفة حتى ليبيا</div>
         <div class="calc-big">${lyd(e.totalLYD)}</div>
         <div class="calc-badge ${withCustoms ? 'on' : ''}">${withCustoms ? `شامل الجمرك ${lyd(e.customsLYD)}` : 'الفاتورة بدون جمرك'}</div>
-        <div style="color:#cfc8b8">${usd(e.totalUSD)}${withCustoms ? ` + جمرك ${lyd(e.customsLYD)}` : ''} · صرف ${e.exchange}</div>
+        <div style="color:#c6d3e3">${usd(e.totalUSD)}${withCustoms ? ` + جمرك ${lyd(e.customsLYD)}` : ''} · صرف ${e.exchange}</div>
       </div>
       <div class="card-b">
         ${customer || title ? html`<div class="calc-meta">${title ? html`<div><span class="faint">السيارة:</span> <b>${title}</b></div>` : ''}${customer ? html`<div><span class="faint">الزبون:</span> <b>${customer}</b></div>` : ''}

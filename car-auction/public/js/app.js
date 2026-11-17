@@ -61,7 +61,7 @@ async function navigate() {
   cleanup?.();
   cleanup = null;
   const seg = { lots: 'auctions', compare: 'vehicles' }[location.hash.split(/[/?]/)[1]] || location.hash.split(/[/?]/)[1];
-  $$('.nav a, .tabbar a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#/${seg}`));
+  $$('.nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === `#/${seg}`));
   $('.shell').classList.remove('nav-open');
   const setTitle = (t, crumb = '') => { $('[data-title]').textContent = t; $('[data-crumbs]').textContent = crumb; document.title = `${t} — Golden Gate Motors`; };
   setTitle(m.route.title);
@@ -85,29 +85,22 @@ function shell() {
     const head = r.nav[1] && r.nav[1] !== section ? ((section = r.nav[1]), html`<div class="nav-section">${r.nav[1]}</div>`) : '';
     return html`${head}<a href="#${r.path}">${icon(r.nav[0])}<span>${r.title}</span>${r.path === '/auctions' ? html`<span class="badge-live">مباشر</span>` : ''}</a>`;
   });
-  // الشريط السفلي على الهاتف: أول أربعة أقسام مسموحة لهذا الدور من القائمة التالية، ثم «المزيد» يفتح القائمة كاملة
-  const allowed = (path) => { const r = ROUTES.find((x) => x.path === path); return r && (!r.roles || r.roles.includes(u.role)); };
-  const tabs = [['/dashboard', 'dash', 'الرئيسية'], ['/vehicles', 'car', 'السيارات'], ['/finance', 'chart', 'المصاريف'], ['/custody', 'wallet', 'العُهد'],
-    ['/accounts', 'ledger', 'الحسابات'], ['/shipments', 'ship', 'الشحنات'], ['/calculator', 'calc', 'الحاسبة'], ['/auctions', 'gavel', 'المزادات']].filter(([p]) => allowed(p)).slice(0, 4);
   render(document.body, html`<a class="sr-only" href="#main">تخطَّ إلى المحتوى</a><div class="shell">
     <aside class="sidebar" aria-label="القائمة الرئيسية">
       <div class="brand"><img class="brand-logo" src="/brand/ggm-logo-official.png" alt="Golden Gate Motors"><small>منظومة الاستيراد والمزايدة</small></div>
       <nav class="nav">${nav}</nav>
       <div class="me"><b>${u.full_name}</b><span>${LABELS.role[u.role]}</span>
-        <div class="row" style="margin-top:8px"><button class="btn btn-sm btn-ghost" data-theme-toggle>الوضع الداكن/الفاتح</button>
-        <button class="btn btn-sm btn-ghost" data-pw>كلمة المرور</button>
-        <button class="btn btn-sm btn-ghost" data-logout>${icon('logout')} خروج</button></div></div>
+        <div class="row" style="margin-top:8px"><button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-theme-toggle>الوضع الداكن/الفاتح</button>
+        <button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-pw>كلمة المرور</button>
+        <button class="btn btn-sm btn-ghost" style="color:#c6d3e3" data-logout>${icon('logout')} خروج</button></div></div>
     </aside>
     <main class="main" id="main">
       <header class="topbar"><button class="btn btn-sm menu-btn" data-menu aria-label="القائمة">${icon('menu')}</button><img class="topbar-mark" src="/brand/ggm-icon-64.png" alt="Golden Gate Motors">
         <div><h1 data-title></h1><div class="crumbs" data-crumbs></div></div><span class="spacer"></span>
         <span class="user-chip" title="${LABELS.role[u.role]}"><span class="avatar" aria-hidden="true">${[...u.full_name.trim()][0] || '؟'}</span><span class="user-name">${u.full_name}</span></span></header>
       <div class="content" data-content></div>
-    </main><div class="nav-backdrop" data-nav-close></div>
-    <nav class="tabbar no-print" aria-label="الأقسام الأكثر استعمالًا">${tabs.map(([path, ico, label]) => html`<a href="#${path}">${icon(ico)}<span>${label}</span></a>`)}
-      <button type="button" data-more>${icon('menu')}<span>المزيد</span></button></nav></div><div class="toast-host" aria-live="polite"></div>`);
+    </main><div class="nav-backdrop" data-nav-close></div></div><div class="toast-host" aria-live="polite"></div>`);
   $('[data-menu]').addEventListener('click', () => $('.shell').classList.toggle('nav-open'));
-  $('[data-more]').addEventListener('click', () => $('.shell').classList.toggle('nav-open'));
   // على الجوال: الضغط خارج القائمة أو Escape يغلقها
   $('[data-nav-close]').addEventListener('click', () => $('.shell').classList.remove('nav-open'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('.shell')?.classList.remove('nav-open'); });
