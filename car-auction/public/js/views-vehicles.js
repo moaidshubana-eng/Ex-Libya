@@ -386,14 +386,14 @@ export async function vehicleDetailView(el, { params, setTitle }) {
           ${can('ADMIN', 'OPERATIONS') ? html`<button class="btn" data-edit>تعديل بيانات السيارة</button>` : ''}
           ${can('ADMIN', 'SALES') && v.status === 'IN_STOCK' && !v.customer_id ? html`<button class="btn btn-accent" data-list>${icon('gavel')} إدراج في مزاد</button>` : ''}
           ${can('ADMIN', 'OPERATIONS') && v.next_statuses.length ? html`<div class="row" style="border-top:1px dashed var(--border);padding-top:10px">
-            <select class="input" data-next style="flex:1">${v.next_statuses.map((s) => html`<option value="${s}">${label(s)}</option>`)}</select>
+            <select class="input" data-next aria-label="الحالة التالية" style="flex:1">${v.next_statuses.map((s) => html`<option value="${s}">${label(s)}</option>`)}</select>
             <button class="btn btn-primary" data-move>تحديث الحالة</button></div>` : ''}
         </div>
         ${staff ? dealCard(v, deal) : ''}
         ${staff && v.track_code ? html`<div class="card card-b stack" style="gap:8px">
           <b>📍 رابط التتبّع للزبون</b>
           <div class="faint" style="font-size:12.5px">يفتح صفحة تتبّع بلا تسجيل دخول: المراحل والحاوية والصور، بدون أي مبالغ.</div>
-          <input class="input mono" readonly value="${location.origin}/portal?track=${v.track_code}" data-track-link style="direction:ltr">
+          <input class="input mono" readonly value="${location.origin}/portal?track=${v.track_code}" data-track-link aria-label="رابط التتبّع للزبون" style="direction:ltr">
           <div class="row" style="gap:6px"><button class="btn btn-sm" data-copy-track>نسخ الرابط</button>
             <a class="btn btn-sm btn-accent" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${encodeURIComponent(`تتبّع سيارتك ${title} من Golden Gate Motors: ${location.origin}/portal?track=${v.track_code}`)}">مشاركة واتساب</a></div>
         </div>` : ''}

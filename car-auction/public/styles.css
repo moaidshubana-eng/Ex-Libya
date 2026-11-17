@@ -24,17 +24,20 @@
   --shadow: 0 1px 2px rgb(15 23 42 / .06), 0 4px 16px rgb(15 23 42 / .06);
   --shadow-lg: 0 12px 40px rgb(15 23 42 / .18);
   --font: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+  --warn-bg: #fef3c7; --warn-fg: #92400e; --warn-line: #f0c36d; /* شارة «بلا فاتورة» */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0b1220; --surface: #111a2b; --surface-2: #0f1727; --border: #1f2c42; --text: #e6edf7; --text-2: #a9b6c9; --text-3: #6f7f97;
     --brand: #4ea1e8; --brand-2: #7cbcf2; --sidebar: #070e1a; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 16px rgb(0 0 0 / .25); color-scheme: dark;
+    --warn-bg: #3a2c0c; --warn-fg: #f5d48a; --warn-line: #7a5a16;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0b1220; --surface: #111a2b; --surface-2: #0f1727; --border: #1f2c42; --text: #e6edf7; --text-2: #a9b6c9; --text-3: #6f7f97;
   --brand: #4ea1e8; --brand-2: #7cbcf2; --sidebar: #070e1a; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 16px rgb(0 0 0 / .25); color-scheme: dark;
+  --warn-bg: #3a2c0c; --warn-fg: #f5d48a; --warn-line: #7a5a16;
 }
 
 * { box-sizing: border-box; }
@@ -46,7 +49,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .num, .mono { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
 .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: .92em; letter-spacing: .02em; }
 .muted { color: var(--text-2); }
-.faint { color: var(--text-3); font-size: .9em; }
+.faint { color: var(--text-3); font-size: max(.9em, 12px); } /* لا ينزل عن 12px داخل نص صغير أصلًا */
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--brand-2) 55%, transparent); outline-offset: 2px; border-radius: 6px; }
 .ic { width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -406,7 +409,7 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .att-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
 .att-row:empty { display: none; }
 .att-link { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; text-decoration: none; white-space: nowrap; }
-.badge-warn { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; white-space: nowrap; }
+.badge-warn { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-fg); white-space: nowrap; }
 .owed { padding: 12px 16px; border-top: 1px solid var(--border); }
 .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
 .inv-card { overflow: hidden; display: flex; flex-direction: column; }
@@ -417,7 +420,7 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
 .inv-pdf .ic { width: 40px; height: 40px; }
 /* بلا فاتورة: شريط قصير هادئ بدل مربع كبير، حتى لا تصير الصفحة جدارًا أصفر حين تنقص فواتير كثيرة */
 .inv-thumbs:has(.inv-none) { height: 54px; background: none; padding: 10px 10px 0; }
-.inv-none { flex: 1; display: flex; align-items: center; justify-content: center; color: #92400e; background: #fffbeb; border: 1px dashed #f0c36d; border-radius: 10px; font-size: 12.5px; font-weight: 600; }
+.inv-none { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--warn-fg); background: var(--warn-bg); border: 1px dashed var(--warn-line); border-radius: 10px; font-size: 12.5px; font-weight: 600; }
 .inv-body { display: grid; gap: 4px; }
 .paste-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 22px 12px; text-align: center; color: var(--text-2); }
 .paste-zone:focus { outline: none; border-color: var(--brand); }
@@ -517,6 +520,18 @@ body.pub { min-height: 100vh; display: flex; flex-direction: column; }
   .topbar-mark { display: block; }
   .topbar { padding: 12px 16px; }
   .content { padding: 16px 16px 60px; }
+  /* مساحة لمس كافية للإصبع: الشرائح والأزرار الصغيرة وروابط الجداول */
+  .chip { min-height: 40px; padding: 8px 14px; }
+  .btn-sm { min-height: 40px; padding: 6px 12px; }
+  .chip .btn-sm { min-height: 36px !important; min-width: 36px; }
+  .t td a:not(.btn) { display: inline-block; padding: 9px 0; }
+  .att-link { padding: 7px 10px; font-size: 13px; }
+  .tabs button { padding: 14px 14px; }
+  .pager .btn { min-width: 40px; }
+  .stage .s-row { min-height: 40px; padding: 8px 6px; }
+  .chip a { display: inline-flex; align-items: center; min-height: 36px; }
+  .vcard a:not(.btn) { display: inline-block; padding: 7px 0; }
+  .card-h a:not(.btn) { display: inline-block; padding: 8px 0; }
   .g2, .g3 { grid-template-columns: 1fr; }
   .pipeline { grid-template-columns: repeat(2, 1fr); }
   .login { grid-template-columns: 1fr; }

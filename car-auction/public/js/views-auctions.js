@@ -174,7 +174,8 @@ export async function lotView(el, { params, setTitle }) {
     });
   };
 
-  if (canManage()) {
+  // السحب ممكن فقط قبل انتهاء اللوت؛ بعده الزر لا يظهر (كان يظهر ويعطي خطأ)
+  if (canManage() && ['PENDING', 'OPEN'].includes(lot.status)) {
     const bar = document.createElement('div');
     bar.className = 'card card-b row'; bar.style.justifyContent = 'space-between';
     render(bar, html`<span class="muted">إدارة اللوت</span><button class="btn btn-sm btn-danger" data-withdraw>سحب السيارة من المزاد</button>`);

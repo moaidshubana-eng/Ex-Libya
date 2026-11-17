@@ -81,7 +81,10 @@ export const isCleanTitle = (doc) => /CLEAN|CLEAR|ORIGINAL|CERTIFICATE OF TITLE/
  * s: الإعدادات { exchange, transferPct, wire, ports }
  */
 export function estimate(i, s) {
-  const bid = Number(i.bid) || 0;
+  // المبالغ لا تكون سالبة: رقم سالب (بالغلط) يُعامل كصفر فلا تطلع تكلفة وهمية
+  const pos = (v) => Math.max(0, Number(v) || 0);
+  const bid = pos(i.bid);
+  i = { ...i, towing: pos(i.towing), sublot: pos(i.sublot), titleIssue: pos(i.titleIssue), customsLYD: pos(i.customsLYD) };
   const copart = i.platform === 'COPART';
   const cleanFees = copart && i.clean;
   const buyerFee = bid <= 0 ? 0 : bid >= 15000 ? Math.round(bid * (cleanFees ? 0.0575 : 0.06)) : tier(cleanFees ? BUYER_CLEAN_COPART : BUYER_NONCLEAN, bid);

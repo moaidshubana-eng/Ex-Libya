@@ -53,7 +53,7 @@ export async function customersView(el) {
       <button class="btn btn-primary">بحث</button>${can('ADMIN', 'SALES') ? html`<button type="button" class="btn btn-accent" data-new>${icon('plus')} عميل جديد</button>` : ''}</form>
     <div class="table-wrap"><table class="t"><thead><tr><th>الرقم</th><th>الاسم</th><th>النوع</th><th>المدينة</th><th>الهاتف</th><th>التحقق</th><th class="n">سياراته</th></tr></thead>
       <tbody>${items.map((c) => html`<tr><td class="mono">${c.code}</td><td><b>${c.full_name}</b></td><td>${{ INDIVIDUAL: 'فرد', DEALER: 'معرض', COMPANY: 'شركة' }[c.customer_type]}</td><td>${c.city || '—'}</td><td class="mono">${c.phone || '—'}</td>
-        <td>${can('ADMIN', 'SALES') ? html`<select class="input" style="min-width:120px;min-height:32px;padding:2px 8px" data-kyc="${c.id}">${options(KYC, c.kyc_status, '')}</select>` : KYC.find(([v]) => v === c.kyc_status)[1]}</td><td class="n">${c.cars + c.purchases}</td></tr>`)}</tbody></table>
+        <td>${can('ADMIN', 'SALES') ? html`<select class="input" style="min-width:120px;min-height:32px;padding:2px 8px" data-kyc="${c.id}" aria-label="حالة التحقق — ${c.full_name}">${options(KYC, c.kyc_status, '')}</select>` : KYC.find(([v]) => v === c.kyc_status)[1]}</td><td class="n">${c.cars + c.purchases}</td></tr>`)}</tbody></table>
       ${items.length ? '' : html`<div class="empty">لا يوجد عملاء</div>`}</div></div>`);
   $('[data-search]', el).addEventListener('submit', (e) => { e.preventDefault(); location.hash = `#/customers${e.target.q.value ? `?q=${encodeURIComponent(e.target.q.value)}` : ''}`; });
   $('[data-new]', el)?.addEventListener('click', async () => { if (await newCustomerDialog()) customersView(el); });

@@ -116,6 +116,26 @@ if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => { lastClicked = e.target.closest?.('button, a, [role=button]') || null; }, true);
   window.addEventListener('hashchange', () => { lastModal = null; pendingRestore = null; });
 }
+// ---- خانات الأرقام: الأرقام العربية (١٢٣) تتحول إنجليزية وهي تُكتب، وفاصلة الآلاف (1,500) تُحذف من خانات المبالغ،
+// فلا يُرفض المبلغ برسالة غامضة. تعمل في كل الصفحات (المنظومة، الحاسبة العامة، بوابة العملاء)
+export function normalizeDigits(v, { money = false } = {}) {
+  let s = String(v).replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
+  if (money) s = s.replace(/٫/g, '.').replace(/[٬,\s]/g, '');
+  return s;
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('input', (e) => {
+    const i = e.target;
+    if (!(i instanceof HTMLInputElement) || !['text', 'tel', 'search', ''].includes(i.type)) return;
+    const money = i.inputMode === 'decimal' || i.inputMode === 'numeric';
+    if (!money && !i.classList.contains('num')) return;
+    const next = normalizeDigits(i.value, { money });
+    if (next === i.value) return;
+    const cut = i.value.length - (i.selectionStart ?? i.value.length); // نحافظ على موضع المؤشر من آخر النص
+    i.value = next;
+    try { i.setSelectionRange(next.length - cut, next.length - cut); } catch { /* نوع لا يدعم التحديد */ }
+  }, true);
+}
 const fieldsOf = (d) => [...d.querySelectorAll('input[name], select[name], textarea[name]')].filter((i) => i.type !== 'file');
 function reopenAfterError(msg) {
   const m = lastModal;
@@ -153,6 +173,11 @@ export function modal({ title, body, submitLabel = 'حفظ', danger = false }) {
     }
     document.body.appendChild(d);
     d.showModal();
+    // المؤشر على أول خانة لا على زر ✕. على الهاتف نتركه حتى لا تقفز لوحة المفاتيح فوق النموذج قبل أن يُقرأ
+    if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      const first = [...d.querySelectorAll('.m-b input, .m-b select, .m-b textarea')].find((i) => !i.disabled && !i.readOnly && !['hidden', 'file', 'checkbox', 'radio'].includes(i.type));
+      first?.focus();
+    }
     d.addEventListener('close', () => {
       const ok = d.returnValue === 'ok';
       const data = ok ? Object.fromEntries(new FormData(d.querySelector('form'))) : null;

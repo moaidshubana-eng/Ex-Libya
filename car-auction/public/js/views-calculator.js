@@ -68,7 +68,7 @@ export async function calculatorView(el, { query = {}, setTitle = () => {}, publ
             <label class="field">الواير ($)<input class="input num" name="wire" inputmode="decimal" value="${s.wire}"></label>
           </div>
           <div class="table-wrap"><table class="t"><thead><tr><th>الميناء</th>${Object.values(SHIP_TYPES).map((l) => html`<th class="n">${l}</th>`)}</tr></thead>
-            <tbody>${Object.entries(PORTS).map(([k, p]) => html`<tr><td>${p.label}</td>${Object.keys(SHIP_TYPES).map((t) => html`<td class="n"><input class="input num" style="width:90px" data-ship="${k}:${t}" inputmode="decimal" value="${s.ports[k]?.[t] ?? p[t]}"></td>`)}</tr>`)}</tbody></table></div>
+            <tbody>${Object.entries(PORTS).map(([k, p]) => html`<tr><td>${p.label}</td>${Object.keys(SHIP_TYPES).map((t) => html`<td class="n"><input class="input num" style="width:90px" data-ship="${k}:${t}" aria-label="سعر الشحن من ${p.label} — ${SHIP_TYPES[t]?.label || SHIP_TYPES[t] || t}" inputmode="decimal" value="${s.ports[k]?.[t] ?? p[t]}"></td>`)}</tr>`)}</tbody></table></div>
           <button type="button" class="btn btn-sm" data-reset>إرجاع الأسعار الافتراضية</button>
         </details>
         <div class="card card-b">

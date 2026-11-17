@@ -158,7 +158,7 @@ async function importView(el) {
     <div class="card card-b stack">
       <h3 style="margin:0">رفع ملف سيارات (CSV)</h3>
       <p class="muted" style="margin:0">لإدخال عدة سيارات دفعة واحدة، مثلًا من ملف Excel محفوظ بصيغة CSV أو من تصدير بوابة المزاد. تُنشأ كل سيارة بحالة "تم الشراء" مع تكاليف شرائها، ويُرفض أي سطر خاطئ مع بيان السبب دون أن يوقف بقية الأسطر. لإدخال سيارة واحدة استخدم "إضافة سيارة" في صفحة السيارات.</p>
-      <div class="row"><input type="file" accept=".csv,text/csv" data-csv class="input" style="max-width:340px"><button class="btn" data-template>تنزيل ملف نموذجي</button></div>
+      <div class="row"><input type="file" accept=".csv,text/csv" data-csv aria-label="ملف CSV للسيارات" class="input" style="max-width:340px"><button class="btn" data-template>تنزيل ملف نموذجي</button></div>
       <div class="faint">الأعمدة: <span class="mono">${CSV_COLS.join(', ')}</span>. الأعمدة المطلوبة: lot_number, vin, year, make, model. رقم الهيكل يُتحقق منه بما فيه خانة التحقق. حتى 5000 سطر.</div>
     </div>
     <div class="card" style="margin-top:16px"><div class="card-h"><h3>أسطر مرفوضة تحتاج تصحيحًا</h3><span class="badge">${dead.length}</span></div>
@@ -200,7 +200,7 @@ export async function integrationsView(el) {
       ${canRun ? html`<button class="btn btn-primary" data-sync="${s.code}">${icon('sync')} مزامنة الآن</button>` : ''}
     </div>`)}</div>
     ${canRun ? html`<div class="card card-b" style="margin-top:16px"><div class="row"><b>استيراد ملف CSV</b><span class="faint">(تصدير بوابة Copart/IAAI أو ملف الوسيط) — الأعمدة: lot_number, vin, year, make, model, trim, color, odometer, title, damage, yard, state, purchase_price_usd, buyer_fee_usd, sale_date</span>
-      <input type="file" accept=".csv,text/csv" data-csv class="input" style="max-width:320px"></div></div>` : ''}
+      <input type="file" accept=".csv,text/csv" data-csv aria-label="ملف CSV للسيارات" class="input" style="max-width:320px"></div></div>` : ''}
     <div class="card" style="margin-top:16px"><div class="card-h"><h3>طابور الأخطاء (Dead-letter)</h3><span class="badge">${d.deadLetters.length}</span><span style="flex:1"></span><span class="faint">عناصر فشلت بعد كل المحاولات — صحّح السبب ثم أعد المعالجة</span></div>
       ${d.deadLetters.length ? html`<div class="table-wrap"><table class="t"><thead><tr><th>#</th><th>المصدر</th><th>المرجع</th><th>الخطأ</th><th class="n">محاولات</th><th>التاريخ</th><th></th></tr></thead>
         <tbody>${d.deadLetters.map((x) => html`<tr><td>${x.id}</td><td>${x.source}</td><td class="mono">${x.external_ref}</td><td>${x.error}</td><td class="n">${x.attempts}</td><td>${fmt.dt(x.created_at)}</td>
