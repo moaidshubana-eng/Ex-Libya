@@ -88,7 +88,7 @@ export async function financeStrip() {
   const owedTotal = owed.people.reduce((a, o) => a + Number(o.totalLyd), 0);
   const tile = (href, ico, color, label, value, sub) => html`<a class="card fin-tile" href="${href}" style="--c:${color}">
     <span class="ico">${icon(ico)}</span><span class="fin-body"><span class="label">${label}</span><b class="num">${value}</b><span class="sub">${sub}</span></span></a>`;
-  return html`<div class="grid" style="margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
+  return html`<div class="grid" style="margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
     ${tile('#/finance', 'chart', '#dc2626', 'مصاريف هذا الشهر', lyd(p.totals.expensesLyd), `صافي الربح ${lyd(p.totals.netProfitLyd)}`)}
     ${open.length ? tile('#/bank', 'bank', '#059669', 'رصيد المصرف', lyd(bankBal), open.length === 1 ? open[0].name : `${open.length} حسابات`) : ''}
     ${tile('#/custody', 'wallet', '#0284c7', 'أرصدة العُهد', lyd(custodyBal), `${custodies.items.filter((k) => k.is_active).length} عهدة مفتوحة`)}
