@@ -87,11 +87,30 @@ export async function addCustodyEntry(id, b, actor) {
   });
 }
 
+// إقفال العهدة يشيلها من القوائم والأرصدة ولا يحذف كشفها. لا تُقفل وفيها رصيد: يُرجَّع الباقي أو تُلغى الحركة أولًا.
+export async function setCustodyActive(id, active, reason, actor) {
+  return tx(async (c) => {
+    const { rows: [k] } = await c.query('SELECT * FROM custodies WHERE id = $1 FOR UPDATE', [id]);
+    if (!k) throw new HttpError(404, 'NOT_FOUND', 'العهدة غير موجودة');
+    if (k.is_active === active) throw new HttpError(409, 'CUSTODY_STATE', active ? 'العهدة مفتوحة أصلًا' : 'العهدة مقفلة أصلًا');
+    if (!active) {
+      const { rows: [s] } = await c.query(
+        `SELECT COALESCE(sum(CASE WHEN kind = 'RECEIPT' THEN amount ELSE -amount END), 0)::numeric(14,3) AS bal FROM custody_entries WHERE custody_id = $1 AND voided_at IS NULL`, [id]);
+      if (mil(s.bal) !== 0) throw new HttpError(409, 'CUSTODY_NOT_EMPTY', `لا تُقفل العهدة ورصيدها ${Number(s.bal).toLocaleString('en-US')} د.ل — أرجِع الباقي للخزينة أو ألغِ الحركة أولًا`);
+    }
+    await c.query('UPDATE custodies SET is_active = $2 WHERE id = $1', [id, active]);
+    await audit(c, { actorId: actor.id, action: active ? 'CUSTODY_REOPENED' : 'CUSTODY_CLOSED', entity: 'custody', entityId: id, before: { is_active: k.is_active }, after: { is_active: active, reason: reason || null }, ip: actor.ip });
+    return { ok: true };
+  });
+}
+
 export async function voidCustodyEntry(entryId, reason, actor) {
   return tx(async (c) => {
     const { rows: [e] } = await c.query(
       'UPDATE custody_entries SET voided_at = now(), voided_by = $2, void_reason = $3 WHERE id = $1 AND voided_at IS NULL RETURNING *', [entryId, actor.id, reason]);
     if (!e) throw new HttpError(404, 'NOT_FOUND', 'الحركة غير موجودة أو ملغاة مسبقًا');
+    const { rows: [k] } = await c.query('SELECT is_active FROM custodies WHERE id = $1 FOR UPDATE', [e.custody_id]);
+    if (!k.is_active) throw new HttpError(409, 'CUSTODY_CLOSED', 'العهدة مقفلة');
     if (e.expense_id) await cancelExpense(c, e.expense_id, `إلغاء من العهدة: ${reason}`, actor);
     await audit(c, { actorId: actor.id, action: 'CUSTODY_ENTRY_VOIDED', entity: 'custody', entityId: e.custody_id, before: { entry: e.id, kind: e.kind, amount: e.amount }, after: { reason }, ip: actor.ip });
     return { ok: true };

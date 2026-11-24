@@ -14,7 +14,8 @@ const opts = (list, cur) => list.map(([v, l]) => html`<option value="${v}" ${v =
 
 // ======================================================================= القائمة
 export async function custodiesView(el) {
-  const { items } = await api('/custodies');
+  const all = (await api('/custodies')).items;
+  const items = all.filter((k) => k.is_active), closed = all.filter((k) => !k.is_active);
   render(el, html`
     <div class="row" style="justify-content:space-between;margin-bottom:14px;gap:8px">
       <div class="faint">مبلغ يستلمه شخص من الخزينة ويصرف منه؛ الصرف يُسجَّل في المصاريف تلقائيًا</div>
@@ -25,7 +26,9 @@ export async function custodiesView(el) {
         <td><a href="#/custody/${k.id}"><b>${k.holder_name}</b></a>${k.note ? html`<div class="faint" style="font-size:12px">${k.note}</div>` : ''}</td>
         <td class="n">${amt(k.received)}</td><td class="n">${amt(k.spent)}</td><td class="n">${amt(k.returned)}</td>
         <td class="n"><b class="${Number(k.balance) < 0 ? 'neg' : ''}">${amt(k.balance)} د.ل</b></td><td>${day(k.last_date)}</td></tr>`)}</tbody></table>
-      ${items.length ? '' : html`<div class="empty">لا توجد عهد بعد</div>`}</div></div>`);
+      ${items.length ? '' : html`<div class="empty">لا توجد عهد مفتوحة</div>`}</div></div>
+    ${closed.length ? html`<details style="margin-top:14px"><summary class="faint" style="cursor:pointer">عهد مقفلة (${closed.length})</summary>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${closed.map((k) => html`<a class="btn btn-sm btn-ghost" href="#/custody/${k.id}">${k.holder_name}</a>`)}</div></details>` : ''}`);
   $('[data-new]', el)?.addEventListener('click', async () => {
     const r = await modal({ title: 'عهدة جديدة', submitLabel: 'إنشاء', body: html`
       <label class="field">صاحب العهدة<input class="input" name="holderName" required minlength="2" maxlength="120"></label>
@@ -52,6 +55,8 @@ export async function custodyView(el, { params, setTitle }) {
         ${writer() && k.is_active ? html`<button class="btn" data-add="RECEIPT">استلام من الخزينة</button>
           <button class="btn btn-accent" data-add="EXPENSE">${icon('plus')} صرف</button>
           <button class="btn" data-add="RETURN">إرجاع للخزينة</button>` : ''}
+        ${writer() && k.is_active && Number(t.balance) === 0 ? html`<button class="btn" data-close>إقفال العهدة</button>` : ''}
+        ${writer() && !k.is_active ? html`<button class="btn" data-reopen>إعادة فتح العهدة</button>` : ''}
         <button class="btn btn-primary" data-pdf>${icon('pdf')} تحميل PDF</button>
         <button class="btn" data-print>طباعة</button></div></div>
     <div class="card card-b stmt">
@@ -73,11 +78,20 @@ export async function custodyView(el, { params, setTitle }) {
             ${e.kind === 'EXPENSE' && !e.voided ? html`<div class="att-row no-print">${attachmentLinks(e.attachments)}${writer() ? html`<button class="btn btn-sm btn-ghost" data-attach="${e.expenseId}">${e.attachments.length ? '+ فاتورة' : '📎 إرفاق فاتورة'}</button>` : ''}
               ${e.attachments.length ? '' : html`<span class="badge-warn">بلا فاتورة</span>`}</div>` : ''}</td>
           <td class="n">${amt(e.in)}</td><td class="n">${amt(e.out)}</td><td class="n"><b>${amt(e.balance)}</b></td>
-          <td class="no-print">${!e.voided && writer() ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody>
+          <td class="no-print">${!e.voided && writer() && k.is_active ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody>
         <tfoot><tr><th></th><th></th><th>المجموع</th><th class="n">${amt(t.in)}</th><th class="n">${amt(t.out)}</th><th class="n">${amt(t.balance)}</th><th class="no-print"></th></tr></tfoot></table>
         ${s.entries.length ? '' : html`<div class="empty">لا حركات في هذه العهدة بعد</div>`}</div>
       <div class="receipt-sign"><div>صاحب العهدة<br><span></span></div><div>المحاسب<br><span></span></div></div>
     </div>`);
+  $('[data-close]', el)?.addEventListener('click', async () => {
+    const r = await modal({ title: `إقفال عهدة ${k.holder_name}`, submitLabel: 'إقفال العهدة', danger: true, body: html`<label class="field">السبب (إلزامي)<input class="input" name="reason" required minlength="3" maxlength="300"></label>
+      <p class="faint" style="margin:0">تختفي من قائمة العهد ويبقى كشفها محفوظًا، وتقدر تعيد فتحها.</p>` });
+    if (!r) return;
+    try { await api(`/custodies/${k.id}/close`, { method: 'POST', body: { reason: r.reason } }); toast('أُقفلت العهدة', 'ok'); location.hash = '#/custody'; } catch (e) { toast(e.message, 'err'); }
+  });
+  $('[data-reopen]', el)?.addEventListener('click', async () => {
+    try { await api(`/custodies/${k.id}/reopen`, { method: 'POST', body: {} }); toast('فُتحت العهدة', 'ok'); reload(); } catch (e) { toast(e.message, 'err'); }
+  });
   $('[data-print]', el).addEventListener('click', () => window.print());
   $('[data-pdf]', el).addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;

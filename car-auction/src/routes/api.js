@@ -18,7 +18,7 @@ import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES, addExpenseAttachment, getExpenseAttachment, removeExpenseAttachment, owedToPeople, markReimbursed, listInvoices } from '../services/expenses.js';
-import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry } from '../services/custody.js';
+import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry, setCustodyActive } from '../services/custody.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
 import { writeBackup } from '../services/backup.js';
 import { setPortalAccount, disablePortalAccount, portalAccountInfo } from '../services/portal.js';
@@ -627,6 +627,11 @@ api.post('/custodies/:id/entries', requireRole(ACC_WRITERS), uuidParam('id'), as
   });
   res.status(201).json(await addCustodyEntry(req.params.id, b, actorOf(req)));
 }));
+api.post('/custodies/:id/close', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
+  res.json(await setCustodyActive(req.params.id, false, b.reason, actorOf(req)));
+}));
+api.post('/custodies/:id/reopen', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => res.json(await setCustodyActive(req.params.id, true, null, actorOf(req)))));
 api.post('/custody-entries/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
   res.json(await voidCustodyEntry(req.params.id, b.reason, actorOf(req)));

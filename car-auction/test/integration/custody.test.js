@@ -84,4 +84,21 @@ describe('العُهد النقدية', () => {
     assert.equal((await add({ kind: 'RECEIPT', entryDate: '2026-11-08', description: 'سالب', amount: '-5' })).status, 422);
     assert.equal((await statement()).totals.balance, '4800.000');
   });
+
+  test('الإقفال: لا يُقبل وفيها رصيد، وبعده لا حركات، والكشف يبقى محفوظًا', async () => {
+    const k = (await acc.post('/api/custodies', { holderName: 'تجربة الإقفال' })).data;
+    const e = (await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'RECEIPT', entryDate: '2026-11-08', description: 'استلام', amount: '1000' })).data;
+    const close = (c = acc) => c.post(`/api/custodies/${k.id}/close`, { reason: 'عهدة تجريبية' });
+    assert.equal((await close()).data.error.code, 'CUSTODY_NOT_EMPTY');
+    assert.equal((await acc.post(`/api/custody-entries/${e.id}/void`, { reason: 'تجريبية' })).status, 200);
+    assert.equal((await close(viewer)).status, 403);
+    assert.equal((await close()).status, 200);
+    assert.equal((await close()).status, 409);
+    const item = (await acc.get('/api/custodies')).data.items.find((x) => x.id === k.id);
+    assert.deepEqual([item.is_active, item.balance], [false, '0.000']);
+    assert.equal((await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'RECEIPT', entryDate: '2026-11-08', description: 'استلام', amount: '5' })).status, 409);
+    assert.equal((await acc.get(`/api/custodies/${k.id}`)).data.entries.length, 1);
+    assert.equal((await acc.post(`/api/custodies/${k.id}/reopen`, {})).status, 200);
+    assert.equal((await acc.post(`/api/custodies/${k.id}/entries`, { kind: 'RECEIPT', entryDate: '2026-11-08', description: 'استلام', amount: '5' })).status, 201);
+  });
 });
