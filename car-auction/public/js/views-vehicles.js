@@ -166,6 +166,7 @@ export async function dashboardView(el) {
     ['#/watchlist', 'clock', 'مزادات أمريكا', ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER']],
     ['#/calculator', 'calc', 'حاسبة التكلفة', ['ADMIN', 'OPERATIONS', 'ACCOUNTANT', 'SALES', 'VIEWER']],
     ['#/custody', 'wallet', 'العُهد', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
+    ['#/bank', 'bank', 'المصرف', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
     ['#/finance', 'chart', 'المصاريف', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
     ['#/invoices', 'receipt', 'الفواتير', ['ADMIN', 'ACCOUNTANT', 'VIEWER']],
   ].filter(([, , , roles]) => roles.includes(state.user.role));

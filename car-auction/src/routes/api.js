@@ -18,6 +18,7 @@ import { decodeVin } from '../services/vin-decode.js';
 import { addVehicleImage, deleteVehicleImage, setPrimaryImage } from '../services/images.js';
 import { customerAccount, vendorAccount, customerBalances, vendorBalances, addAccountPayment, voidAccountPayment, setVehicleDeal, vehicleDeal, paymentReceipt, accountsOverview } from '../services/accounts.js';
 import { addExpense, voidExpense, listExpenses, profitReport, EXPENSE_CATEGORIES, addExpenseAttachment, getExpenseAttachment, removeExpenseAttachment, owedToPeople, markReimbursed, listInvoices } from '../services/expenses.js';
+import { listBankAccounts, createBankAccount, updateBankAccount, bankStatement, payableExpenses, addBankEntry, voidBankEntry } from '../services/bank.js';
 import { listCustodies, createCustody, custodyStatement, addCustodyEntry, voidCustodyEntry, setCustodyActive } from '../services/custody.js';
 import { listWatch, getWatch, addWatch, updateWatch, setWatchStatus, convertWatch, WATCH_STATUSES, addWatchImage, deleteWatchImage, setWatchPrimaryImage, getWatchImage } from '../services/watchlist.js';
 import { writeBackup } from '../services/backup.js';
@@ -635,6 +636,26 @@ api.post('/custodies/:id/reopen', requireRole(ACC_WRITERS), uuidParam('id'), asy
 api.post('/custody-entries/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
   const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
   res.json(await voidCustodyEntry(req.params.id, b.reason, actorOf(req)));
+}));
+
+// ---------------------------------------------------------------- الحسابات المصرفية
+const BANK_FIELDS = { name: t.string({ required: true, min: 2, max: 120 }), bankName: t.string({ max: 120 }), accountNo: t.string({ max: 60 }), note: t.string({ max: 300 }) };
+api.get('/bank-accounts', requireRole(FIN_READERS), asyncH(async (_req, res) => res.json({ items: await listBankAccounts() })));
+api.get('/bank-accounts/payable', requireRole(ACC_WRITERS), asyncH(async (_req, res) => res.json({ items: await payableExpenses() })));
+api.post('/bank-accounts', requireRole(ACC_WRITERS), asyncH(async (req, res) => res.status(201).json(await createBankAccount(validate(req.body, BANK_FIELDS), actorOf(req)))));
+api.get('/bank-accounts/:id', requireRole(FIN_READERS), uuidParam('id'), asyncH(async (req, res) => res.json(await bankStatement(req.params.id))));
+api.put('/bank-accounts/:id', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => res.json(await updateBankAccount(req.params.id, validate(req.body, BANK_FIELDS), actorOf(req)))));
+api.post('/bank-accounts/:id/entries', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, {
+    kind: t.enum(['DEPOSIT', 'EXPENSE', 'SETTLE', 'WITHDRAW'], { required: true }), entryDate: t.date({ required: true }),
+    description: t.string({ min: 2, max: 300 }), amount: t.decimal({ positive: true }), category: t.enum(Object.keys(EXPENSE_CATEGORIES)),
+    reference: t.string({ max: 80 }), expenseId: t.uuid(),
+  });
+  res.status(201).json(await addBankEntry(req.params.id, b, actorOf(req)));
+}));
+api.post('/bank-entries/:id/void', requireRole(ACC_WRITERS), uuidParam('id'), asyncH(async (req, res) => {
+  const b = validate(req.body, { reason: t.string({ required: true, min: 3, max: 300 }) });
+  res.json(await voidBankEntry(req.params.id, b.reason, actorOf(req)));
 }));
 
 api.get('/reports/profit', requireRole(FIN_READERS), asyncH(async (req, res) => res.json(await profitReport(monthQ(req)))));

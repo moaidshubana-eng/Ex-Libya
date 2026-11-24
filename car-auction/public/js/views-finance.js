@@ -79,16 +79,18 @@ export async function overviewSection() {
 /** أربع بطاقات تختصر ما يحتاج متابعة: مصاريف الشهر، أرصدة العهد، المستحق للموظفين، والمصاريف بلا فاتورة */
 export async function financeStrip() {
   if (!can('ADMIN', 'ACCOUNTANT', 'VIEWER')) return '';
-  let p, custodies, owed, inv;
+  let p, custodies, owed, inv, banks;
   try {
-    [p, custodies, owed, inv] = await Promise.all([api(`/reports/profit?month=${localToday().slice(0, 7)}`), api('/custodies'), api('/expenses/owed'), api('/expenses/invoices?missing=1')]);
+    [p, custodies, owed, inv, banks] = await Promise.all([api(`/reports/profit?month=${localToday().slice(0, 7)}`), api('/custodies'), api('/expenses/owed'), api('/expenses/invoices?missing=1'), api('/bank-accounts')]);
   } catch { return ''; }
   const custodyBal = custodies.items.filter((k) => k.is_active).reduce((a, k) => a + Number(k.balance), 0);
+  const open = banks.items.filter((a) => a.is_active), bankBal = open.reduce((a, b) => a + Number(b.balance), 0);
   const owedTotal = owed.people.reduce((a, o) => a + Number(o.totalLyd), 0);
   const tile = (href, ico, color, label, value, sub) => html`<a class="card fin-tile" href="${href}" style="--c:${color}">
     <span class="ico">${icon(ico)}</span><span class="fin-body"><span class="label">${label}</span><b class="num">${value}</b><span class="sub">${sub}</span></span></a>`;
-  return html`<div class="grid g4" style="margin-top:16px">
+  return html`<div class="grid" style="margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
     ${tile('#/finance', 'chart', '#dc2626', 'مصاريف هذا الشهر', lyd(p.totals.expensesLyd), `صافي الربح ${lyd(p.totals.netProfitLyd)}`)}
+    ${open.length ? tile('#/bank', 'bank', '#059669', 'رصيد المصرف', lyd(bankBal), open.length === 1 ? open[0].name : `${open.length} حسابات`) : ''}
     ${tile('#/custody', 'wallet', '#0284c7', 'أرصدة العُهد', lyd(custodyBal), `${custodies.items.filter((k) => k.is_active).length} عهدة مفتوحة`)}
     ${tile('#/finance', 'users', '#f97316', 'مستحق لموظفين دفعوا من مالهم', lyd(owedTotal), owed.people.length ? `${owed.people.length} شخص` : 'لا مستحقات')}
     ${tile('#/invoices?missing=1', 'receipt', inv.totals.missing ? '#b45309' : '#059669', 'مصاريف بلا فاتورة', String(inv.totals.missing), `من ${inv.totals.expenses} مصروف`)}
@@ -144,10 +146,11 @@ export async function financeView(el, { query }) {
             <td>${EXPENSE_CATEGORIES.find(([k]) => k === e.category)?.[1]} — ${e.description}${e.voided_at ? html`<div class="faint">ملغى: ${e.void_reason}</div>` : ''}
               ${e.paid_by ? html`<div style="font-size:12px">${e.reimbursed_at ? html`<span class="faint">دفعها ${e.paid_by} من ماله · رُدّت له ${fmt.date(e.reimbursed_at)}</span>` : html`<b class="neg">دفعها ${e.paid_by} من ماله · مستحقة له</b>`}</div>` : ''}
               ${e.from_custody ? html`<div class="faint" style="font-size:12px">${e.reference || 'من عهدة'}</div>` : ''}
+              ${e.bank_account ? html`<div class="faint" style="font-size:12px">من ${e.bank_account}</div>` : ''}
               <div class="att-row">${attachmentLinks(e.attachments)}${!e.voided_at && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost no-print" data-attach="${e.id}">${e.attachments.length ? '+ فاتورة' : '📎 إرفاق فاتورة'}</button>` : ''}
                 ${!e.attachments.length && !e.voided_at ? html`<span class="badge-warn no-print">بلا فاتورة</span>` : ''}</div></td>
             <td class="n">${money(e.amount, e.currency)}${e.currency !== 'LYD' ? html`<div class="faint" style="font-size:12px">${lyd(e.amount_lyd)}</div>` : ''}</td>
-            <td class="no-print">${!e.voided_at && !e.from_custody && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
+            <td class="no-print">${!e.voided_at && !e.from_custody && !e.bank_account && can('ADMIN', 'ACCOUNTANT') ? html`<button class="btn btn-sm btn-ghost" data-void="${e.id}">إلغاء</button>` : ''}</td></tr>`)}</tbody></table>
           ${ex.items.length ? '' : html`<div class="empty">لا مصاريف مسجلة في ${ranged ? 'هذه الفترة' : 'هذا الشهر'}</div>`}</div></div>
     </div>
     <div class="card" style="margin-top:16px"><div class="card-h"><h2>مستحق لأشخاص دفعوا من مالهم</h2><span class="faint">مصاريف الشركة اللي دفعها موظف من ماله ولسه ما رُدّتش له (كل الشهور)</span></div>

@@ -14,6 +14,7 @@ export async function invoicesView(el, { query }) {
   const r = await api(`/expenses/invoices${qs ? `?${qs}` : ''}`);
   const reload = () => invoicesView(el, { query });
   const source = (e) => (e.custody_holder ? `من عهدة ${e.custody_holder}`
+    : e.bank_account && !e.paid_by ? `من ${e.bank_account}`
     : e.paid_by ? `دفعها ${e.paid_by} من ماله${e.reimbursed_at ? ' · رُدّت له' : ' · مستحقة له'}` : 'من الشركة');
   render(el, html`
     <form class="card filters" data-filters style="margin-bottom:16px">

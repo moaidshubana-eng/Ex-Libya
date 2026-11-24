@@ -8,6 +8,7 @@ import { accountsView, statementView } from './views-accounts.js';
 import { financeView, receiptView } from './views-finance.js';
 import { watchlistView } from './views-watchlist.js';
 import { custodiesView, custodyView } from './views-custody.js';
+import { banksView, bankView } from './views-bank.js';
 import { invoicesView } from './views-invoices.js';
 import { calculatorView } from './views-calculator.js';
 // الحسابات التجريبية لا وجود لها في الإنتاج: لا تُعرض إلا عند التشغيل المحلي
@@ -32,6 +33,8 @@ const ROUTES = [
   { path: '/invoices', title: 'الفواتير', view: invoicesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['receipt'] },
   { path: '/custody', title: 'العُهد', view: custodiesView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['wallet'] },
   { path: '/custody/:id', title: 'كشف عهدة', view: custodyView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'] },
+  { path: '/bank', title: 'الحسابات المصرفية', view: banksView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'], nav: ['bank'] },
+  { path: '/bank/:id', title: 'كشف حساب مصرفي', view: bankView, roles: ['ADMIN', 'ACCOUNTANT', 'VIEWER'] },
   { path: '/receipts/:id', title: 'إيصال', view: receiptView, roles: ['ADMIN', 'ACCOUNTANT', 'SALES', 'OPERATIONS', 'VIEWER'] },
   { path: '/reports', title: 'تقرير التكاليف', view: reportsView, roles: ['ADMIN', 'ACCOUNTANT', 'OPERATIONS', 'VIEWER', 'SALES'], nav: ['report'] },
   { path: '/integrations', title: 'الربط مع Copart / IAAI', view: integrationsView, roles: STAFF, nav: ['sync', 'النظام'] },

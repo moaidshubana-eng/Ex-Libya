@@ -55,6 +55,9 @@ export async function cancelExpense(c, id, reason, actor) {
 
 export async function voidExpense(id, reason, actor) {
   return tx(async (c) => {
+    await c.query('SELECT 1 FROM company_expenses WHERE id = $1 FOR UPDATE', [id]);
+    const { rows: [bank] } = await c.query('SELECT 1 FROM bank_entries WHERE expense_id = $1 AND voided_at IS NULL', [id]);
+    if (bank) throw new HttpError(409, 'BANK_EXPENSE', 'هذا المصروف مدفوع من حساب مصرفي؛ ألغِ حركته من كشف الحساب أولًا حتى يرجع المبلغ لرصيده');
     const { rows: [link] } = await c.query('SELECT 1 FROM custody_entries WHERE expense_id = $1 AND voided_at IS NULL', [id]);
     if (link) throw new HttpError(409, 'CUSTODY_EXPENSE', 'هذا المصروف مصروف من عهدة؛ ألغِه من كشف العهدة حتى يرجع المبلغ لرصيدها');
     if (!(await cancelExpense(c, id, reason, actor))) throw new HttpError(404, 'NOT_FOUND', 'المصروف غير موجود أو ملغى مسبقًا');
@@ -89,7 +92,8 @@ export async function listExpenses(period) {
   const r = resolvePeriod(period);
   const { rows } = await query(
     `SELECT e.*, u.full_name AS created_by_name, ${ATTACHMENTS_SQL('e')} AS attachments,
-            EXISTS (SELECT 1 FROM custody_entries k WHERE k.expense_id = e.id) AS from_custody
+            EXISTS (SELECT 1 FROM custody_entries k WHERE k.expense_id = e.id) AS from_custody,
+            (SELECT a.name FROM bank_entries b JOIN bank_accounts a ON a.id = b.account_id WHERE b.expense_id = e.id AND b.voided_at IS NULL) AS bank_account
        FROM company_expenses e LEFT JOIN users u ON u.id = e.created_by
       WHERE e.expense_date >= $1 AND e.expense_date < $2 ORDER BY e.expense_date DESC, e.created_at DESC`, [r.from, r.to]);
   return { ...r, items: rows };
@@ -105,7 +109,8 @@ export async function listInvoices({ q, from, to, missing } = {}) {
   if (missing) where.push('NOT EXISTS (SELECT 1 FROM expense_attachments a WHERE a.expense_id = e.id)');
   const { rows } = await query(
     `SELECT e.id, e.expense_no, e.expense_date::text AS expense_date, e.category, e.description, e.amount, e.currency, e.amount_lyd, e.reference,
-            e.paid_by, e.reimbursed_at, k.holder_name AS custody_holder, ${ATTACHMENTS_SQL('e')} AS attachments
+            e.paid_by, e.reimbursed_at, k.holder_name AS custody_holder,
+            (SELECT a.name FROM bank_entries b JOIN bank_accounts a ON a.id = b.account_id WHERE b.expense_id = e.id AND b.voided_at IS NULL) AS bank_account, ${ATTACHMENTS_SQL('e')} AS attachments
        FROM company_expenses e
        LEFT JOIN custody_entries ce ON ce.expense_id = e.id AND ce.voided_at IS NULL
        LEFT JOIN custodies k ON k.id = ce.custody_id
